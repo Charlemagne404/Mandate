@@ -1,0 +1,17 @@
+# WorldCommand contract
+
+Every persisted request contains expectedRevision and expectedHash, one action (source, actor, text), and 1–100 envelopes (commandId, reason, command). Persistence checks both against the canonical world inside the transaction, then passes the pure TurnRequest to core. Server supplies turnId, actionId, event IDs, recordedAt, and accepted validation metadata. Clients cannot supply SQL, file paths, or executable expressions.
+
+Commands: START_INITIATIVE, CANCEL_INITIATIVE, OPEN_NEGOTIATION, RESPOND_NEGOTIATION, CREATE_ORGANIZATION, SET_ORGANIZATION_MEMBERSHIP, CONFLICT_ACTION, APPLY_DOMESTIC_PRESSURE, ADJUST_RELATION, ADJUST_NATION_STAT, TRANSFER_CONTROL, TRANSFER_OWNERSHIP, ADD_CLAIM, REMOVE_CLAIM, CREATE_TREATY, UPDATE_TREATY, END_TREATY, START_CONFLICT, UPDATE_CONFLICT, END_CONFLICT, CREATE_EVENT, UPDATE_GOVERNMENT, UPDATE_LEADER, CREATE_STRATEGIC_GOAL, UPDATE_STRATEGIC_GOAL, SWITCH_NATION, ADVANCE_DATE.
+
+Commands are checked and applied sequentially against a private clone. Earlier commands may create references used later. Invalid commands abort the entire request. Direct stat/relationship edits never clamp or coerce an invalid result; bound violations are errors. Simulation formulas explicitly model bounded indices and exhaustion. END operations preserve historical records. UPDATE operations are narrow and cannot rewrite entity IDs/participants.
+
+Debug commands are authorized sandbox edits; transfers intentionally do not require war, peace, or treaty mechanics yet. Before AI can propose transfers, add explicit role/capability and mechanical justification rules. Natural-language orchestration applies a separate capability boundary; providers cannot use unrestricted debug transfers or stat edits. Strategic combat has its own explicit deterministic command.
+
+Each accepted envelope produces an immutable factual event and audit record. CREATE_EVENT supplies structured annotations; all others get deterministic titles/references. All events point back to command and action/turn provenance. Ledger entries cannot be edited by commands.
+
+New command state machines and exact mechanical limits are documented in [ALPHA_MECHANICS.md](ALPHA_MECHANICS.md). Binding negotiation acceptance creates a treaty atomically; accepting consultation does not. Every new command remains finite and typed, with no generic entity patch.
+
+Continuity commands: OPEN_CRISIS, CRISIS_ACTION, SET_ECONOMIC_LINK, IMPOSE_SANCTION, LIFT_SANCTION, OPEN_CONFERENCE, RESPOND_CONFERENCE, SCHEDULE_ELECTION, REVISE_GOAL_EVALUATION, THEATER_ACTION, DISCLOSE_INFORMATION and SET_OBSERVER_MODE. Their finite payloads are in packages/schemas/src/commands.ts. Player world-action controls authorize only the controlled actor; provider resolution has a smaller independent capability policy. Economic link editing and election scheduling are administrative/genesis capabilities, not arbitrary model mutations.
+
+Conference counters increment the round and revoke every previous acceptance. Reject/withdraw terminate the offer; abstain/delay do not supply consent. A ratified trade conference opens bounded directional access links; sanctions conferences impose each party's typed sanctions; peace conferences include all belligerents and validate legal ownership/control again at acceptance. Security organizations are political coalitions, not an implemented automatic mutual-defense guarantee.

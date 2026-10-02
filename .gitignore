@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.cache/
+.runtime/
+coverage/
+playwright-report/
+test-results/
+output/
+.env
+*.sqlite*
+.DS_Store
+
+.playwright-cli/

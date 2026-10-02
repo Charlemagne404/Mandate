@@ -1,0 +1,23 @@
+{
+  "version": "natural-earth-50m-v1",
+  "upstreamRevision": "ca96624a56bd078437bca8184e78163e5039ad19",
+  "sources": {
+    "countries": {
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/ca96624a56bd078437bca8184e78163e5039ad19/geojson/ne_50m_admin_0_countries.geojson",
+      "sha256": "3e458fc036ad0a66411f2c1e6cac49c5d7bfb81cb1123bc513b22511a2b7fdeb"
+    },
+    "places": {
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/ca96624a56bd078437bca8184e78163e5039ad19/geojson/ne_50m_populated_places.geojson",
+      "sha256": "da4662b7bbfeb897d02f228c5839131dce27acff5717630f91ccff4f67828ee7"
+    }
+  },
+  "license": "Public domain",
+  "licenseUrl": "https://www.naturalearthdata.com/about/terms-of-use/",
+  "regionCount": 242,
+  "nationCount": 242,
+  "capitalCoverage": 196,
+  "adjacentPairs": 327,
+  "idPolicy": "Existing committed 110m ADM0_A3 region IDs retained; new 50m IDs added in global-registry.json. Scenario NationIds are committed ADM0_A3 codes, independent from geometry.",
+  "scope": "242 pinned Natural Earth administrative polygons including sovereign countries, territories, disputed areas and Antarctica. Not 242 sovereign states or a comprehensive current recognition dataset. Small states including Monaco, San Marino and Vatican City are represented; upstream dated names and classifications are retained as source metadata.",
+  "adjacency": "Exact shared land-boundary edges; no sea neighbors or point-only contacts. Geographic metadata is separate from political ownership."
+}

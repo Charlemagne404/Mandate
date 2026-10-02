@@ -1,0 +1,13 @@
+{
+  "name": "@mandate/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@mandate/schemas": "workspace:*",
+    "@mandate/core": "workspace:*",
+    "@mandate/memory": "workspace:*",
+    "zod": "4.6.5"
+  }
+}

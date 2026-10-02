@@ -1,0 +1,10 @@
+pnpm-lock.yaml
+data/geography/*.geojson
+data/geography/upstream/
+**/dist/
+output/
+.runtime/
+playwright-report/
+test-results/
+
+.playwright-cli/

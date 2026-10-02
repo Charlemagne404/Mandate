@@ -1,0 +1,1445 @@
+{
+  "formatVersion": 3,
+  "kind": "scenario",
+  "world": {
+    "schemaVersion": 3,
+    "saveId": "save:nordic-strategy",
+    "ancestry": null,
+    "scenario": {
+      "id": "scenario:nordic-strategy",
+      "name": "Nordic Crossroads · Strategic sandbox",
+      "description": "Original fictional gameplay scenario, not historical claims. Nordic cooperation, neutrality, energy dependence, domestic pressure and constrained rearmament create competing paths without scripted outcomes.",
+      "synthetic": true,
+      "startDate": "2025-01-01",
+      "geographyVersion": "natural-earth-110m-v1"
+    },
+    "date": "2025-01-01",
+    "revision": 0,
+    "playerNationId": "nation:swe",
+    "observerMode": false,
+    "nations": [
+      {
+        "id": "nation:swe",
+        "name": "Sweden",
+        "color": "#c5a45b",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Sweden interim cabinet",
+        "stats": {
+          "economy": 55,
+          "military": 40,
+          "stability": 70,
+          "legitimacy": 65,
+          "treasury": 40,
+          "industrial": 50,
+          "fiscal": 45,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 75,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 40,
+          "orientation": "domestic",
+          "redLines": [],
+          "directives": []
+        }
+      },
+      {
+        "id": "nation:fin",
+        "name": "Finland",
+        "color": "#7d9fac",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Finland interim cabinet",
+        "stats": {
+          "economy": 59,
+          "military": 45,
+          "stability": 73,
+          "legitimacy": 68,
+          "treasury": 210,
+          "industrial": 50,
+          "fiscal": 50,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 50,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 20,
+          "orientation": "diplomatic",
+          "redLines": ["No surrender of Finnish legal territory"],
+          "directives": [
+            {
+              "id": "neutrality",
+              "text": "Avoid permanent foreign basing and binding alliances; remain open to intelligence cooperation and trade.",
+              "status": "active",
+              "visibility": "private",
+              "createdDate": "2025-01-01"
+            }
+          ]
+        }
+      },
+      {
+        "id": "nation:nor",
+        "name": "Norway",
+        "color": "#a8887a",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Norway interim cabinet",
+        "stats": {
+          "economy": 63,
+          "military": 50,
+          "stability": 76,
+          "legitimacy": 71,
+          "treasury": 220,
+          "industrial": 65,
+          "fiscal": 70,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 15,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 40,
+          "orientation": "economic",
+          "redLines": [],
+          "directives": []
+        }
+      },
+      {
+        "id": "nation:dnk",
+        "name": "Denmark",
+        "color": "#b87771",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Denmark interim cabinet",
+        "stats": {
+          "economy": 67,
+          "military": 55,
+          "stability": 79,
+          "legitimacy": 74,
+          "treasury": 230,
+          "industrial": 50,
+          "fiscal": 50,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 50,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 40,
+          "orientation": "domestic",
+          "redLines": [],
+          "directives": []
+        }
+      },
+      {
+        "id": "nation:deu",
+        "name": "Germany",
+        "color": "#9b917a",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Germany interim cabinet",
+        "stats": {
+          "economy": 71,
+          "military": 60,
+          "stability": 70,
+          "legitimacy": 77,
+          "treasury": 240,
+          "industrial": 50,
+          "fiscal": 50,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 50,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 40,
+          "orientation": "domestic",
+          "redLines": [],
+          "directives": []
+        }
+      },
+      {
+        "id": "nation:pol",
+        "name": "Poland",
+        "color": "#ba9293",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Poland interim cabinet",
+        "stats": {
+          "economy": 55,
+          "military": 65,
+          "stability": 73,
+          "legitimacy": 80,
+          "treasury": 250,
+          "industrial": 50,
+          "fiscal": 50,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 50,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 40,
+          "orientation": "domestic",
+          "redLines": [],
+          "directives": []
+        }
+      },
+      {
+        "id": "nation:est",
+        "name": "Estonia",
+        "color": "#719b9a",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Estonia interim cabinet",
+        "stats": {
+          "economy": 59,
+          "military": 70,
+          "stability": 76,
+          "legitimacy": 65,
+          "treasury": 260,
+          "industrial": 50,
+          "fiscal": 50,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 50,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 40,
+          "orientation": "domestic",
+          "redLines": [],
+          "directives": []
+        }
+      },
+      {
+        "id": "nation:lva",
+        "name": "Latvia",
+        "color": "#977e8d",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Latvia interim cabinet",
+        "stats": {
+          "economy": 63,
+          "military": 40,
+          "stability": 79,
+          "legitimacy": 68,
+          "treasury": 270,
+          "industrial": 50,
+          "fiscal": 50,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 50,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 40,
+          "orientation": "domestic",
+          "redLines": [],
+          "directives": []
+        }
+      },
+      {
+        "id": "nation:ltu",
+        "name": "Lithuania",
+        "color": "#a1a174",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Lithuania interim cabinet",
+        "stats": {
+          "economy": 67,
+          "military": 45,
+          "stability": 70,
+          "legitimacy": 71,
+          "treasury": 280,
+          "industrial": 50,
+          "fiscal": 50,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 50,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 40,
+          "orientation": "domestic",
+          "redLines": [],
+          "directives": []
+        }
+      },
+      {
+        "id": "nation:rus",
+        "name": "Russia",
+        "color": "#8b9484",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Russia interim cabinet",
+        "stats": {
+          "economy": 71,
+          "military": 50,
+          "stability": 73,
+          "legitimacy": 45,
+          "treasury": 35,
+          "industrial": 50,
+          "fiscal": 30,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 50,
+          "tradeDependence": 50,
+          "unrest": 45
+        },
+        "strategy": {
+          "riskTolerance": 65,
+          "orientation": "security",
+          "redLines": [],
+          "directives": []
+        }
+      },
+      {
+        "id": "nation:gbr",
+        "name": "United Kingdom",
+        "color": "#a18baf",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "United Kingdom interim cabinet",
+        "stats": {
+          "economy": 55,
+          "military": 55,
+          "stability": 76,
+          "legitimacy": 77,
+          "treasury": 300,
+          "industrial": 50,
+          "fiscal": 50,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 50,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 40,
+          "orientation": "domestic",
+          "redLines": [],
+          "directives": []
+        }
+      },
+      {
+        "id": "nation:fra",
+        "name": "France",
+        "color": "#7d8fa9",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "France interim cabinet",
+        "stats": {
+          "economy": 59,
+          "military": 60,
+          "stability": 79,
+          "legitimacy": 80,
+          "treasury": 310,
+          "industrial": 50,
+          "fiscal": 50,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 50,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 40,
+          "orientation": "domestic",
+          "redLines": [],
+          "directives": []
+        }
+      },
+      {
+        "id": "nation:usa",
+        "name": "United States",
+        "color": "#87a4a3",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "United States interim cabinet",
+        "stats": {
+          "economy": 63,
+          "military": 65,
+          "stability": 70,
+          "legitimacy": 65,
+          "treasury": 320,
+          "industrial": 50,
+          "fiscal": 50,
+          "readiness": 50,
+          "manpower": 50,
+          "technology": 50,
+          "influence": 50,
+          "energyExposure": 50,
+          "tradeDependence": 50,
+          "unrest": 10
+        },
+        "strategy": {
+          "riskTolerance": 40,
+          "orientation": "domestic",
+          "redLines": [],
+          "directives": []
+        }
+      }
+    ],
+    "regions": [
+      {
+        "id": "region:ne-swe",
+        "name": "Sweden",
+        "geometryId": "region:ne-swe",
+        "ownerNationId": "nation:swe",
+        "controllerNationId": "nation:swe",
+        "claims": []
+      },
+      {
+        "id": "region:ne-fin",
+        "name": "Finland",
+        "geometryId": "region:ne-fin",
+        "ownerNationId": "nation:fin",
+        "controllerNationId": "nation:fin",
+        "claims": []
+      },
+      {
+        "id": "region:ne-nor",
+        "name": "Norway",
+        "geometryId": "region:ne-nor",
+        "ownerNationId": "nation:nor",
+        "controllerNationId": "nation:nor",
+        "claims": []
+      },
+      {
+        "id": "region:ne-dnk",
+        "name": "Denmark",
+        "geometryId": "region:ne-dnk",
+        "ownerNationId": "nation:dnk",
+        "controllerNationId": "nation:dnk",
+        "claims": []
+      },
+      {
+        "id": "region:ne-deu",
+        "name": "Germany",
+        "geometryId": "region:ne-deu",
+        "ownerNationId": "nation:deu",
+        "controllerNationId": "nation:deu",
+        "claims": []
+      },
+      {
+        "id": "region:ne-pol",
+        "name": "Poland",
+        "geometryId": "region:ne-pol",
+        "ownerNationId": "nation:pol",
+        "controllerNationId": "nation:pol",
+        "claims": []
+      },
+      {
+        "id": "region:ne-est",
+        "name": "Estonia",
+        "geometryId": "region:ne-est",
+        "ownerNationId": "nation:est",
+        "controllerNationId": "nation:est",
+        "claims": []
+      },
+      {
+        "id": "region:ne-lva",
+        "name": "Latvia",
+        "geometryId": "region:ne-lva",
+        "ownerNationId": "nation:lva",
+        "controllerNationId": "nation:lva",
+        "claims": []
+      },
+      {
+        "id": "region:ne-ltu",
+        "name": "Lithuania",
+        "geometryId": "region:ne-ltu",
+        "ownerNationId": "nation:ltu",
+        "controllerNationId": "nation:ltu",
+        "claims": []
+      },
+      {
+        "id": "region:ne-rus",
+        "name": "Russia",
+        "geometryId": "region:ne-rus",
+        "ownerNationId": "nation:rus",
+        "controllerNationId": "nation:rus",
+        "claims": []
+      },
+      {
+        "id": "region:ne-gbr",
+        "name": "United Kingdom",
+        "geometryId": "region:ne-gbr",
+        "ownerNationId": "nation:gbr",
+        "controllerNationId": "nation:gbr",
+        "claims": []
+      },
+      {
+        "id": "region:ne-fra",
+        "name": "France",
+        "geometryId": "region:ne-fra",
+        "ownerNationId": "nation:fra",
+        "controllerNationId": "nation:fra",
+        "claims": []
+      },
+      {
+        "id": "region:ne-usa",
+        "name": "United States",
+        "geometryId": "region:ne-usa",
+        "ownerNationId": "nation:usa",
+        "controllerNationId": "nation:usa",
+        "claims": []
+      }
+    ],
+    "relations": [
+      {
+        "nationA": "nation:fin",
+        "nationB": "nation:swe",
+        "score": 55,
+        "trust": 68,
+        "tension": 10,
+        "tradeDependence": 25,
+        "militaryAlignment": 25,
+        "grievances": [],
+        "factors": [
+          {
+            "date": "2025-01-01",
+            "cause": "Authored fictional scenario starting position",
+            "scoreDelta": 55,
+            "trustDelta": 0,
+            "visibility": "public"
+          }
+        ]
+      },
+      {
+        "nationA": "nation:nor",
+        "nationB": "nation:swe",
+        "score": 60,
+        "trust": 70,
+        "tension": 10,
+        "tradeDependence": 65,
+        "militaryAlignment": 0,
+        "grievances": [],
+        "factors": [
+          {
+            "date": "2025-01-01",
+            "cause": "Authored fictional scenario starting position",
+            "scoreDelta": 60,
+            "trustDelta": 0,
+            "visibility": "public"
+          }
+        ]
+      },
+      {
+        "nationA": "nation:fin",
+        "nationB": "nation:rus",
+        "score": -25,
+        "trust": 50,
+        "tension": 60,
+        "tradeDependence": 45,
+        "militaryAlignment": 0,
+        "grievances": ["Unresolved border security disagreement"],
+        "factors": [
+          {
+            "date": "2025-01-01",
+            "cause": "Authored fictional scenario starting position",
+            "scoreDelta": -25,
+            "trustDelta": 0,
+            "visibility": "public"
+          }
+        ]
+      },
+      {
+        "nationA": "nation:est",
+        "nationB": "nation:rus",
+        "score": -25,
+        "trust": 50,
+        "tension": 10,
+        "tradeDependence": 25,
+        "militaryAlignment": 0,
+        "grievances": [],
+        "factors": [
+          {
+            "date": "2025-01-01",
+            "cause": "Authored fictional scenario starting position",
+            "scoreDelta": -25,
+            "trustDelta": 0,
+            "visibility": "public"
+          }
+        ]
+      },
+      {
+        "nationA": "nation:deu",
+        "nationB": "nation:pol",
+        "score": 20,
+        "trust": 50,
+        "tension": 10,
+        "tradeDependence": 25,
+        "militaryAlignment": 0,
+        "grievances": [],
+        "factors": [
+          {
+            "date": "2025-01-01",
+            "cause": "Authored fictional scenario starting position",
+            "scoreDelta": 20,
+            "trustDelta": 0,
+            "visibility": "public"
+          }
+        ]
+      }
+    ],
+    "treaties": [
+      {
+        "id": "treaty:nordic-market",
+        "name": "Nordic Market Access",
+        "kind": "trade",
+        "conflictId": null,
+        "parties": ["nation:swe", "nation:nor"],
+        "status": "active",
+        "terms": "Reciprocal market access; no security guarantee",
+        "visibility": "public"
+      }
+    ],
+    "conflicts": [],
+    "goals": [
+      {
+        "id": "goal:swe-stability",
+        "nationId": "nation:swe",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 70,
+            "target": 76,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:fin-stability",
+        "nationId": "nation:fin",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 73,
+            "target": 79,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:nor-stability",
+        "nationId": "nation:nor",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 76,
+            "target": 82,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:dnk-stability",
+        "nationId": "nation:dnk",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 79,
+            "target": 85,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:deu-stability",
+        "nationId": "nation:deu",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 70,
+            "target": 76,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:pol-stability",
+        "nationId": "nation:pol",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 73,
+            "target": 79,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:est-stability",
+        "nationId": "nation:est",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 76,
+            "target": 82,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:lva-stability",
+        "nationId": "nation:lva",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 79,
+            "target": 85,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:ltu-stability",
+        "nationId": "nation:ltu",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 70,
+            "target": 76,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:rus-stability",
+        "nationId": "nation:rus",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 73,
+            "target": 79,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:gbr-stability",
+        "nationId": "nation:gbr",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 76,
+            "target": 82,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:fra-stability",
+        "nationId": "nation:fra",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 79,
+            "target": 85,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:usa-stability",
+        "nationId": "nation:usa",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "stability",
+            "baseline": 70,
+            "target": 76,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:swe-independence",
+        "nationId": "nation:swe",
+        "title": "Reduce energy vulnerability",
+        "priority": 90,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "energyExposure",
+            "baseline": 75,
+            "target": 55,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Persistent fictional government priority",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "economic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:swe-energy",
+        "nationId": "nation:swe",
+        "title": "Diversify energy supply",
+        "priority": 90,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": "goal:swe-independence",
+        "signals": [
+          {
+            "stat": "energyExposure",
+            "baseline": 75,
+            "target": 55,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Persistent fictional government priority",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "economic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:swe-industry",
+        "nationId": "nation:swe",
+        "title": "Develop domestic industrial capacity",
+        "priority": 90,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": "goal:swe-independence",
+        "signals": [
+          {
+            "stat": "industrial",
+            "baseline": 50,
+            "target": 65,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Persistent fictional government priority",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "economic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:fin-cooperation",
+        "nationId": "nation:fin",
+        "title": "Develop limited Nordic cooperation",
+        "priority": 90,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "influence",
+            "baseline": 50,
+            "target": 65,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": ["nation:swe"],
+        "progress": 0,
+        "reason": "Persistent fictional government priority",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "diplomatic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:nor-trade",
+        "nationId": "nation:nor",
+        "title": "Expand export capacity",
+        "priority": 90,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "industrial",
+            "baseline": 65,
+            "target": 80,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Persistent fictional government priority",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "economic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      },
+      {
+        "id": "goal:rus-legitimacy",
+        "nationId": "nation:rus",
+        "title": "Restore domestic legitimacy",
+        "priority": 90,
+        "status": "active",
+        "evaluation": {
+          "kind": "metrics"
+        },
+        "pressure": 0,
+        "stalledDays": 0,
+        "deferredToGoalId": null,
+        "strategyReview": null,
+        "parentGoalId": null,
+        "signals": [
+          {
+            "stat": "legitimacy",
+            "baseline": 45,
+            "target": 60,
+            "weight": 100
+          }
+        ],
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Persistent fictional government priority",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01",
+        "kind": "domestic",
+        "visibility": "public",
+        "deadline": null,
+        "blockers": [],
+        "evidence": []
+      }
+    ],
+    "crises": [
+      {
+        "id": "crisis:nordic-access",
+        "title": "Nordic security access dispute",
+        "type": "security",
+        "status": "emerging",
+        "participants": ["nation:swe", "nation:fin", "nation:rus"],
+        "interestedActors": ["nation:nor"],
+        "regions": [],
+        "startDate": "2025-01-01",
+        "visibility": "public",
+        "trigger": "Rising regional military access concerns",
+        "issues": ["Foreign basing limits", "Border security transparency"],
+        "demands": [
+          {
+            "nationId": "nation:fin",
+            "text": "No permanent foreign basing without negotiated Finnish consent",
+            "satisfied": false
+          },
+          {
+            "nationId": "nation:rus",
+            "text": "Advance notice of regional military deployments",
+            "satisfied": false
+          }
+        ],
+        "redLines": [
+          {
+            "nationId": "nation:fin",
+            "text": "Finnish legal sovereignty is non-negotiable"
+          }
+        ],
+        "militaryPosture": 20,
+        "rhetoric": 25,
+        "diplomaticBreakdown": 15,
+        "severity": 20,
+        "deadline": null,
+        "conflictId": null,
+        "negotiationIds": [],
+        "history": []
+      }
+    ],
+    "economicLinks": [
+      {
+        "id": "economic:swe-rus",
+        "dependentNationId": "nation:swe",
+        "partnerNationId": "nation:rus",
+        "imports": 45,
+        "exports": 15,
+        "energy": 70,
+        "strategicGoods": 25,
+        "finance": 20,
+        "alternatives": 20,
+        "adaptation": 0
+      },
+      {
+        "id": "economic:fin-rus",
+        "dependentNationId": "nation:fin",
+        "partnerNationId": "nation:rus",
+        "imports": 55,
+        "exports": 25,
+        "energy": 65,
+        "strategicGoods": 25,
+        "finance": 20,
+        "alternatives": 20,
+        "adaptation": 0
+      },
+      {
+        "id": "economic:swe-nor",
+        "dependentNationId": "nation:swe",
+        "partnerNationId": "nation:nor",
+        "imports": 35,
+        "exports": 45,
+        "energy": 30,
+        "strategicGoods": 25,
+        "finance": 20,
+        "alternatives": 20,
+        "adaptation": 0
+      },
+      {
+        "id": "economic:nor-swe",
+        "dependentNationId": "nation:nor",
+        "partnerNationId": "nation:swe",
+        "imports": 20,
+        "exports": 40,
+        "energy": 10,
+        "strategicGoods": 25,
+        "finance": 20,
+        "alternatives": 20,
+        "adaptation": 0
+      }
+    ],
+    "sanctions": [],
+    "conferences": [],
+    "tenures": [
+      {
+        "id": "tenure:fin",
+        "nationId": "nation:fin",
+        "startDate": "2025-01-01",
+        "nextElectionDate": "2026-01-01",
+        "termDays": 1460,
+        "incumbent": "Finland interim cabinet",
+        "challenger": {
+          "name": "Fictional Finnish renewal cabinet",
+          "government": {
+            "type": "Parliamentary coalition",
+            "ideology": "Domestic renewal"
+          },
+          "strategy": {
+            "riskTolerance": 30,
+            "orientation": "economic",
+            "redLines": ["No surrender of Finnish legal territory"],
+            "directives": []
+          }
+        },
+        "issues": ["Civil resilience", "Security autonomy", "Fiscal capacity"],
+        "outcomes": []
+      }
+    ],
+    "commitments": [],
+    "initiatives": [
+      {
+        "id": "initiative:fin-industry",
+        "nationId": "nation:fin",
+        "name": "Civil resilience industry",
+        "kind": "industry",
+        "startDate": "2025-01-01",
+        "durationDays": 360,
+        "effort": 2,
+        "targetNationId": null,
+        "visibility": "public",
+        "status": "active",
+        "progress": 0,
+        "invested": 0,
+        "delays": 0,
+        "blocker": null,
+        "milestones": [],
+        "dependencies": []
+      }
+    ],
+    "negotiations": [],
+    "organizations": [
+      {
+        "id": "organization:nordic-forum",
+        "name": "Nordic Consultation Forum",
+        "kind": "regional",
+        "members": ["nation:swe", "nation:fin", "nation:nor"],
+        "charter": "Consultation without mutual defense obligations"
+      }
+    ],
+    "events": [],
+    "turns": [],
+    "actions": [],
+    "commands": []
+  }
+}

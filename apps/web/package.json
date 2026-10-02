@@ -1,0 +1,20 @@
+{
+  "name": "@mandate/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@mandate/schemas": "workspace:*",
+    "@mandate/map": "workspace:*",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "maplibre-gl": "6.11.2"
+  },
+  "devDependencies": {
+    "vite": "8.3.2"
+  }
+}

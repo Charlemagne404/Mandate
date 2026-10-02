@@ -1,0 +1,540 @@
+{
+  "formatVersion": 1,
+  "kind": "scenario",
+  "world": {
+    "schemaVersion": 1,
+    "saveId": "save:northern-sandbox",
+    "ancestry": null,
+    "scenario": {
+      "id": "scenario:northern-sandbox",
+      "name": "Northern Europe \u00b7 Development sandbox",
+      "description": "Original synthetic fixture. Strategic indicators, leaders and relationships are invented for testing; this is not a historical simulation. Countries outside the fixture are geographic context only.",
+      "synthetic": true,
+      "startDate": "2025-01-01",
+      "geographyVersion": "natural-earth-110m-v1"
+    },
+    "date": "2025-01-01",
+    "revision": 0,
+    "playerNationId": "nation:swe",
+    "nations": [
+      {
+        "id": "nation:swe",
+        "name": "Sweden",
+        "color": "#c5a45b",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Sweden interim cabinet",
+        "stats": {
+          "economy": 55,
+          "military": 40,
+          "stability": 70,
+          "legitimacy": 65,
+          "treasury": 200
+        }
+      },
+      {
+        "id": "nation:fin",
+        "name": "Finland",
+        "color": "#7d9fac",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Finland interim cabinet",
+        "stats": {
+          "economy": 59,
+          "military": 45,
+          "stability": 73,
+          "legitimacy": 68,
+          "treasury": 210
+        }
+      },
+      {
+        "id": "nation:nor",
+        "name": "Norway",
+        "color": "#a8887a",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Norway interim cabinet",
+        "stats": {
+          "economy": 63,
+          "military": 50,
+          "stability": 76,
+          "legitimacy": 71,
+          "treasury": 220
+        }
+      },
+      {
+        "id": "nation:dnk",
+        "name": "Denmark",
+        "color": "#b87771",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Denmark interim cabinet",
+        "stats": {
+          "economy": 67,
+          "military": 55,
+          "stability": 79,
+          "legitimacy": 74,
+          "treasury": 230
+        }
+      },
+      {
+        "id": "nation:deu",
+        "name": "Germany",
+        "color": "#9b917a",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Germany interim cabinet",
+        "stats": {
+          "economy": 71,
+          "military": 60,
+          "stability": 70,
+          "legitimacy": 77,
+          "treasury": 240
+        }
+      },
+      {
+        "id": "nation:pol",
+        "name": "Poland",
+        "color": "#ba9293",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Poland interim cabinet",
+        "stats": {
+          "economy": 55,
+          "military": 65,
+          "stability": 73,
+          "legitimacy": 80,
+          "treasury": 250
+        }
+      },
+      {
+        "id": "nation:est",
+        "name": "Estonia",
+        "color": "#719b9a",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Estonia interim cabinet",
+        "stats": {
+          "economy": 59,
+          "military": 70,
+          "stability": 76,
+          "legitimacy": 65,
+          "treasury": 260
+        }
+      },
+      {
+        "id": "nation:lva",
+        "name": "Latvia",
+        "color": "#977e8d",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Latvia interim cabinet",
+        "stats": {
+          "economy": 63,
+          "military": 40,
+          "stability": 79,
+          "legitimacy": 68,
+          "treasury": 270
+        }
+      },
+      {
+        "id": "nation:ltu",
+        "name": "Lithuania",
+        "color": "#a1a174",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Lithuania interim cabinet",
+        "stats": {
+          "economy": 67,
+          "military": 45,
+          "stability": 70,
+          "legitimacy": 71,
+          "treasury": 280
+        }
+      },
+      {
+        "id": "nation:rus",
+        "name": "Russia",
+        "color": "#8b9484",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "Russia interim cabinet",
+        "stats": {
+          "economy": 71,
+          "military": 50,
+          "stability": 73,
+          "legitimacy": 74,
+          "treasury": 290
+        }
+      },
+      {
+        "id": "nation:gbr",
+        "name": "United Kingdom",
+        "color": "#a18baf",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "United Kingdom interim cabinet",
+        "stats": {
+          "economy": 55,
+          "military": 55,
+          "stability": 76,
+          "legitimacy": 77,
+          "treasury": 300
+        }
+      },
+      {
+        "id": "nation:fra",
+        "name": "France",
+        "color": "#7d8fa9",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "France interim cabinet",
+        "stats": {
+          "economy": 59,
+          "military": 60,
+          "stability": 79,
+          "legitimacy": 80,
+          "treasury": 310
+        }
+      },
+      {
+        "id": "nation:usa",
+        "name": "United States",
+        "color": "#87a4a3",
+        "government": {
+          "type": "Development administration",
+          "ideology": "Synthetic pluralism"
+        },
+        "leader": "United States interim cabinet",
+        "stats": {
+          "economy": 63,
+          "military": 65,
+          "stability": 70,
+          "legitimacy": 65,
+          "treasury": 320
+        }
+      }
+    ],
+    "regions": [
+      {
+        "id": "region:ne-swe",
+        "geometryId": "region:ne-swe",
+        "name": "Sweden",
+        "ownerNationId": "nation:swe",
+        "controllerNationId": "nation:swe",
+        "claims": []
+      },
+      {
+        "id": "region:ne-fin",
+        "geometryId": "region:ne-fin",
+        "name": "Finland",
+        "ownerNationId": "nation:fin",
+        "controllerNationId": "nation:fin",
+        "claims": []
+      },
+      {
+        "id": "region:ne-nor",
+        "geometryId": "region:ne-nor",
+        "name": "Norway",
+        "ownerNationId": "nation:nor",
+        "controllerNationId": "nation:nor",
+        "claims": []
+      },
+      {
+        "id": "region:ne-dnk",
+        "geometryId": "region:ne-dnk",
+        "name": "Denmark",
+        "ownerNationId": "nation:dnk",
+        "controllerNationId": "nation:dnk",
+        "claims": []
+      },
+      {
+        "id": "region:ne-deu",
+        "geometryId": "region:ne-deu",
+        "name": "Germany",
+        "ownerNationId": "nation:deu",
+        "controllerNationId": "nation:deu",
+        "claims": []
+      },
+      {
+        "id": "region:ne-pol",
+        "geometryId": "region:ne-pol",
+        "name": "Poland",
+        "ownerNationId": "nation:pol",
+        "controllerNationId": "nation:pol",
+        "claims": []
+      },
+      {
+        "id": "region:ne-est",
+        "geometryId": "region:ne-est",
+        "name": "Estonia",
+        "ownerNationId": "nation:est",
+        "controllerNationId": "nation:est",
+        "claims": []
+      },
+      {
+        "id": "region:ne-lva",
+        "geometryId": "region:ne-lva",
+        "name": "Latvia",
+        "ownerNationId": "nation:lva",
+        "controllerNationId": "nation:lva",
+        "claims": []
+      },
+      {
+        "id": "region:ne-ltu",
+        "geometryId": "region:ne-ltu",
+        "name": "Lithuania",
+        "ownerNationId": "nation:ltu",
+        "controllerNationId": "nation:ltu",
+        "claims": []
+      },
+      {
+        "id": "region:ne-rus",
+        "geometryId": "region:ne-rus",
+        "name": "Russia",
+        "ownerNationId": "nation:rus",
+        "controllerNationId": "nation:rus",
+        "claims": []
+      },
+      {
+        "id": "region:ne-gbr",
+        "geometryId": "region:ne-gbr",
+        "name": "United Kingdom",
+        "ownerNationId": "nation:gbr",
+        "controllerNationId": "nation:gbr",
+        "claims": []
+      },
+      {
+        "id": "region:ne-fra",
+        "geometryId": "region:ne-fra",
+        "name": "France",
+        "ownerNationId": "nation:fra",
+        "controllerNationId": "nation:fra",
+        "claims": []
+      },
+      {
+        "id": "region:ne-usa",
+        "geometryId": "region:ne-usa",
+        "name": "United States",
+        "ownerNationId": "nation:usa",
+        "controllerNationId": "nation:usa",
+        "claims": []
+      }
+    ],
+    "relations": [
+      {
+        "nationA": "nation:fin",
+        "nationB": "nation:swe",
+        "score": 45
+      },
+      {
+        "nationA": "nation:nor",
+        "nationB": "nation:swe",
+        "score": 40
+      },
+      {
+        "nationA": "nation:fin",
+        "nationB": "nation:rus",
+        "score": -20
+      },
+      {
+        "nationA": "nation:est",
+        "nationB": "nation:rus",
+        "score": -25
+      },
+      {
+        "nationA": "nation:deu",
+        "nationB": "nation:pol",
+        "score": 20
+      }
+    ],
+    "treaties": [],
+    "conflicts": [],
+    "goals": [
+      {
+        "id": "goal:swe-stability",
+        "nationId": "nation:swe",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:fin-stability",
+        "nationId": "nation:fin",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:nor-stability",
+        "nationId": "nation:nor",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:dnk-stability",
+        "nationId": "nation:dnk",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:deu-stability",
+        "nationId": "nation:deu",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:pol-stability",
+        "nationId": "nation:pol",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:est-stability",
+        "nationId": "nation:est",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:lva-stability",
+        "nationId": "nation:lva",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:ltu-stability",
+        "nationId": "nation:ltu",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:rus-stability",
+        "nationId": "nation:rus",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:gbr-stability",
+        "nationId": "nation:gbr",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:fra-stability",
+        "nationId": "nation:fra",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      },
+      {
+        "id": "goal:usa-stability",
+        "nationId": "nation:usa",
+        "title": "Preserve domestic stability",
+        "priority": 70,
+        "status": "active",
+        "targetNationIds": [],
+        "progress": 0,
+        "reason": "Synthetic scenario baseline",
+        "createdDate": "2025-01-01",
+        "updatedDate": "2025-01-01"
+      }
+    ],
+    "events": [],
+    "turns": [],
+    "actions": [],
+    "commands": []
+  }
+}

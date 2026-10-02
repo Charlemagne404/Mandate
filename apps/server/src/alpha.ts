@@ -1,0 +1,678 @@
+import { readdirSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
+import { z } from 'zod';
+import type { FastifyInstance } from 'fastify';
+import {
+  ProviderConfig,
+  analyzeWorldBehavior,
+  createProvider,
+  createOrchestrator,
+  discoverLocalProviders,
+} from '@mandate/ai';
+import { loadScenario } from '@mandate/scenarios';
+import {
+  exportSave,
+  WorldError,
+  worldBriefing,
+  strategicAnswer,
+  advisorQuestions,
+  compareWorlds,
+  parseSave,
+} from '@mandate/core';
+import { canonicalHash } from '@mandate/persistence';
+import type { WorldStore } from '@mandate/persistence';
+import {
+  StateHash,
+  NegotiationId,
+  CommandId,
+  TreatyId,
+  Strategy,
+  NationId,
+  SimulationDate,
+  InitiativeId,
+  Commitment,
+  WorldCommand,
+} from '@mandate/schemas';
+import { openArchive } from './archive.js';
+
+const expected = z.strictObject({
+  expectedRevision: z.number().int().min(0),
+  expectedHash: StateHash,
+});
+const playInput = expected.extend({
+  text: z.string().trim().max(4000).default(''),
+  days: z.number().int().min(1).max(365).default(7),
+  quality: z.enum(['fast', 'balanced', 'deep']).default('balanced'),
+});
+export function createAlphaServices(
+  store: WorldStore,
+  options: { directory?: string; scenariosDirectory?: string } = {},
+) {
+  const archive = openArchive(options.directory);
+  let config = ProviderConfig.parse(
+    archive.getSetting('provider') ?? { kind: 'fake' },
+  );
+  let active: AbortController | null = null;
+  let progress = {
+    stage: 'ready',
+    running: false,
+    completed: 0,
+    total: 0,
+    error: '',
+  };
+  const unlocked = () => {
+    if (active)
+      throw new WorldError(
+        'DOMAIN',
+        'A world turn is in progress. Cancel it before editing or loading.',
+      );
+  };
+  const check = (input: z.infer<typeof expected>) => {
+    const world = store.load();
+    if (
+      world.revision !== input.expectedRevision ||
+      canonicalHash(world) !== input.expectedHash
+    )
+      throw new WorldError(
+        'STALE_REVISION',
+        'World changed. Refresh before submitting.',
+      );
+    return world;
+  };
+  const response = () => {
+    const world = store.load();
+    return { world, hash: canonicalHash(world) };
+  };
+  const execute = async (
+    text: string,
+    days: number,
+    quality: 'fast' | 'balanced' | 'deep',
+    signal: AbortSignal,
+  ) => {
+    const before = store.load();
+    if (before.observerMode && text)
+      throw new WorldError(
+        'DOMAIN',
+        'Take control of a government before issuing a directive',
+      );
+    const orchestrator = createOrchestrator(createProvider(config), config);
+    const prepared = await orchestrator.prepare({
+      world: before,
+      expectedHash: canonicalHash(before),
+      action: {
+        actorNationId: before.playerNationId,
+        source: text ? 'player' : 'system',
+        text: text || 'Advance the world without a player action',
+      },
+      days,
+      quality,
+      signal,
+      onProgress: (stage) => {
+        progress.stage = stage;
+      },
+    });
+    signal.throwIfAborted();
+    progress.stage = 'committing';
+    archive.checkpoint(store, 'Before turn ' + (before.revision + 1), 'undo');
+    const after = store.commit(prepared.request, prepared.trace);
+    // No await between the final cancellation check and synchronous atomic commit.
+    progress.stage = 'updating history';
+    try {
+      const narration = await orchestrator.narrate({
+        before,
+        after,
+        trace: prepared.trace,
+        signal,
+      });
+      archive.present(after.turns.at(-1)!.id, narration);
+    } catch (error) {
+      archive.present(after.turns.at(-1)!.id, {
+        summary: after.events
+          .filter((e) => e.turnId === after.turns.at(-1)!.id)
+          .map((e) => e.title)
+          .join('. '),
+        fallback: true,
+        error: error instanceof Error ? error.message : 'Narration unavailable',
+      });
+    }
+    archive.checkpoint(store, 'Autosave ' + after.date, 'autosave');
+    return after;
+  };
+  return {
+    archive,
+    cancel: () => active?.abort(new Error('Application is shutting down')),
+    unlocked,
+    response,
+    register(app: FastifyInstance) {
+      app.get('/api/play/status', () => progress);
+      app.post('/api/play/cancel', () => {
+        active?.abort(new Error('Cancelled by player before commit'));
+        return { cancelling: Boolean(active) };
+      });
+      app.get('/api/settings', () => ({
+        ...config,
+        apiKey: undefined,
+        hasApiKey: Boolean(config.apiKey),
+      }));
+      app.post('/api/settings', (request) => {
+        unlocked();
+        const incoming = ProviderConfig.parse(request.body);
+        createProvider(incoming); // Validate the endpoint boundary before persisting settings.
+        config = incoming;
+        archive.setSetting('provider', config);
+        return {
+          ...config,
+          apiKey: undefined,
+          hasApiKey: Boolean(config.apiKey),
+        };
+      });
+      app.get('/api/provider/discovery', () => discoverLocalProviders());
+      app.post('/api/provider/health', async () => {
+        try {
+          return await createProvider(config).health();
+        } catch (error) {
+          return {
+            ok: false,
+            error:
+              error instanceof Error ? error.message : 'Provider unavailable',
+          };
+        }
+      });
+      app.post('/api/play', async (request) => {
+        unlocked();
+        const input = playInput.parse(request.body);
+        check(input);
+        const controller = new AbortController();
+        active = controller;
+        progress = {
+          stage: 'interpreting',
+          running: true,
+          completed: 0,
+          total: 1,
+          error: '',
+        };
+        try {
+          await execute(
+            input.text,
+            input.days,
+            input.quality,
+            controller.signal,
+          );
+          progress.completed = 1;
+          return response();
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Turn failed';
+          progress.error = message;
+          archive.failure({
+            message,
+            detail:
+              error && typeof error === 'object' && 'trace' in error
+                ? error.trace
+                : null,
+          });
+          throw new WorldError('DOMAIN', message);
+        } finally {
+          active = null;
+          progress.running = false;
+          progress.stage = progress.error ? 'failed' : 'ready';
+        }
+      });
+      app.post('/api/autoplay', async (request) => {
+        unlocked();
+        const input = expected
+          .extend({
+            turns: z.number().int().min(1).max(100),
+            days: z.number().int().min(1).max(365).default(30),
+            quality: z.enum(['fast', 'balanced', 'deep']).default('fast'),
+          })
+          .parse(request.body);
+        const before = check(input);
+        const controller = new AbortController();
+        active = controller;
+        progress = {
+          stage: 'governments deliberating',
+          running: true,
+          completed: 0,
+          total: input.turns,
+          error: '',
+        };
+        const start = performance.now();
+        try {
+          for (let i = 0; i < input.turns; i++) {
+            controller.signal.throwIfAborted();
+            await execute('', input.days, input.quality, controller.signal);
+            progress.completed++;
+          }
+        } catch (error) {
+          progress.error =
+            error instanceof Error ? error.message : 'Autoplay failed';
+          archive.failure({
+            autoplay: true,
+            completed: progress.completed,
+            error: progress.error,
+          });
+        } finally {
+          active = null;
+          progress.running = false;
+          progress.stage = progress.error ? 'stopped' : 'ready';
+        }
+        const after = store.load();
+        return {
+          ...response(),
+          statistics: {
+            turns: progress.completed,
+            elapsedMs: Math.round(performance.now() - start),
+            events: after.events.length - before.events.length,
+            treaties: after.treaties.length - before.treaties.length,
+            conflicts: after.conflicts.length - before.conflicts.length,
+            goals: after.goals.length - before.goals.length,
+            negotiations:
+              after.negotiations.length - before.negotiations.length,
+            initiatives: after.initiatives.length - before.initiatives.length,
+            behavior: analyzeWorldBehavior(before, after),
+            error: progress.error,
+          },
+        };
+      });
+      app.post('/api/strategy', (request) => {
+        unlocked();
+        const input = expected
+          .extend({
+            text: z.string().trim().min(1).max(1000).optional(),
+            cancelId: z.string().max(160).optional(),
+            visibility: z.enum(['public', 'private']).default('private'),
+            priority: z
+              .enum(['critical', 'high', 'medium', 'low'])
+              .default('medium'),
+          })
+          .parse(request.body);
+        const w = check(input),
+          owner = w.nations.find((n) => n.id === w.playerNationId)!;
+        const strategy = structuredClone(owner.strategy);
+        if (input.cancelId) {
+          const d = strategy.directives.find(
+            (d) => d.id === input.cancelId && d.status === 'active',
+          );
+          if (!d) throw new WorldError('DOMAIN', 'Unknown active directive');
+          d.status = 'cancelled';
+        } else if (input.text)
+          strategy.directives.push({
+            id: randomUUID(),
+            text: input.text,
+            priority: input.priority,
+            visibility: input.visibility,
+            status: 'active',
+            createdDate: w.date,
+          });
+        else
+          throw new WorldError(
+            'DOMAIN',
+            'A directive or cancellation is required',
+          );
+        Strategy.parse(strategy);
+        archive.checkpoint(store, 'Before strategy update', 'undo');
+        store.commit({
+          expectedRevision: input.expectedRevision,
+          expectedHash: input.expectedHash,
+          action: {
+            source: 'player',
+            actorNationId: owner.id,
+            text: input.text ?? 'Cancel strategic directive',
+          },
+          commands: [
+            {
+              id: CommandId.parse(`command:${randomUUID()}`),
+              reason: 'Explicit persistent player strategic directive',
+              command: { type: 'SET_STRATEGY', nationId: owner.id, strategy },
+            },
+          ],
+        });
+        return response();
+      });
+      app.get('/api/timelines', () => archive.list());
+      app.post('/api/world-action', (request) => {
+        unlocked();
+        const input = expected
+          .extend({ command: WorldCommand })
+          .parse(request.body);
+        const w = check(input),
+          c = input.command;
+        const actor =
+          c.type === 'OPEN_CONFERENCE'
+            ? c.conference.proposer
+            : c.type === 'IMPOSE_SANCTION'
+              ? c.sanction.issuer
+              : [
+                    'CRISIS_ACTION',
+                    'RESPOND_CONFERENCE',
+                    'LIFT_SANCTION',
+                    'THEATER_ACTION',
+                  ].includes(c.type) && 'nationId' in c
+                ? c.nationId
+                : null;
+        if (actor !== w.playerNationId || w.observerMode)
+          throw new WorldError(
+            'DOMAIN',
+            'Action requires explicit control of the initiating government',
+          );
+        archive.checkpoint(store, 'Before strategic action', 'undo');
+        store.commit({
+          expectedRevision: input.expectedRevision,
+          expectedHash: input.expectedHash,
+          action: {
+            source: 'player',
+            actorNationId: w.playerNationId,
+            text: 'Government strategic action: ' + c.type,
+          },
+          commands: [
+            {
+              id: CommandId.parse(`command:${randomUUID()}`),
+              reason:
+                'Explicit player strategic decision; canonical domain constraints apply',
+              command: c,
+            },
+          ],
+        });
+        return response();
+      });
+      app.get('/api/briefing', () => {
+        const w = store.load();
+        return worldBriefing(w, w.playerNationId);
+      });
+      app.get('/api/advisor/:question', (request) => {
+        const { question } = z
+          .object({ question: z.enum(advisorQuestions) })
+          .parse(request.params);
+        const w = store.load();
+        return strategicAnswer(w, w.playerNationId, question);
+      });
+      app.post('/api/timelines/compare', (request) => {
+        const input = z
+          .strictObject({ a: z.string().max(160), b: z.string().max(160) })
+          .parse(request.body);
+        const a = parseSave(archive.snapshot(input.a)),
+          b = parseSave(archive.snapshot(input.b));
+        return {
+          a: { date: a.date, revision: a.revision },
+          b: { date: b.date, revision: b.revision },
+          differences: compareWorlds(a, b, store.load().playerNationId),
+        };
+      });
+      app.post('/api/diplomacy/propose', (request) => {
+        unlocked();
+        const input = expected
+          .extend({
+            recipientNationId: NationId,
+            message: z.string().trim().min(1).max(4000),
+            minimumInvestment: z.number().int().min(1).max(1000),
+            dueDate: SimulationDate,
+            visibility: z.enum(['public', 'private']).default('public'),
+          })
+          .parse(request.body);
+        const w = check(input),
+          id = NegotiationId.parse(`negotiation:${randomUUID()}`);
+        archive.checkpoint(store, 'Before structured aid proposal', 'undo');
+        store.commit({
+          expectedRevision: input.expectedRevision,
+          expectedHash: input.expectedHash,
+          action: {
+            source: 'player',
+            actorNationId: w.playerNationId,
+            text: input.message,
+          },
+          commands: [
+            {
+              id: CommandId.parse(`command:${randomUUID()}`),
+              reason:
+                'Player intentionally proposes a measurable funded aid pledge; recipient consent remains pending',
+              command: {
+                type: 'OPEN_NEGOTIATION',
+                negotiation: {
+                  id,
+                  proposerNationId: w.playerNationId,
+                  recipientNationId: input.recipientNationId,
+                  topic: 'Funded aid pledge',
+                  kind: 'consultation',
+                  terms: input.message,
+                  visibility: input.visibility,
+                  createdDate: w.date,
+                  expiresDate: input.dueDate,
+                  obligations: [
+                    {
+                      issuer: w.playerNationId,
+                      recipients: [input.recipientNationId],
+                      type: 'aid',
+                      terms: input.message,
+                      strength: 'binding',
+                      dueDate: input.dueDate,
+                      expiry: null,
+                      condition: {
+                        kind: 'project',
+                        initiativeKind: 'aid',
+                        minimumInvestment: input.minimumInvestment,
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        });
+        return response();
+      });
+      app.post('/api/commitments/fund', (request) => {
+        unlocked();
+        const input = expected
+          .extend({ commitmentId: Commitment.shape.id })
+          .parse(request.body);
+        const w = check(input),
+          c = w.commitments.find((c) => c.id === input.commitmentId);
+        if (
+          !c ||
+          c.issuer !== w.playerNationId ||
+          c.status !== 'active' ||
+          c.condition.kind !== 'project'
+        )
+          throw new WorldError(
+            'DOMAIN',
+            'Only your active funded obligation can start a delivery project',
+          );
+        const effort = Math.min(
+          10,
+          Math.ceil(c.condition.minimumInvestment / 3),
+        );
+        archive.checkpoint(store, 'Before funding obligation', 'undo');
+        store.commit({
+          expectedRevision: input.expectedRevision,
+          expectedHash: input.expectedHash,
+          action: {
+            source: 'player',
+            actorNationId: w.playerNationId,
+            text: 'Fund obligation delivery: ' + c.terms,
+          },
+          commands: [
+            {
+              id: CommandId.parse(`command:${randomUUID()}`),
+              reason:
+                'Player allocates an ongoing funded project to accepted obligation delivery',
+              command: {
+                type: 'START_INITIATIVE',
+                initiative: {
+                  id: InitiativeId.parse(`initiative:${randomUUID()}`),
+                  nationId: c.issuer,
+                  name: 'Obligation delivery',
+                  kind: c.condition.initiativeKind,
+                  startDate: w.date,
+                  durationDays: Math.min(
+                    3650,
+                    Math.max(
+                      30,
+                      30 * Math.ceil(c.condition.minimumInvestment / effort),
+                    ),
+                  ),
+                  effort,
+                  targetNationId: c.type === 'aid' ? c.recipients[0]! : null,
+                  visibility: c.visibility,
+                  status: 'active',
+                  progress: 0,
+                  invested: 0,
+                  dependencies: [],
+                },
+              },
+            },
+          ],
+        });
+        return response();
+      });
+      app.post('/api/diplomacy/respond', (request) => {
+        unlocked();
+        const input = expected
+          .extend({
+            negotiationId: NegotiationId,
+            move: z.enum(['accept', 'reject', 'counter', 'delay', 'withdraw']),
+            message: z.string().trim().min(1).max(4000),
+            counterTerms: z.string().trim().min(1).max(4000).optional(),
+          })
+          .parse(request.body);
+        const before = check(input);
+        const negotiation = before.negotiations.find(
+          (n) => n.id === input.negotiationId,
+        );
+        if (!negotiation)
+          throw new WorldError('DOMAIN', 'Unknown diplomatic offer');
+        const command = {
+          type: 'RESPOND_NEGOTIATION' as const,
+          negotiationId: input.negotiationId,
+          nationId: before.playerNationId,
+          move: input.move,
+          message: input.message,
+          ...(input.counterTerms ? { counterTerms: input.counterTerms } : {}),
+          ...(input.move === 'accept' && negotiation.kind !== 'consultation'
+            ? { treatyId: TreatyId.parse(`treaty:${randomUUID()}`) }
+            : {}),
+        };
+        archive.checkpoint(store, 'Before diplomatic response', 'undo');
+        store.commit({
+          expectedRevision: input.expectedRevision,
+          expectedHash: input.expectedHash,
+          action: {
+            source: 'player',
+            actorNationId: before.playerNationId,
+            text: `Diplomatic ${input.move}: ${input.message}`,
+          },
+          commands: [
+            {
+              id: CommandId.parse(`command:${randomUUID()}`),
+              reason:
+                'Explicit response from the player-controlled government; domain authorization and consent rules apply.',
+              command,
+            },
+          ],
+        });
+        return response();
+      });
+      app.post('/api/timelines', (request) => {
+        unlocked();
+        const input = expected
+          .extend({ name: z.string().trim().min(1).max(100) })
+          .parse(request.body);
+        check(input);
+        return { id: archive.checkpoint(store, input.name) };
+      });
+      app.post('/api/timelines/restore', (request) => {
+        unlocked();
+        const input = expected
+          .extend({ id: z.string().uuid(), branch: z.boolean().default(false) })
+          .parse(request.body);
+        check(input);
+        archive.checkpoint(store, 'Before loading timeline', 'named');
+        archive.restore(
+          store,
+          input.id,
+          input.expectedRevision,
+          input.expectedHash,
+          input.branch,
+        );
+        return response();
+      });
+      app.post('/api/rollback', (request) => {
+        unlocked();
+        const input = expected.parse(request.body);
+        const world = check(input);
+        const target = archive
+          .list()
+          .find(
+            (row) =>
+              row.kind === 'undo' &&
+              row.saveId === world.saveId &&
+              row.revision === world.revision - 1,
+          );
+        if (!target)
+          throw new WorldError(
+            'DOMAIN',
+            'No previous-turn checkpoint exists for this timeline.',
+          );
+        archive.checkpoint(store, 'Before rollback', 'named');
+        archive.restore(
+          store,
+          String(target.id),
+          input.expectedRevision,
+          input.expectedHash,
+        );
+        return response();
+      });
+      app.get('/api/scenarios', () =>
+        options.scenariosDirectory
+          ? readdirSync(options.scenariosDirectory)
+              .filter((name) => /^[a-zA-Z0-9_-]+\.json$/.test(name))
+              .map((filename) => {
+                const world = loadScenario(
+                  join(options.scenariosDirectory!, filename),
+                );
+                return {
+                  filename,
+                  ...world.scenario,
+                  nations: world.nations.length,
+                };
+              })
+          : [],
+      );
+      app.post('/api/scenarios/load', (request) => {
+        unlocked();
+        const input = expected
+          .extend({ filename: z.string().regex(/^[a-zA-Z0-9_-]+\.json$/) })
+          .parse(request.body);
+        check(input);
+        if (!options.scenariosDirectory)
+          throw new WorldError('DOMAIN', 'Scenario directory is unavailable');
+        const world = loadScenario(
+          join(options.scenariosDirectory, input.filename),
+        );
+        archive.checkpoint(store, 'Before scenario change', 'named');
+        store.import(
+          exportSave(world),
+          input.expectedRevision,
+          input.expectedHash,
+        );
+        return response();
+      });
+      app.get('/api/explain/:turnId', (request) => {
+        const { turnId } = z
+          .object({ turnId: z.string().max(200) })
+          .parse(request.params);
+        return {
+          audit: store.loadAudit(turnId),
+          presentation: archive.presentation(turnId),
+        };
+      });
+      app.get('/api/model-failures', () => archive.failures());
+      app.addHook('onClose', () => {
+        active?.abort();
+        archive.close();
+      });
+    },
+  };
+}
+export type AlphaServices = ReturnType<typeof createAlphaServices>;

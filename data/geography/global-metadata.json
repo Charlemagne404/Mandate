@@ -1,0 +1,4464 @@
+[
+  {
+    "nationId": "nation:abw",
+    "regionId": "region:ne-abw",
+    "name": "Aruba",
+    "sourceType": "Country",
+    "sourceSovereign": "Netherlands",
+    "isoA3": "ABW",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:afg",
+    "regionId": "region:ne-afg",
+    "name": "Afghanistan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Afghanistan",
+    "isoA3": "AFG",
+    "continent": "Asia",
+    "subregion": "Southern Asia",
+    "capitals": [
+      {
+        "name": "Kabul",
+        "coordinates": [69.181314, 34.518636]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-chn",
+      "region:ne-irn",
+      "region:ne-pak",
+      "region:ne-tjk",
+      "region:ne-tkm",
+      "region:ne-uzb"
+    ]
+  },
+  {
+    "nationId": "nation:ago",
+    "regionId": "region:ne-ago",
+    "name": "Angola",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Angola",
+    "isoA3": "AGO",
+    "continent": "Africa",
+    "subregion": "Middle Africa",
+    "capitals": [
+      {
+        "name": "Luanda",
+        "coordinates": [13.232481, -8.83634]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-cod",
+      "region:ne-cog",
+      "region:ne-nam",
+      "region:ne-zmb"
+    ]
+  },
+  {
+    "nationId": "nation:aia",
+    "regionId": "region:ne-aia",
+    "name": "Anguilla",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "AIA",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:alb",
+    "regionId": "region:ne-alb",
+    "name": "Albania",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Albania",
+    "isoA3": "ALB",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Tirana",
+        "coordinates": [19.818883, 41.327541]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-grc",
+      "region:ne-kos",
+      "region:ne-mkd",
+      "region:ne-mne"
+    ]
+  },
+  {
+    "nationId": "nation:ald",
+    "regionId": "region:ne-ald",
+    "name": "Aland",
+    "sourceType": "Country",
+    "sourceSovereign": "Finland",
+    "isoA3": "ALA",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:and",
+    "regionId": "region:ne-and",
+    "name": "Andorra",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Andorra",
+    "isoA3": "AND",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Andorra",
+        "coordinates": [1.526594, 42.510753]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-esp", "region:ne-fra"]
+  },
+  {
+    "nationId": "nation:are",
+    "regionId": "region:ne-are",
+    "name": "United Arab Emirates",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "United Arab Emirates",
+    "isoA3": "ARE",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Abu Dhabi",
+        "coordinates": [54.366593, 24.466684]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-omn", "region:ne-sau"]
+  },
+  {
+    "nationId": "nation:arg",
+    "regionId": "region:ne-arg",
+    "name": "Argentina",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Argentina",
+    "isoA3": "ARG",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "Buenos Aires",
+        "coordinates": [-58.432513, -34.610715]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bol",
+      "region:ne-bra",
+      "region:ne-chl",
+      "region:ne-pry",
+      "region:ne-ury"
+    ]
+  },
+  {
+    "nationId": "nation:arm",
+    "regionId": "region:ne-arm",
+    "name": "Armenia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Armenia",
+    "isoA3": "ARM",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Yerevan",
+        "coordinates": [44.511606, 40.183097]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-aze",
+      "region:ne-geo",
+      "region:ne-irn",
+      "region:ne-tur"
+    ]
+  },
+  {
+    "nationId": "nation:asm",
+    "regionId": "region:ne-asm",
+    "name": "American Samoa",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United States of America",
+    "isoA3": "ASM",
+    "continent": "Oceania",
+    "subregion": "Polynesia",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:ata",
+    "regionId": "region:ne-ata",
+    "name": "Antarctica",
+    "sourceType": "Indeterminate",
+    "sourceSovereign": "Antarctica",
+    "isoA3": "ATA",
+    "continent": "Antarctica",
+    "subregion": "Antarctica",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:atc",
+    "regionId": "region:ne-atc",
+    "name": "Ashmore and Cartier Islands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "Australia",
+    "isoA3": null,
+    "continent": "Oceania",
+    "subregion": "Australia and New Zealand",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:atf",
+    "regionId": "region:ne-atf",
+    "name": "French Southern and Antarctic Lands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "France",
+    "isoA3": "ATF",
+    "continent": "Seven seas (open ocean)",
+    "subregion": "Seven seas (open ocean)",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:atg",
+    "regionId": "region:ne-atg",
+    "name": "Antigua and Barbuda",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Antigua and Barbuda",
+    "isoA3": "ATG",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Saint John's",
+        "coordinates": [-61.850034, 17.118036]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:aus",
+    "regionId": "region:ne-aus",
+    "name": "Australia",
+    "sourceType": "Country",
+    "sourceSovereign": "Australia",
+    "isoA3": "AUS",
+    "continent": "Oceania",
+    "subregion": "Australia and New Zealand",
+    "capitals": [
+      {
+        "name": "Canberra",
+        "coordinates": [149.129026, -35.283029]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:aut",
+    "regionId": "region:ne-aut",
+    "name": "Austria",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Austria",
+    "isoA3": "AUT",
+    "continent": "Europe",
+    "subregion": "Western Europe",
+    "capitals": [
+      {
+        "name": "Vienna",
+        "coordinates": [16.364693, 48.201961]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-che",
+      "region:ne-cze",
+      "region:ne-deu",
+      "region:ne-hun",
+      "region:ne-ita",
+      "region:ne-lie",
+      "region:ne-svk",
+      "region:ne-svn"
+    ]
+  },
+  {
+    "nationId": "nation:aze",
+    "regionId": "region:ne-aze",
+    "name": "Azerbaijan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Azerbaijan",
+    "isoA3": "AZE",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Baku",
+        "coordinates": [49.860271, 40.397218]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-arm",
+      "region:ne-geo",
+      "region:ne-irn",
+      "region:ne-rus",
+      "region:ne-tur"
+    ]
+  },
+  {
+    "nationId": "nation:bdi",
+    "regionId": "region:ne-bdi",
+    "name": "Burundi",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Burundi",
+    "isoA3": "BDI",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Bujumbura",
+        "coordinates": [29.360006, -3.376087]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-cod", "region:ne-rwa", "region:ne-tza"]
+  },
+  {
+    "nationId": "nation:bel",
+    "regionId": "region:ne-bel",
+    "name": "Belgium",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Belgium",
+    "isoA3": "BEL",
+    "continent": "Europe",
+    "subregion": "Western Europe",
+    "capitals": [
+      {
+        "name": "Brussels",
+        "coordinates": [4.331371, 50.835263]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-deu",
+      "region:ne-fra",
+      "region:ne-lux",
+      "region:ne-nld"
+    ]
+  },
+  {
+    "nationId": "nation:ben",
+    "regionId": "region:ne-ben",
+    "name": "Benin",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Benin",
+    "isoA3": "BEN",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Cotonou",
+        "coordinates": [2.404355, 6.36298]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bfa",
+      "region:ne-ner",
+      "region:ne-nga",
+      "region:ne-tgo"
+    ]
+  },
+  {
+    "nationId": "nation:bfa",
+    "regionId": "region:ne-bfa",
+    "name": "Burkina Faso",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Burkina Faso",
+    "isoA3": "BFA",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Ouagadougou",
+        "coordinates": [-1.52667, 12.372262]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-ben",
+      "region:ne-civ",
+      "region:ne-gha",
+      "region:ne-mli",
+      "region:ne-ner",
+      "region:ne-tgo"
+    ]
+  },
+  {
+    "nationId": "nation:bgd",
+    "regionId": "region:ne-bgd",
+    "name": "Bangladesh",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Bangladesh",
+    "isoA3": "BGD",
+    "continent": "Asia",
+    "subregion": "Southern Asia",
+    "capitals": [
+      {
+        "name": "Dhaka",
+        "coordinates": [90.406634, 23.725006]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-ind", "region:ne-mmr"]
+  },
+  {
+    "nationId": "nation:bgr",
+    "regionId": "region:ne-bgr",
+    "name": "Bulgaria",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Bulgaria",
+    "isoA3": "BGR",
+    "continent": "Europe",
+    "subregion": "Eastern Europe",
+    "capitals": [
+      {
+        "name": "Sofia",
+        "coordinates": [23.314708, 42.685295]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-grc",
+      "region:ne-mkd",
+      "region:ne-rou",
+      "region:ne-srb",
+      "region:ne-tur"
+    ]
+  },
+  {
+    "nationId": "nation:bhr",
+    "regionId": "region:ne-bhr",
+    "name": "Bahrain",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Bahrain",
+    "isoA3": "BHR",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Manama",
+        "coordinates": [50.583052, 26.236136]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:bhs",
+    "regionId": "region:ne-bhs",
+    "name": "The Bahamas",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "The Bahamas",
+    "isoA3": "BHS",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Nassau",
+        "coordinates": [-77.350044, 25.08339]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:bih",
+    "regionId": "region:ne-bih",
+    "name": "Bosnia and Herzegovina",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Bosnia and Herzegovina",
+    "isoA3": "BIH",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Sarajevo",
+        "coordinates": [18.383002, 43.850022]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-hrv", "region:ne-mne", "region:ne-srb"]
+  },
+  {
+    "nationId": "nation:blm",
+    "regionId": "region:ne-blm",
+    "name": "Saint Barthelemy",
+    "sourceType": "Dependency",
+    "sourceSovereign": "France",
+    "isoA3": "BLM",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:blr",
+    "regionId": "region:ne-blr",
+    "name": "Belarus",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Belarus",
+    "isoA3": "BLR",
+    "continent": "Europe",
+    "subregion": "Eastern Europe",
+    "capitals": [
+      {
+        "name": "Minsk",
+        "coordinates": [27.564681, 53.901923]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-ltu",
+      "region:ne-lva",
+      "region:ne-pol",
+      "region:ne-rus",
+      "region:ne-ukr"
+    ]
+  },
+  {
+    "nationId": "nation:blz",
+    "regionId": "region:ne-blz",
+    "name": "Belize",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Belize",
+    "isoA3": "BLZ",
+    "continent": "North America",
+    "subregion": "Central America",
+    "capitals": [
+      {
+        "name": "Belmopan",
+        "coordinates": [-88.767073, 17.252033]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-gtm", "region:ne-mex"]
+  },
+  {
+    "nationId": "nation:bmu",
+    "regionId": "region:ne-bmu",
+    "name": "Bermuda",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "BMU",
+    "continent": "North America",
+    "subregion": "Northern America",
+    "capitals": [
+      {
+        "name": "Hamilton",
+        "coordinates": [-64.783937, 32.29419]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:bol",
+    "regionId": "region:ne-bol",
+    "name": "Bolivia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Bolivia",
+    "isoA3": "BOL",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "La Paz",
+        "coordinates": [-68.151931, -16.496028]
+      },
+      {
+        "name": "Sucre",
+        "coordinates": [-65.259516, -19.040971]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-arg",
+      "region:ne-bra",
+      "region:ne-chl",
+      "region:ne-per",
+      "region:ne-pry"
+    ]
+  },
+  {
+    "nationId": "nation:bra",
+    "regionId": "region:ne-bra",
+    "name": "Brazil",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Brazil",
+    "isoA3": "BRA",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "Brasília",
+        "coordinates": [-47.917998, -15.781394]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-arg",
+      "region:ne-bol",
+      "region:ne-col",
+      "region:ne-fra",
+      "region:ne-guy",
+      "region:ne-per",
+      "region:ne-pry",
+      "region:ne-sur",
+      "region:ne-ury",
+      "region:ne-ven"
+    ]
+  },
+  {
+    "nationId": "nation:brb",
+    "regionId": "region:ne-brb",
+    "name": "Barbados",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Barbados",
+    "isoA3": "BRB",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Bridgetown",
+        "coordinates": [-59.616527, 13.102003]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:brn",
+    "regionId": "region:ne-brn",
+    "name": "Brunei",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Brunei",
+    "isoA3": "BRN",
+    "continent": "Asia",
+    "subregion": "South-Eastern Asia",
+    "capitals": [
+      {
+        "name": "Bandar Seri Begawan",
+        "coordinates": [114.933284, 4.883331]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-mys"]
+  },
+  {
+    "nationId": "nation:btn",
+    "regionId": "region:ne-btn",
+    "name": "Bhutan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Bhutan",
+    "isoA3": "BTN",
+    "continent": "Asia",
+    "subregion": "Southern Asia",
+    "capitals": [
+      {
+        "name": "Thimphu",
+        "coordinates": [89.639014, 27.472986]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-chn", "region:ne-ind"]
+  },
+  {
+    "nationId": "nation:bwa",
+    "regionId": "region:ne-bwa",
+    "name": "Botswana",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Botswana",
+    "isoA3": "BWA",
+    "continent": "Africa",
+    "subregion": "Southern Africa",
+    "capitals": [
+      {
+        "name": "Gaborone",
+        "coordinates": [25.911948, -24.646314]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-nam", "region:ne-zaf", "region:ne-zwe"]
+  },
+  {
+    "nationId": "nation:caf",
+    "regionId": "region:ne-caf",
+    "name": "Central African Republic",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Central African Republic",
+    "isoA3": "CAF",
+    "continent": "Africa",
+    "subregion": "Middle Africa",
+    "capitals": [
+      {
+        "name": "Bangui",
+        "coordinates": [18.558288, 4.366644]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-cmr",
+      "region:ne-cod",
+      "region:ne-cog",
+      "region:ne-sdn",
+      "region:ne-sds",
+      "region:ne-tcd"
+    ]
+  },
+  {
+    "nationId": "nation:can",
+    "regionId": "region:ne-can",
+    "name": "Canada",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Canada",
+    "isoA3": "CAN",
+    "continent": "North America",
+    "subregion": "Northern America",
+    "capitals": [
+      {
+        "name": "Ottawa",
+        "coordinates": [-75.701961, 45.418643]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-usa"]
+  },
+  {
+    "nationId": "nation:che",
+    "regionId": "region:ne-che",
+    "name": "Switzerland",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Switzerland",
+    "isoA3": "CHE",
+    "continent": "Europe",
+    "subregion": "Western Europe",
+    "capitals": [
+      {
+        "name": "Bern",
+        "coordinates": [7.466976, 46.916683]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-aut",
+      "region:ne-deu",
+      "region:ne-fra",
+      "region:ne-ita",
+      "region:ne-lie"
+    ]
+  },
+  {
+    "nationId": "nation:chl",
+    "regionId": "region:ne-chl",
+    "name": "Chile",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Chile",
+    "isoA3": "CHL",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "Santiago",
+        "coordinates": [-70.650504, -33.440205]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-arg", "region:ne-bol", "region:ne-per"]
+  },
+  {
+    "nationId": "nation:chn",
+    "regionId": "region:ne-chn",
+    "name": "China",
+    "sourceType": "Country",
+    "sourceSovereign": "China",
+    "isoA3": "CHN",
+    "continent": "Asia",
+    "subregion": "Eastern Asia",
+    "capitals": [
+      {
+        "name": "Beijing",
+        "coordinates": [116.394201, 39.90172]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-afg",
+      "region:ne-btn",
+      "region:ne-hkg",
+      "region:ne-ind",
+      "region:ne-kas",
+      "region:ne-kaz",
+      "region:ne-kgz",
+      "region:ne-lao",
+      "region:ne-mac",
+      "region:ne-mmr",
+      "region:ne-mng",
+      "region:ne-npl",
+      "region:ne-pak",
+      "region:ne-prk",
+      "region:ne-rus",
+      "region:ne-tjk",
+      "region:ne-vnm"
+    ]
+  },
+  {
+    "nationId": "nation:civ",
+    "regionId": "region:ne-civ",
+    "name": "Ivory Coast",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Ivory Coast",
+    "isoA3": "CIV",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Abidjan",
+        "coordinates": [-4.020207, 5.323126]
+      },
+      {
+        "name": "Yamoussoukro",
+        "coordinates": [-5.275503, 6.818381]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bfa",
+      "region:ne-gha",
+      "region:ne-gin",
+      "region:ne-lbr",
+      "region:ne-mli"
+    ]
+  },
+  {
+    "nationId": "nation:cmr",
+    "regionId": "region:ne-cmr",
+    "name": "Cameroon",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Cameroon",
+    "isoA3": "CMR",
+    "continent": "Africa",
+    "subregion": "Middle Africa",
+    "capitals": [
+      {
+        "name": "Yaoundé",
+        "coordinates": [11.514705, 3.868647]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-caf",
+      "region:ne-cog",
+      "region:ne-gab",
+      "region:ne-gnq",
+      "region:ne-nga",
+      "region:ne-tcd"
+    ]
+  },
+  {
+    "nationId": "nation:cod",
+    "regionId": "region:ne-cod",
+    "name": "Democratic Republic of the Congo",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Democratic Republic of the Congo",
+    "isoA3": "COD",
+    "continent": "Africa",
+    "subregion": "Middle Africa",
+    "capitals": [
+      {
+        "name": "Kinshasa",
+        "coordinates": [15.313026, -4.327778]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-ago",
+      "region:ne-bdi",
+      "region:ne-caf",
+      "region:ne-cog",
+      "region:ne-rwa",
+      "region:ne-sds",
+      "region:ne-tza",
+      "region:ne-uga",
+      "region:ne-zmb"
+    ]
+  },
+  {
+    "nationId": "nation:cog",
+    "regionId": "region:ne-cog",
+    "name": "Republic of the Congo",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Republic of the Congo",
+    "isoA3": "COG",
+    "continent": "Africa",
+    "subregion": "Middle Africa",
+    "capitals": [
+      {
+        "name": "Brazzaville",
+        "coordinates": [15.282744, -4.25724]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-ago",
+      "region:ne-caf",
+      "region:ne-cmr",
+      "region:ne-cod",
+      "region:ne-gab"
+    ]
+  },
+  {
+    "nationId": "nation:cok",
+    "regionId": "region:ne-cok",
+    "name": "Cook Islands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "New Zealand",
+    "isoA3": "COK",
+    "continent": "Oceania",
+    "subregion": "Polynesia",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:col",
+    "regionId": "region:ne-col",
+    "name": "Colombia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Colombia",
+    "isoA3": "COL",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "Bogota",
+        "coordinates": [-74.08529, 4.598369]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bra",
+      "region:ne-ecu",
+      "region:ne-pan",
+      "region:ne-per",
+      "region:ne-ven"
+    ]
+  },
+  {
+    "nationId": "nation:com",
+    "regionId": "region:ne-com",
+    "name": "Comoros",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Comoros",
+    "isoA3": "COM",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Moroni",
+        "coordinates": [43.240244, -11.704158]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:cpv",
+    "regionId": "region:ne-cpv",
+    "name": "Cabo Verde",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Cabo Verde",
+    "isoA3": "CPV",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Praia",
+        "coordinates": [-23.516689, 14.916698]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:cri",
+    "regionId": "region:ne-cri",
+    "name": "Costa Rica",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Costa Rica",
+    "isoA3": "CRI",
+    "continent": "North America",
+    "subregion": "Central America",
+    "capitals": [
+      {
+        "name": "San José",
+        "coordinates": [-84.078814, 9.930371]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-nic", "region:ne-pan"]
+  },
+  {
+    "nationId": "nation:cub",
+    "regionId": "region:ne-cub",
+    "name": "Cuba",
+    "sourceType": "Sovereignty",
+    "sourceSovereign": "Cuba",
+    "isoA3": "CUB",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Havana",
+        "coordinates": [-82.366128, 23.133905]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:cuw",
+    "regionId": "region:ne-cuw",
+    "name": "Curaçao",
+    "sourceType": "Country",
+    "sourceSovereign": "Netherlands",
+    "isoA3": "CUW",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:cym",
+    "regionId": "region:ne-cym",
+    "name": "Cayman Islands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "CYM",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:cyn",
+    "regionId": "region:ne-cyn",
+    "name": "Northern Cyprus",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Northern Cyprus",
+    "isoA3": null,
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [],
+    "adjacentRegionIds": ["region:ne-cyp"]
+  },
+  {
+    "nationId": "nation:cyp",
+    "regionId": "region:ne-cyp",
+    "name": "Cyprus",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Cyprus",
+    "isoA3": "CYP",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Nicosia",
+        "coordinates": [33.366635, 35.166677]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-cyn"]
+  },
+  {
+    "nationId": "nation:cze",
+    "regionId": "region:ne-cze",
+    "name": "Czechia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Czechia",
+    "isoA3": "CZE",
+    "continent": "Europe",
+    "subregion": "Eastern Europe",
+    "capitals": [
+      {
+        "name": "Prague",
+        "coordinates": [14.422939, 50.086967]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-aut",
+      "region:ne-deu",
+      "region:ne-pol",
+      "region:ne-svk"
+    ]
+  },
+  {
+    "nationId": "nation:deu",
+    "regionId": "region:ne-deu",
+    "name": "Germany",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Germany",
+    "isoA3": "DEU",
+    "continent": "Europe",
+    "subregion": "Western Europe",
+    "capitals": [
+      {
+        "name": "Berlin",
+        "coordinates": [13.399603, 52.523764]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-aut",
+      "region:ne-bel",
+      "region:ne-che",
+      "region:ne-cze",
+      "region:ne-dnk",
+      "region:ne-fra",
+      "region:ne-lux",
+      "region:ne-nld",
+      "region:ne-pol"
+    ]
+  },
+  {
+    "nationId": "nation:dji",
+    "regionId": "region:ne-dji",
+    "name": "Djibouti",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Djibouti",
+    "isoA3": "DJI",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Djibouti",
+        "coordinates": [43.148002, 11.595014]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-eri", "region:ne-eth", "region:ne-sol"]
+  },
+  {
+    "nationId": "nation:dma",
+    "regionId": "region:ne-dma",
+    "name": "Dominica",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Dominica",
+    "isoA3": "DMA",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Roseau",
+        "coordinates": [-61.387013, 15.301016]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:dnk",
+    "regionId": "region:ne-dnk",
+    "name": "Denmark",
+    "sourceType": "Country",
+    "sourceSovereign": "Denmark",
+    "isoA3": "DNK",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [
+      {
+        "name": "København",
+        "coordinates": [12.56154, 55.68051]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-deu"]
+  },
+  {
+    "nationId": "nation:dom",
+    "regionId": "region:ne-dom",
+    "name": "Dominican Republic",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Dominican Republic",
+    "isoA3": "DOM",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Santo Domingo",
+        "coordinates": [-69.929742, 18.470745]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-hti"]
+  },
+  {
+    "nationId": "nation:dza",
+    "regionId": "region:ne-dza",
+    "name": "Algeria",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Algeria",
+    "isoA3": "DZA",
+    "continent": "Africa",
+    "subregion": "Northern Africa",
+    "capitals": [
+      {
+        "name": "Algiers",
+        "coordinates": [3.048607, 36.765011]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-lby",
+      "region:ne-mar",
+      "region:ne-mli",
+      "region:ne-mrt",
+      "region:ne-ner",
+      "region:ne-sah",
+      "region:ne-tun"
+    ]
+  },
+  {
+    "nationId": "nation:ecu",
+    "regionId": "region:ne-ecu",
+    "name": "Ecuador",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Ecuador",
+    "isoA3": "ECU",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "Quito",
+        "coordinates": [-78.501997, -0.213042]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-col", "region:ne-per"]
+  },
+  {
+    "nationId": "nation:egy",
+    "regionId": "region:ne-egy",
+    "name": "Egypt",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Egypt",
+    "isoA3": "EGY",
+    "continent": "Africa",
+    "subregion": "Northern Africa",
+    "capitals": [
+      {
+        "name": "Cairo",
+        "coordinates": [31.248022, 30.051906]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-isr",
+      "region:ne-lby",
+      "region:ne-psx",
+      "region:ne-sdn"
+    ]
+  },
+  {
+    "nationId": "nation:eri",
+    "regionId": "region:ne-eri",
+    "name": "Eritrea",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Eritrea",
+    "isoA3": "ERI",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Asmara",
+        "coordinates": [38.933324, 15.333339]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-dji", "region:ne-eth", "region:ne-sdn"]
+  },
+  {
+    "nationId": "nation:esp",
+    "regionId": "region:ne-esp",
+    "name": "Spain",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Spain",
+    "isoA3": "ESP",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Madrid",
+        "coordinates": [-3.685297, 40.401972]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-and", "region:ne-fra", "region:ne-prt"]
+  },
+  {
+    "nationId": "nation:est",
+    "regionId": "region:ne-est",
+    "name": "Estonia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Estonia",
+    "isoA3": "EST",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [
+      {
+        "name": "Tallinn",
+        "coordinates": [24.728041, 59.433877]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-lva", "region:ne-rus"]
+  },
+  {
+    "nationId": "nation:eth",
+    "regionId": "region:ne-eth",
+    "name": "Ethiopia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Ethiopia",
+    "isoA3": "ETH",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Addis Ababa",
+        "coordinates": [38.698059, 9.035256]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-dji",
+      "region:ne-eri",
+      "region:ne-ken",
+      "region:ne-sdn",
+      "region:ne-sds",
+      "region:ne-sol",
+      "region:ne-som"
+    ]
+  },
+  {
+    "nationId": "nation:fin",
+    "regionId": "region:ne-fin",
+    "name": "Finland",
+    "sourceType": "Country",
+    "sourceSovereign": "Finland",
+    "isoA3": "FIN",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [
+      {
+        "name": "Helsinki",
+        "coordinates": [24.932457, 60.163804]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-nor", "region:ne-rus", "region:ne-swe"]
+  },
+  {
+    "nationId": "nation:fji",
+    "regionId": "region:ne-fji",
+    "name": "Fiji",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Fiji",
+    "isoA3": "FJI",
+    "continent": "Oceania",
+    "subregion": "Melanesia",
+    "capitals": [
+      {
+        "name": "Suva",
+        "coordinates": [178.441707, -18.133016]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:flk",
+    "regionId": "region:ne-flk",
+    "name": "Falkland Islands",
+    "sourceType": "Disputed",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "FLK",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:fra",
+    "regionId": "region:ne-fra",
+    "name": "France",
+    "sourceType": "Country",
+    "sourceSovereign": "France",
+    "isoA3": null,
+    "continent": "Europe",
+    "subregion": "Western Europe",
+    "capitals": [
+      {
+        "name": "Paris",
+        "coordinates": [2.352992, 48.858092]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-and",
+      "region:ne-bel",
+      "region:ne-bra",
+      "region:ne-che",
+      "region:ne-deu",
+      "region:ne-esp",
+      "region:ne-ita",
+      "region:ne-lux",
+      "region:ne-mco",
+      "region:ne-sur"
+    ]
+  },
+  {
+    "nationId": "nation:fro",
+    "regionId": "region:ne-fro",
+    "name": "Faroe Islands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "Denmark",
+    "isoA3": "FRO",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:fsm",
+    "regionId": "region:ne-fsm",
+    "name": "Federated States of Micronesia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Federated States of Micronesia",
+    "isoA3": "FSM",
+    "continent": "Oceania",
+    "subregion": "Micronesia",
+    "capitals": [
+      {
+        "name": "Palikir",
+        "coordinates": [158.149974, 6.916644]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:gab",
+    "regionId": "region:ne-gab",
+    "name": "Gabon",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Gabon",
+    "isoA3": "GAB",
+    "continent": "Africa",
+    "subregion": "Middle Africa",
+    "capitals": [
+      {
+        "name": "Libreville",
+        "coordinates": [9.457965, 0.385389]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-cmr", "region:ne-cog", "region:ne-gnq"]
+  },
+  {
+    "nationId": "nation:gbr",
+    "regionId": "region:ne-gbr",
+    "name": "United Kingdom",
+    "sourceType": "Country",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "GBR",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [
+      {
+        "name": "London",
+        "coordinates": [-0.118668, 51.501941]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-irl"]
+  },
+  {
+    "nationId": "nation:geo",
+    "regionId": "region:ne-geo",
+    "name": "Georgia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Georgia",
+    "isoA3": "GEO",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Tbilisi",
+        "coordinates": [44.78885, 41.726956]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-arm",
+      "region:ne-aze",
+      "region:ne-rus",
+      "region:ne-tur"
+    ]
+  },
+  {
+    "nationId": "nation:ggy",
+    "regionId": "region:ne-ggy",
+    "name": "Guernsey",
+    "sourceType": "Country",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "GGY",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:gha",
+    "regionId": "region:ne-gha",
+    "name": "Ghana",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Ghana",
+    "isoA3": "GHA",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Accra",
+        "coordinates": [-0.218662, 5.55198]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-bfa", "region:ne-civ", "region:ne-tgo"]
+  },
+  {
+    "nationId": "nation:gin",
+    "regionId": "region:ne-gin",
+    "name": "Guinea",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Guinea",
+    "isoA3": "GIN",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Conakry",
+        "coordinates": [-13.682181, 9.533469]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-civ",
+      "region:ne-gnb",
+      "region:ne-lbr",
+      "region:ne-mli",
+      "region:ne-sen",
+      "region:ne-sle"
+    ]
+  },
+  {
+    "nationId": "nation:gmb",
+    "regionId": "region:ne-gmb",
+    "name": "Gambia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Gambia",
+    "isoA3": "GMB",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Banjul",
+        "coordinates": [-16.591701, 13.453876]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-sen"]
+  },
+  {
+    "nationId": "nation:gnb",
+    "regionId": "region:ne-gnb",
+    "name": "Guinea-Bissau",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Guinea-Bissau",
+    "isoA3": "GNB",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Bissau",
+        "coordinates": [-15.598361, 11.865024]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-gin", "region:ne-sen"]
+  },
+  {
+    "nationId": "nation:gnq",
+    "regionId": "region:ne-gnq",
+    "name": "Equatorial Guinea",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Equatorial Guinea",
+    "isoA3": "GNQ",
+    "continent": "Africa",
+    "subregion": "Middle Africa",
+    "capitals": [
+      {
+        "name": "Malabo",
+        "coordinates": [8.783278, 3.750015]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-cmr", "region:ne-gab"]
+  },
+  {
+    "nationId": "nation:grc",
+    "regionId": "region:ne-grc",
+    "name": "Greece",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Greece",
+    "isoA3": "GRC",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Athens",
+        "coordinates": [23.731375, 37.985272]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-alb",
+      "region:ne-bgr",
+      "region:ne-mkd",
+      "region:ne-tur"
+    ]
+  },
+  {
+    "nationId": "nation:grd",
+    "regionId": "region:ne-grd",
+    "name": "Grenada",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Grenada",
+    "isoA3": "GRD",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Saint George's",
+        "coordinates": [-61.741643, 12.052633]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:grl",
+    "regionId": "region:ne-grl",
+    "name": "Greenland",
+    "sourceType": "Country",
+    "sourceSovereign": "Denmark",
+    "isoA3": "GRL",
+    "continent": "North America",
+    "subregion": "Northern America",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:gtm",
+    "regionId": "region:ne-gtm",
+    "name": "Guatemala",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Guatemala",
+    "isoA3": "GTM",
+    "continent": "North America",
+    "subregion": "Central America",
+    "capitals": [
+      {
+        "name": "Guatemala City",
+        "coordinates": [-90.528911, 14.623081]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-blz",
+      "region:ne-hnd",
+      "region:ne-mex",
+      "region:ne-slv"
+    ]
+  },
+  {
+    "nationId": "nation:gum",
+    "regionId": "region:ne-gum",
+    "name": "Guam",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United States of America",
+    "isoA3": "GUM",
+    "continent": "Oceania",
+    "subregion": "Micronesia",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:guy",
+    "regionId": "region:ne-guy",
+    "name": "Guyana",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Guyana",
+    "isoA3": "GUY",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "Georgetown",
+        "coordinates": [-58.167029, 6.801974]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-bra", "region:ne-sur", "region:ne-ven"]
+  },
+  {
+    "nationId": "nation:hkg",
+    "regionId": "region:ne-hkg",
+    "name": "Hong Kong S.A.R.",
+    "sourceType": "Country",
+    "sourceSovereign": "China",
+    "isoA3": "HKG",
+    "continent": "Asia",
+    "subregion": "Eastern Asia",
+    "capitals": [],
+    "adjacentRegionIds": ["region:ne-chn"]
+  },
+  {
+    "nationId": "nation:hmd",
+    "regionId": "region:ne-hmd",
+    "name": "Heard Island and McDonald Islands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "Australia",
+    "isoA3": "HMD",
+    "continent": "Seven seas (open ocean)",
+    "subregion": "Seven seas (open ocean)",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:hnd",
+    "regionId": "region:ne-hnd",
+    "name": "Honduras",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Honduras",
+    "isoA3": "HND",
+    "continent": "North America",
+    "subregion": "Central America",
+    "capitals": [
+      {
+        "name": "Tegucigalpa",
+        "coordinates": [-87.219475, 14.103991]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-gtm", "region:ne-nic", "region:ne-slv"]
+  },
+  {
+    "nationId": "nation:hrv",
+    "regionId": "region:ne-hrv",
+    "name": "Croatia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Croatia",
+    "isoA3": "HRV",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Zagreb",
+        "coordinates": [15.999995, 45.800007]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bih",
+      "region:ne-hun",
+      "region:ne-mne",
+      "region:ne-srb",
+      "region:ne-svn"
+    ]
+  },
+  {
+    "nationId": "nation:hti",
+    "regionId": "region:ne-hti",
+    "name": "Haiti",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Haiti",
+    "isoA3": "HTI",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Port-au-Prince",
+        "coordinates": [-72.33798, 18.54297]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-dom"]
+  },
+  {
+    "nationId": "nation:hun",
+    "regionId": "region:ne-hun",
+    "name": "Hungary",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Hungary",
+    "isoA3": "HUN",
+    "continent": "Europe",
+    "subregion": "Eastern Europe",
+    "capitals": [
+      {
+        "name": "Budapest",
+        "coordinates": [19.081375, 47.501952]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-aut",
+      "region:ne-hrv",
+      "region:ne-rou",
+      "region:ne-srb",
+      "region:ne-svk",
+      "region:ne-svn",
+      "region:ne-ukr"
+    ]
+  },
+  {
+    "nationId": "nation:idn",
+    "regionId": "region:ne-idn",
+    "name": "Indonesia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Indonesia",
+    "isoA3": "IDN",
+    "continent": "Asia",
+    "subregion": "South-Eastern Asia",
+    "capitals": [
+      {
+        "name": "Jakarta",
+        "coordinates": [106.827492, -6.172472]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-mys", "region:ne-png", "region:ne-tls"]
+  },
+  {
+    "nationId": "nation:imn",
+    "regionId": "region:ne-imn",
+    "name": "Isle of Man",
+    "sourceType": "Country",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "IMN",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:ind",
+    "regionId": "region:ne-ind",
+    "name": "India",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "India",
+    "isoA3": "IND",
+    "continent": "Asia",
+    "subregion": "Southern Asia",
+    "capitals": [
+      {
+        "name": "New Delhi",
+        "coordinates": [77.19998, 28.600023]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bgd",
+      "region:ne-btn",
+      "region:ne-chn",
+      "region:ne-kas",
+      "region:ne-mmr",
+      "region:ne-npl",
+      "region:ne-pak"
+    ]
+  },
+  {
+    "nationId": "nation:ioa",
+    "regionId": "region:ne-ioa",
+    "name": "Indian Ocean Territories",
+    "sourceType": "Dependency",
+    "sourceSovereign": "Australia",
+    "isoA3": null,
+    "continent": "Asia",
+    "subregion": "Seven seas (open ocean)",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:iot",
+    "regionId": "region:ne-iot",
+    "name": "British Indian Ocean Territory",
+    "sourceType": "Disputed",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "IOT",
+    "continent": "Seven seas (open ocean)",
+    "subregion": "Seven seas (open ocean)",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:irl",
+    "regionId": "region:ne-irl",
+    "name": "Ireland",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Ireland",
+    "isoA3": "IRL",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [
+      {
+        "name": "Dublin",
+        "coordinates": [-6.25698, 53.346731]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-gbr"]
+  },
+  {
+    "nationId": "nation:irn",
+    "regionId": "region:ne-irn",
+    "name": "Iran",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Iran",
+    "isoA3": "IRN",
+    "continent": "Asia",
+    "subregion": "Southern Asia",
+    "capitals": [
+      {
+        "name": "Tehran",
+        "coordinates": [51.422398, 35.673889]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-afg",
+      "region:ne-arm",
+      "region:ne-aze",
+      "region:ne-irq",
+      "region:ne-pak",
+      "region:ne-tkm",
+      "region:ne-tur"
+    ]
+  },
+  {
+    "nationId": "nation:irq",
+    "regionId": "region:ne-irq",
+    "name": "Iraq",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Iraq",
+    "isoA3": "IRQ",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Baghdad",
+        "coordinates": [44.391923, 33.340594]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-irn",
+      "region:ne-jor",
+      "region:ne-kwt",
+      "region:ne-sau",
+      "region:ne-syr",
+      "region:ne-tur"
+    ]
+  },
+  {
+    "nationId": "nation:isl",
+    "regionId": "region:ne-isl",
+    "name": "Iceland",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Iceland",
+    "isoA3": "ISL",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [
+      {
+        "name": "Reykjavík",
+        "coordinates": [-21.936546, 64.143459]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:isr",
+    "regionId": "region:ne-isr",
+    "name": "Israel",
+    "sourceType": "Disputed",
+    "sourceSovereign": "Israel",
+    "isoA3": "ISR",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Jerusalem",
+        "coordinates": [35.206626, 31.778408]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-egy",
+      "region:ne-jor",
+      "region:ne-lbn",
+      "region:ne-psx",
+      "region:ne-syr"
+    ]
+  },
+  {
+    "nationId": "nation:ita",
+    "regionId": "region:ne-ita",
+    "name": "Italy",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Italy",
+    "isoA3": "ITA",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Rome",
+        "coordinates": [12.481313, 41.897902]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-aut",
+      "region:ne-che",
+      "region:ne-fra",
+      "region:ne-smr",
+      "region:ne-svn",
+      "region:ne-vat"
+    ]
+  },
+  {
+    "nationId": "nation:jam",
+    "regionId": "region:ne-jam",
+    "name": "Jamaica",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Jamaica",
+    "isoA3": "JAM",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Kingston",
+        "coordinates": [-76.767434, 17.977077]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:jey",
+    "regionId": "region:ne-jey",
+    "name": "Jersey",
+    "sourceType": "Country",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "JEY",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:jor",
+    "regionId": "region:ne-jor",
+    "name": "Jordan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Jordan",
+    "isoA3": "JOR",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Amman",
+        "coordinates": [35.931354, 31.951971]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-irq",
+      "region:ne-isr",
+      "region:ne-psx",
+      "region:ne-sau",
+      "region:ne-syr"
+    ]
+  },
+  {
+    "nationId": "nation:jpn",
+    "regionId": "region:ne-jpn",
+    "name": "Japan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Japan",
+    "isoA3": "JPN",
+    "continent": "Asia",
+    "subregion": "Eastern Asia",
+    "capitals": [
+      {
+        "name": "Tokyo",
+        "coordinates": [139.749462, 35.686963]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:kas",
+    "regionId": "region:ne-kas",
+    "name": "Siachen Glacier",
+    "sourceType": "Indeterminate",
+    "sourceSovereign": "Kashmir",
+    "isoA3": null,
+    "continent": "Asia",
+    "subregion": "Southern Asia",
+    "capitals": [],
+    "adjacentRegionIds": ["region:ne-chn", "region:ne-ind", "region:ne-pak"]
+  },
+  {
+    "nationId": "nation:kaz",
+    "regionId": "region:ne-kaz",
+    "name": "Kazakhstan",
+    "sourceType": "Sovereignty",
+    "sourceSovereign": "Kazakhstan",
+    "isoA3": "KAZ",
+    "continent": "Asia",
+    "subregion": "Central Asia",
+    "capitals": [
+      {
+        "name": "Nur-Sultan",
+        "coordinates": [71.427774, 51.181125]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-chn",
+      "region:ne-kgz",
+      "region:ne-rus",
+      "region:ne-tkm",
+      "region:ne-uzb"
+    ]
+  },
+  {
+    "nationId": "nation:ken",
+    "regionId": "region:ne-ken",
+    "name": "Kenya",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Kenya",
+    "isoA3": "KEN",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Nairobi",
+        "coordinates": [36.814711, -1.281401]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-eth",
+      "region:ne-sds",
+      "region:ne-som",
+      "region:ne-tza",
+      "region:ne-uga"
+    ]
+  },
+  {
+    "nationId": "nation:kgz",
+    "regionId": "region:ne-kgz",
+    "name": "Kyrgyzstan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Kyrgyzstan",
+    "isoA3": "KGZ",
+    "continent": "Asia",
+    "subregion": "Central Asia",
+    "capitals": [
+      {
+        "name": "Bishkek",
+        "coordinates": [74.583258, 42.875025]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-chn",
+      "region:ne-kaz",
+      "region:ne-tjk",
+      "region:ne-uzb"
+    ]
+  },
+  {
+    "nationId": "nation:khm",
+    "regionId": "region:ne-khm",
+    "name": "Cambodia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Cambodia",
+    "isoA3": "KHM",
+    "continent": "Asia",
+    "subregion": "South-Eastern Asia",
+    "capitals": [
+      {
+        "name": "Phnom Penh",
+        "coordinates": [104.914689, 11.551976]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-lao", "region:ne-tha", "region:ne-vnm"]
+  },
+  {
+    "nationId": "nation:kir",
+    "regionId": "region:ne-kir",
+    "name": "Kiribati",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Kiribati",
+    "isoA3": "KIR",
+    "continent": "Oceania",
+    "subregion": "Micronesia",
+    "capitals": [
+      {
+        "name": "Tarawa",
+        "coordinates": [173.017571, 1.338188]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:kna",
+    "regionId": "region:ne-kna",
+    "name": "Saint Kitts and Nevis",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Saint Kitts and Nevis",
+    "isoA3": "KNA",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Basseterre",
+        "coordinates": [-62.717009, 17.302031]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:kor",
+    "regionId": "region:ne-kor",
+    "name": "South Korea",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "South Korea",
+    "isoA3": "KOR",
+    "continent": "Asia",
+    "subregion": "Eastern Asia",
+    "capitals": [
+      {
+        "name": "Seoul",
+        "coordinates": [126.997785, 37.568295]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-prk"]
+  },
+  {
+    "nationId": "nation:kos",
+    "regionId": "region:ne-kos",
+    "name": "Kosovo",
+    "sourceType": "Disputed",
+    "sourceSovereign": "Kosovo",
+    "isoA3": null,
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Pristina",
+        "coordinates": [21.165984, 42.66671]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-alb",
+      "region:ne-mkd",
+      "region:ne-mne",
+      "region:ne-srb"
+    ]
+  },
+  {
+    "nationId": "nation:kwt",
+    "regionId": "region:ne-kwt",
+    "name": "Kuwait",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Kuwait",
+    "isoA3": "KWT",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Kuwait City",
+        "coordinates": [47.976355, 29.371664]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-irq", "region:ne-sau"]
+  },
+  {
+    "nationId": "nation:lao",
+    "regionId": "region:ne-lao",
+    "name": "Laos",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Laos",
+    "isoA3": "LAO",
+    "continent": "Asia",
+    "subregion": "South-Eastern Asia",
+    "capitals": [
+      {
+        "name": "Vientiane",
+        "coordinates": [102.59998, 17.966693]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-chn",
+      "region:ne-khm",
+      "region:ne-mmr",
+      "region:ne-tha",
+      "region:ne-vnm"
+    ]
+  },
+  {
+    "nationId": "nation:lbn",
+    "regionId": "region:ne-lbn",
+    "name": "Lebanon",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Lebanon",
+    "isoA3": "LBN",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Beirut",
+        "coordinates": [35.507762, 33.873921]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-isr", "region:ne-syr"]
+  },
+  {
+    "nationId": "nation:lbr",
+    "regionId": "region:ne-lbr",
+    "name": "Liberia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Liberia",
+    "isoA3": "LBR",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Monrovia",
+        "coordinates": [-10.79966, 6.314582]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-civ", "region:ne-gin", "region:ne-sle"]
+  },
+  {
+    "nationId": "nation:lby",
+    "regionId": "region:ne-lby",
+    "name": "Libya",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Libya",
+    "isoA3": "LBY",
+    "continent": "Africa",
+    "subregion": "Northern Africa",
+    "capitals": [
+      {
+        "name": "Tripoli",
+        "coordinates": [13.180012, 32.8925]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-dza",
+      "region:ne-egy",
+      "region:ne-ner",
+      "region:ne-sdn",
+      "region:ne-tcd",
+      "region:ne-tun"
+    ]
+  },
+  {
+    "nationId": "nation:lca",
+    "regionId": "region:ne-lca",
+    "name": "Saint Lucia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Saint Lucia",
+    "isoA3": "LCA",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Castries",
+        "coordinates": [-60.992875, 14.007875]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:lie",
+    "regionId": "region:ne-lie",
+    "name": "Liechtenstein",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Liechtenstein",
+    "isoA3": "LIE",
+    "continent": "Europe",
+    "subregion": "Western Europe",
+    "capitals": [
+      {
+        "name": "Vaduz",
+        "coordinates": [9.51667, 47.133724]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-aut", "region:ne-che"]
+  },
+  {
+    "nationId": "nation:lka",
+    "regionId": "region:ne-lka",
+    "name": "Sri Lanka",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Sri Lanka",
+    "isoA3": "LKA",
+    "continent": "Asia",
+    "subregion": "Southern Asia",
+    "capitals": [
+      {
+        "name": "Colombo",
+        "coordinates": [79.857751, 6.931966]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:lso",
+    "regionId": "region:ne-lso",
+    "name": "Lesotho",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Lesotho",
+    "isoA3": "LSO",
+    "continent": "Africa",
+    "subregion": "Southern Africa",
+    "capitals": [
+      {
+        "name": "Maseru",
+        "coordinates": [27.483273, -29.316674]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-zaf"]
+  },
+  {
+    "nationId": "nation:ltu",
+    "regionId": "region:ne-ltu",
+    "name": "Lithuania",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Lithuania",
+    "isoA3": "LTU",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [
+      {
+        "name": "Vilnius",
+        "coordinates": [25.316635, 54.683366]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-blr",
+      "region:ne-lva",
+      "region:ne-pol",
+      "region:ne-rus"
+    ]
+  },
+  {
+    "nationId": "nation:lux",
+    "regionId": "region:ne-lux",
+    "name": "Luxembourg",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Luxembourg",
+    "isoA3": "LUX",
+    "continent": "Europe",
+    "subregion": "Western Europe",
+    "capitals": [
+      {
+        "name": "Luxembourg",
+        "coordinates": [6.130003, 49.61166]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-bel", "region:ne-deu", "region:ne-fra"]
+  },
+  {
+    "nationId": "nation:lva",
+    "regionId": "region:ne-lva",
+    "name": "Latvia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Latvia",
+    "isoA3": "LVA",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [
+      {
+        "name": "Riga",
+        "coordinates": [24.099965, 56.950024]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-blr",
+      "region:ne-est",
+      "region:ne-ltu",
+      "region:ne-rus"
+    ]
+  },
+  {
+    "nationId": "nation:mac",
+    "regionId": "region:ne-mac",
+    "name": "Macao S.A.R",
+    "sourceType": "Country",
+    "sourceSovereign": "China",
+    "isoA3": "MAC",
+    "continent": "Asia",
+    "subregion": "Eastern Asia",
+    "capitals": [],
+    "adjacentRegionIds": ["region:ne-chn"]
+  },
+  {
+    "nationId": "nation:maf",
+    "regionId": "region:ne-maf",
+    "name": "Saint Martin",
+    "sourceType": "Dependency",
+    "sourceSovereign": "France",
+    "isoA3": "MAF",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": ["region:ne-sxm"]
+  },
+  {
+    "nationId": "nation:mar",
+    "regionId": "region:ne-mar",
+    "name": "Morocco",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Morocco",
+    "isoA3": "MAR",
+    "continent": "Africa",
+    "subregion": "Northern Africa",
+    "capitals": [
+      {
+        "name": "Rabat",
+        "coordinates": [-6.836408, 34.025307]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-dza", "region:ne-sah"]
+  },
+  {
+    "nationId": "nation:mco",
+    "regionId": "region:ne-mco",
+    "name": "Monaco",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Monaco",
+    "isoA3": "MCO",
+    "continent": "Europe",
+    "subregion": "Western Europe",
+    "capitals": [
+      {
+        "name": "Monaco",
+        "coordinates": [7.406913, 43.739646]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-fra"]
+  },
+  {
+    "nationId": "nation:mda",
+    "regionId": "region:ne-mda",
+    "name": "Moldova",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Moldova",
+    "isoA3": "MDA",
+    "continent": "Europe",
+    "subregion": "Eastern Europe",
+    "capitals": [
+      {
+        "name": "Chișinău",
+        "coordinates": [28.857711, 47.005024]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-rou", "region:ne-ukr"]
+  },
+  {
+    "nationId": "nation:mdg",
+    "regionId": "region:ne-mdg",
+    "name": "Madagascar",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Madagascar",
+    "isoA3": "MDG",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Antananarivo",
+        "coordinates": [47.514678, -18.914691]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:mdv",
+    "regionId": "region:ne-mdv",
+    "name": "Maldives",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Maldives",
+    "isoA3": "MDV",
+    "continent": "Seven seas (open ocean)",
+    "subregion": "Southern Asia",
+    "capitals": [
+      {
+        "name": "Malé",
+        "coordinates": [73.508901, 4.172037]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:mex",
+    "regionId": "region:ne-mex",
+    "name": "Mexico",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Mexico",
+    "isoA3": "MEX",
+    "continent": "North America",
+    "subregion": "Central America",
+    "capitals": [
+      {
+        "name": "Mexico City",
+        "coordinates": [-99.132934, 19.444388]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-blz", "region:ne-gtm", "region:ne-usa"]
+  },
+  {
+    "nationId": "nation:mhl",
+    "regionId": "region:ne-mhl",
+    "name": "Marshall Islands",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Marshall Islands",
+    "isoA3": "MHL",
+    "continent": "Oceania",
+    "subregion": "Micronesia",
+    "capitals": [
+      {
+        "name": "Majuro",
+        "coordinates": [171.38, 7.103004]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:mkd",
+    "regionId": "region:ne-mkd",
+    "name": "North Macedonia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "North Macedonia",
+    "isoA3": "MKD",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Skopje",
+        "coordinates": [21.433461, 42.000006]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-alb",
+      "region:ne-bgr",
+      "region:ne-grc",
+      "region:ne-kos",
+      "region:ne-srb"
+    ]
+  },
+  {
+    "nationId": "nation:mli",
+    "regionId": "region:ne-mli",
+    "name": "Mali",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Mali",
+    "isoA3": "MLI",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Bamako",
+        "coordinates": [-8.001985, 12.65196]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bfa",
+      "region:ne-civ",
+      "region:ne-dza",
+      "region:ne-gin",
+      "region:ne-mrt",
+      "region:ne-ner",
+      "region:ne-sen"
+    ]
+  },
+  {
+    "nationId": "nation:mlt",
+    "regionId": "region:ne-mlt",
+    "name": "Malta",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Malta",
+    "isoA3": "MLT",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Valletta",
+        "coordinates": [14.514711, 35.899732]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:mmr",
+    "regionId": "region:ne-mmr",
+    "name": "Myanmar",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Myanmar",
+    "isoA3": "MMR",
+    "continent": "Asia",
+    "subregion": "South-Eastern Asia",
+    "capitals": [
+      {
+        "name": "Naypyidaw",
+        "coordinates": [96.116673, 19.768503]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bgd",
+      "region:ne-chn",
+      "region:ne-ind",
+      "region:ne-lao",
+      "region:ne-tha"
+    ]
+  },
+  {
+    "nationId": "nation:mne",
+    "regionId": "region:ne-mne",
+    "name": "Montenegro",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Montenegro",
+    "isoA3": "MNE",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Podgorica",
+        "coordinates": [19.266307, 42.465972]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-alb",
+      "region:ne-bih",
+      "region:ne-hrv",
+      "region:ne-kos",
+      "region:ne-srb"
+    ]
+  },
+  {
+    "nationId": "nation:mng",
+    "regionId": "region:ne-mng",
+    "name": "Mongolia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Mongolia",
+    "isoA3": "MNG",
+    "continent": "Asia",
+    "subregion": "Eastern Asia",
+    "capitals": [
+      {
+        "name": "Ulaanbaatar",
+        "coordinates": [106.91467, 47.918619]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-chn", "region:ne-rus"]
+  },
+  {
+    "nationId": "nation:mnp",
+    "regionId": "region:ne-mnp",
+    "name": "Northern Mariana Islands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United States of America",
+    "isoA3": "MNP",
+    "continent": "Oceania",
+    "subregion": "Micronesia",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:moz",
+    "regionId": "region:ne-moz",
+    "name": "Mozambique",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Mozambique",
+    "isoA3": "MOZ",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Maputo",
+        "coordinates": [32.587217, -25.953332]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-mwi",
+      "region:ne-swz",
+      "region:ne-tza",
+      "region:ne-zaf",
+      "region:ne-zmb",
+      "region:ne-zwe"
+    ]
+  },
+  {
+    "nationId": "nation:mrt",
+    "regionId": "region:ne-mrt",
+    "name": "Mauritania",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Mauritania",
+    "isoA3": "MRT",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Nouakchott",
+        "coordinates": [-15.97534, 18.086427]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-dza",
+      "region:ne-mli",
+      "region:ne-sah",
+      "region:ne-sen"
+    ]
+  },
+  {
+    "nationId": "nation:msr",
+    "regionId": "region:ne-msr",
+    "name": "Montserrat",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "MSR",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:mus",
+    "regionId": "region:ne-mus",
+    "name": "Mauritius",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Mauritius",
+    "isoA3": "MUS",
+    "continent": "Seven seas (open ocean)",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Port Louis",
+        "coordinates": [57.499994, -20.166639]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:mwi",
+    "regionId": "region:ne-mwi",
+    "name": "Malawi",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Malawi",
+    "isoA3": "MWI",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Lilongwe",
+        "coordinates": [33.783302, -13.983295]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-moz", "region:ne-tza", "region:ne-zmb"]
+  },
+  {
+    "nationId": "nation:mys",
+    "regionId": "region:ne-mys",
+    "name": "Malaysia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Malaysia",
+    "isoA3": "MYS",
+    "continent": "Asia",
+    "subregion": "South-Eastern Asia",
+    "capitals": [
+      {
+        "name": "Kuala Lumpur",
+        "coordinates": [101.688699, 3.139797]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-brn", "region:ne-idn", "region:ne-tha"]
+  },
+  {
+    "nationId": "nation:nam",
+    "regionId": "region:ne-nam",
+    "name": "Namibia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Namibia",
+    "isoA3": "NAM",
+    "continent": "Africa",
+    "subregion": "Southern Africa",
+    "capitals": [
+      {
+        "name": "Windhoek",
+        "coordinates": [17.083546, -22.570006]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-ago",
+      "region:ne-bwa",
+      "region:ne-zaf",
+      "region:ne-zmb"
+    ]
+  },
+  {
+    "nationId": "nation:ncl",
+    "regionId": "region:ne-ncl",
+    "name": "New Caledonia",
+    "sourceType": "Dependency",
+    "sourceSovereign": "France",
+    "isoA3": "NCL",
+    "continent": "Oceania",
+    "subregion": "Melanesia",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:ner",
+    "regionId": "region:ne-ner",
+    "name": "Niger",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Niger",
+    "isoA3": "NER",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Niamey",
+        "coordinates": [2.11471, 13.518652]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-ben",
+      "region:ne-bfa",
+      "region:ne-dza",
+      "region:ne-lby",
+      "region:ne-mli",
+      "region:ne-nga",
+      "region:ne-tcd"
+    ]
+  },
+  {
+    "nationId": "nation:nfk",
+    "regionId": "region:ne-nfk",
+    "name": "Norfolk Island",
+    "sourceType": "Dependency",
+    "sourceSovereign": "Australia",
+    "isoA3": "NFK",
+    "continent": "Oceania",
+    "subregion": "Australia and New Zealand",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:nga",
+    "regionId": "region:ne-nga",
+    "name": "Nigeria",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Nigeria",
+    "isoA3": "NGA",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Abuja",
+        "coordinates": [7.489505, 9.05462]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-ben",
+      "region:ne-cmr",
+      "region:ne-ner",
+      "region:ne-tcd"
+    ]
+  },
+  {
+    "nationId": "nation:nic",
+    "regionId": "region:ne-nic",
+    "name": "Nicaragua",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Nicaragua",
+    "isoA3": "NIC",
+    "continent": "North America",
+    "subregion": "Central America",
+    "capitals": [
+      {
+        "name": "Managua",
+        "coordinates": [-86.270437, 12.154962]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-cri", "region:ne-hnd"]
+  },
+  {
+    "nationId": "nation:niu",
+    "regionId": "region:ne-niu",
+    "name": "Niue",
+    "sourceType": "Dependency",
+    "sourceSovereign": "New Zealand",
+    "isoA3": "NIU",
+    "continent": "Oceania",
+    "subregion": "Polynesia",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:nld",
+    "regionId": "region:ne-nld",
+    "name": "Netherlands",
+    "sourceType": "Country",
+    "sourceSovereign": "Netherlands",
+    "isoA3": "NLD",
+    "continent": "Europe",
+    "subregion": "Western Europe",
+    "capitals": [
+      {
+        "name": "Amsterdam",
+        "coordinates": [4.914694, 52.351914]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-bel", "region:ne-deu"]
+  },
+  {
+    "nationId": "nation:nor",
+    "regionId": "region:ne-nor",
+    "name": "Norway",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Norway",
+    "isoA3": null,
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [
+      {
+        "name": "Oslo",
+        "coordinates": [10.748033, 59.918636]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-fin", "region:ne-rus", "region:ne-swe"]
+  },
+  {
+    "nationId": "nation:npl",
+    "regionId": "region:ne-npl",
+    "name": "Nepal",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Nepal",
+    "isoA3": "NPL",
+    "continent": "Asia",
+    "subregion": "Southern Asia",
+    "capitals": [
+      {
+        "name": "Kathmandu",
+        "coordinates": [85.314696, 27.718638]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-chn", "region:ne-ind"]
+  },
+  {
+    "nationId": "nation:nru",
+    "regionId": "region:ne-nru",
+    "name": "Nauru",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Nauru",
+    "isoA3": "NRU",
+    "continent": "Oceania",
+    "subregion": "Micronesia",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:nzl",
+    "regionId": "region:ne-nzl",
+    "name": "New Zealand",
+    "sourceType": "Country",
+    "sourceSovereign": "New Zealand",
+    "isoA3": "NZL",
+    "continent": "Oceania",
+    "subregion": "Australia and New Zealand",
+    "capitals": [
+      {
+        "name": "Wellington",
+        "coordinates": [174.777201, -41.292068]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:omn",
+    "regionId": "region:ne-omn",
+    "name": "Oman",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Oman",
+    "isoA3": "OMN",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Muscat",
+        "coordinates": [58.378311, 23.585179]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-are", "region:ne-sau", "region:ne-yem"]
+  },
+  {
+    "nationId": "nation:pak",
+    "regionId": "region:ne-pak",
+    "name": "Pakistan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Pakistan",
+    "isoA3": "PAK",
+    "continent": "Asia",
+    "subregion": "Southern Asia",
+    "capitals": [
+      {
+        "name": "Islamabad",
+        "coordinates": [73.08063, 33.689368]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-afg",
+      "region:ne-chn",
+      "region:ne-ind",
+      "region:ne-irn",
+      "region:ne-kas"
+    ]
+  },
+  {
+    "nationId": "nation:pan",
+    "regionId": "region:ne-pan",
+    "name": "Panama",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Panama",
+    "isoA3": "PAN",
+    "continent": "North America",
+    "subregion": "Central America",
+    "capitals": [
+      {
+        "name": "Panama City",
+        "coordinates": [-79.534983, 8.969963]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-col", "region:ne-cri"]
+  },
+  {
+    "nationId": "nation:pcn",
+    "regionId": "region:ne-pcn",
+    "name": "Pitcairn Islands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "PCN",
+    "continent": "Oceania",
+    "subregion": "Polynesia",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:per",
+    "regionId": "region:ne-per",
+    "name": "Peru",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Peru",
+    "isoA3": "PER",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "Lima",
+        "coordinates": [-77.052008, -12.046067]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bol",
+      "region:ne-bra",
+      "region:ne-chl",
+      "region:ne-col",
+      "region:ne-ecu"
+    ]
+  },
+  {
+    "nationId": "nation:phl",
+    "regionId": "region:ne-phl",
+    "name": "Philippines",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Philippines",
+    "isoA3": "PHL",
+    "continent": "Asia",
+    "subregion": "South-Eastern Asia",
+    "capitals": [
+      {
+        "name": "Manila",
+        "coordinates": [120.980271, 14.606105]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:plw",
+    "regionId": "region:ne-plw",
+    "name": "Palau",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Palau",
+    "isoA3": "PLW",
+    "continent": "Oceania",
+    "subregion": "Micronesia",
+    "capitals": [
+      {
+        "name": "Melekeok",
+        "coordinates": [134.626549, 7.487396]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:png",
+    "regionId": "region:ne-png",
+    "name": "Papua New Guinea",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Papua New Guinea",
+    "isoA3": "PNG",
+    "continent": "Oceania",
+    "subregion": "Melanesia",
+    "capitals": [
+      {
+        "name": "Port Moresby",
+        "coordinates": [147.192504, -9.464708]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-idn"]
+  },
+  {
+    "nationId": "nation:pol",
+    "regionId": "region:ne-pol",
+    "name": "Poland",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Poland",
+    "isoA3": "POL",
+    "continent": "Europe",
+    "subregion": "Eastern Europe",
+    "capitals": [
+      {
+        "name": "Warsaw",
+        "coordinates": [21.005347, 52.230872]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-blr",
+      "region:ne-cze",
+      "region:ne-deu",
+      "region:ne-ltu",
+      "region:ne-rus",
+      "region:ne-svk",
+      "region:ne-ukr"
+    ]
+  },
+  {
+    "nationId": "nation:pri",
+    "regionId": "region:ne-pri",
+    "name": "Puerto Rico",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United States of America",
+    "isoA3": "PRI",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:prk",
+    "regionId": "region:ne-prk",
+    "name": "North Korea",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "North Korea",
+    "isoA3": "PRK",
+    "continent": "Asia",
+    "subregion": "Eastern Asia",
+    "capitals": [
+      {
+        "name": "Pyongyang",
+        "coordinates": [125.752745, 39.021385]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-chn", "region:ne-kor", "region:ne-rus"]
+  },
+  {
+    "nationId": "nation:prt",
+    "regionId": "region:ne-prt",
+    "name": "Portugal",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Portugal",
+    "isoA3": "PRT",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Lisbon",
+        "coordinates": [-9.146812, 38.724669]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-esp"]
+  },
+  {
+    "nationId": "nation:pry",
+    "regionId": "region:ne-pry",
+    "name": "Paraguay",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Paraguay",
+    "isoA3": "PRY",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "Asunción",
+        "coordinates": [-57.625834, -25.290671]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-arg", "region:ne-bol", "region:ne-bra"]
+  },
+  {
+    "nationId": "nation:psx",
+    "regionId": "region:ne-psx",
+    "name": "Palestine",
+    "sourceType": "Indeterminate",
+    "sourceSovereign": "Israel",
+    "isoA3": "PSE",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [],
+    "adjacentRegionIds": ["region:ne-egy", "region:ne-isr", "region:ne-jor"]
+  },
+  {
+    "nationId": "nation:pyf",
+    "regionId": "region:ne-pyf",
+    "name": "French Polynesia",
+    "sourceType": "Dependency",
+    "sourceSovereign": "France",
+    "isoA3": "PYF",
+    "continent": "Oceania",
+    "subregion": "Polynesia",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:qat",
+    "regionId": "region:ne-qat",
+    "name": "Qatar",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Qatar",
+    "isoA3": "QAT",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Doha",
+        "coordinates": [51.532968, 25.286556]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-sau"]
+  },
+  {
+    "nationId": "nation:rou",
+    "regionId": "region:ne-rou",
+    "name": "Romania",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Romania",
+    "isoA3": "ROU",
+    "continent": "Europe",
+    "subregion": "Eastern Europe",
+    "capitals": [
+      {
+        "name": "Bucharest",
+        "coordinates": [26.098001, 44.435318]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bgr",
+      "region:ne-hun",
+      "region:ne-mda",
+      "region:ne-srb",
+      "region:ne-ukr"
+    ]
+  },
+  {
+    "nationId": "nation:rus",
+    "regionId": "region:ne-rus",
+    "name": "Russia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Russia",
+    "isoA3": "RUS",
+    "continent": "Europe",
+    "subregion": "Eastern Europe",
+    "capitals": [
+      {
+        "name": "Moscow",
+        "coordinates": [37.613577, 55.75411]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-aze",
+      "region:ne-blr",
+      "region:ne-chn",
+      "region:ne-est",
+      "region:ne-fin",
+      "region:ne-geo",
+      "region:ne-kaz",
+      "region:ne-ltu",
+      "region:ne-lva",
+      "region:ne-mng",
+      "region:ne-nor",
+      "region:ne-pol",
+      "region:ne-prk",
+      "region:ne-ukr"
+    ]
+  },
+  {
+    "nationId": "nation:rwa",
+    "regionId": "region:ne-rwa",
+    "name": "Rwanda",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Rwanda",
+    "isoA3": "RWA",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Kigali",
+        "coordinates": [30.058586, -1.951644]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bdi",
+      "region:ne-cod",
+      "region:ne-tza",
+      "region:ne-uga"
+    ]
+  },
+  {
+    "nationId": "nation:sah",
+    "regionId": "region:ne-sah",
+    "name": "Western Sahara",
+    "sourceType": "Indeterminate",
+    "sourceSovereign": "Western Sahara",
+    "isoA3": "ESH",
+    "continent": "Africa",
+    "subregion": "Northern Africa",
+    "capitals": [],
+    "adjacentRegionIds": ["region:ne-dza", "region:ne-mar", "region:ne-mrt"]
+  },
+  {
+    "nationId": "nation:sau",
+    "regionId": "region:ne-sau",
+    "name": "Saudi Arabia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Saudi Arabia",
+    "isoA3": "SAU",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Riyadh",
+        "coordinates": [46.720487, 24.634497]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-are",
+      "region:ne-irq",
+      "region:ne-jor",
+      "region:ne-kwt",
+      "region:ne-omn",
+      "region:ne-qat",
+      "region:ne-yem"
+    ]
+  },
+  {
+    "nationId": "nation:sdn",
+    "regionId": "region:ne-sdn",
+    "name": "Sudan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Sudan",
+    "isoA3": "SDN",
+    "continent": "Africa",
+    "subregion": "Northern Africa",
+    "capitals": [
+      {
+        "name": "Khartoum",
+        "coordinates": [32.532233, 15.590024]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-caf",
+      "region:ne-egy",
+      "region:ne-eri",
+      "region:ne-eth",
+      "region:ne-lby",
+      "region:ne-sds",
+      "region:ne-tcd"
+    ]
+  },
+  {
+    "nationId": "nation:sds",
+    "regionId": "region:ne-sds",
+    "name": "South Sudan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "South Sudan",
+    "isoA3": "SSD",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [],
+    "adjacentRegionIds": [
+      "region:ne-caf",
+      "region:ne-cod",
+      "region:ne-eth",
+      "region:ne-ken",
+      "region:ne-sdn",
+      "region:ne-uga"
+    ]
+  },
+  {
+    "nationId": "nation:sen",
+    "regionId": "region:ne-sen",
+    "name": "Senegal",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Senegal",
+    "isoA3": "SEN",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Dakar",
+        "coordinates": [-17.475076, 14.717778]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-gin",
+      "region:ne-gmb",
+      "region:ne-gnb",
+      "region:ne-mli",
+      "region:ne-mrt"
+    ]
+  },
+  {
+    "nationId": "nation:sgp",
+    "regionId": "region:ne-sgp",
+    "name": "Singapore",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Singapore",
+    "isoA3": "SGP",
+    "continent": "Asia",
+    "subregion": "South-Eastern Asia",
+    "capitals": [
+      {
+        "name": "Singapore",
+        "coordinates": [103.853875, 1.294979]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:sgs",
+    "regionId": "region:ne-sgs",
+    "name": "South Georgia and the Islands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "SGS",
+    "continent": "Seven seas (open ocean)",
+    "subregion": "Seven seas (open ocean)",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:shn",
+    "regionId": "region:ne-shn",
+    "name": "Saint Helena",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "SHN",
+    "continent": "Seven seas (open ocean)",
+    "subregion": "Western Africa",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:slb",
+    "regionId": "region:ne-slb",
+    "name": "Solomon Islands",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Solomon Islands",
+    "isoA3": "SLB",
+    "continent": "Oceania",
+    "subregion": "Melanesia",
+    "capitals": [
+      {
+        "name": "Honiara",
+        "coordinates": [159.949766, -9.437994]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:sle",
+    "regionId": "region:ne-sle",
+    "name": "Sierra Leone",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Sierra Leone",
+    "isoA3": "SLE",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Freetown",
+        "coordinates": [-13.236162, 8.471957]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-gin", "region:ne-lbr"]
+  },
+  {
+    "nationId": "nation:slv",
+    "regionId": "region:ne-slv",
+    "name": "El Salvador",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "El Salvador",
+    "isoA3": "SLV",
+    "continent": "North America",
+    "subregion": "Central America",
+    "capitals": [
+      {
+        "name": "San Salvador",
+        "coordinates": [-89.215576, 13.70328]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-gtm", "region:ne-hnd"]
+  },
+  {
+    "nationId": "nation:smr",
+    "regionId": "region:ne-smr",
+    "name": "San Marino",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "San Marino",
+    "isoA3": "SMR",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "San Marino",
+        "coordinates": [12.44177, 43.936096]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-ita"]
+  },
+  {
+    "nationId": "nation:sol",
+    "regionId": "region:ne-sol",
+    "name": "Somaliland",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Somaliland",
+    "isoA3": null,
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Hargeisa",
+        "coordinates": [44.06531, 9.560022]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-dji", "region:ne-eth", "region:ne-som"]
+  },
+  {
+    "nationId": "nation:som",
+    "regionId": "region:ne-som",
+    "name": "Somalia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Somalia",
+    "isoA3": "SOM",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Mogadishu",
+        "coordinates": [45.364732, 2.068627]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-eth", "region:ne-ken", "region:ne-sol"]
+  },
+  {
+    "nationId": "nation:spm",
+    "regionId": "region:ne-spm",
+    "name": "Saint Pierre and Miquelon",
+    "sourceType": "Dependency",
+    "sourceSovereign": "France",
+    "isoA3": "SPM",
+    "continent": "North America",
+    "subregion": "Northern America",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:srb",
+    "regionId": "region:ne-srb",
+    "name": "Republic of Serbia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Republic of Serbia",
+    "isoA3": "SRB",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Belgrade",
+        "coordinates": [20.466045, 44.820591]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bgr",
+      "region:ne-bih",
+      "region:ne-hrv",
+      "region:ne-hun",
+      "region:ne-kos",
+      "region:ne-mkd",
+      "region:ne-mne",
+      "region:ne-rou"
+    ]
+  },
+  {
+    "nationId": "nation:stp",
+    "regionId": "region:ne-stp",
+    "name": "São Tomé and Principe",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "São Tomé and Principe",
+    "isoA3": "STP",
+    "continent": "Africa",
+    "subregion": "Middle Africa",
+    "capitals": [
+      {
+        "name": "São Tomé",
+        "coordinates": [6.72965, 0.337466]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:sur",
+    "regionId": "region:ne-sur",
+    "name": "Suriname",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Suriname",
+    "isoA3": "SUR",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "Paramaribo",
+        "coordinates": [-55.167031, 5.83503]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-bra", "region:ne-fra", "region:ne-guy"]
+  },
+  {
+    "nationId": "nation:svk",
+    "regionId": "region:ne-svk",
+    "name": "Slovakia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Slovakia",
+    "isoA3": "SVK",
+    "continent": "Europe",
+    "subregion": "Eastern Europe",
+    "capitals": [
+      {
+        "name": "Bratislava",
+        "coordinates": [17.116981, 48.150018]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-aut",
+      "region:ne-cze",
+      "region:ne-hun",
+      "region:ne-pol",
+      "region:ne-ukr"
+    ]
+  },
+  {
+    "nationId": "nation:svn",
+    "regionId": "region:ne-svn",
+    "name": "Slovenia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Slovenia",
+    "isoA3": "SVN",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Ljubljana",
+        "coordinates": [14.514969, 46.055288]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-aut",
+      "region:ne-hrv",
+      "region:ne-hun",
+      "region:ne-ita"
+    ]
+  },
+  {
+    "nationId": "nation:swe",
+    "regionId": "region:ne-swe",
+    "name": "Sweden",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Sweden",
+    "isoA3": "SWE",
+    "continent": "Europe",
+    "subregion": "Northern Europe",
+    "capitals": [
+      {
+        "name": "Stockholm",
+        "coordinates": [18.0663, 59.324127]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-fin", "region:ne-nor"]
+  },
+  {
+    "nationId": "nation:swz",
+    "regionId": "region:ne-swz",
+    "name": "eSwatini",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "eSwatini",
+    "isoA3": "SWZ",
+    "continent": "Africa",
+    "subregion": "Southern Africa",
+    "capitals": [
+      {
+        "name": "Mbabane",
+        "coordinates": [31.133335, -26.316651]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-moz", "region:ne-zaf"]
+  },
+  {
+    "nationId": "nation:sxm",
+    "regionId": "region:ne-sxm",
+    "name": "Sint Maarten",
+    "sourceType": "Country",
+    "sourceSovereign": "Netherlands",
+    "isoA3": "SXM",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": ["region:ne-maf"]
+  },
+  {
+    "nationId": "nation:syc",
+    "regionId": "region:ne-syc",
+    "name": "Seychelles",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Seychelles",
+    "isoA3": "SYC",
+    "continent": "Seven seas (open ocean)",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Victoria",
+        "coordinates": [55.44999, -4.616632]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:syr",
+    "regionId": "region:ne-syr",
+    "name": "Syria",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Syria",
+    "isoA3": "SYR",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Damascus",
+        "coordinates": [36.29805, 33.50198]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-irq",
+      "region:ne-isr",
+      "region:ne-jor",
+      "region:ne-lbn",
+      "region:ne-tur"
+    ]
+  },
+  {
+    "nationId": "nation:tca",
+    "regionId": "region:ne-tca",
+    "name": "Turks and Caicos Islands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "TCA",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:tcd",
+    "regionId": "region:ne-tcd",
+    "name": "Chad",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Chad",
+    "isoA3": "TCD",
+    "continent": "Africa",
+    "subregion": "Middle Africa",
+    "capitals": [
+      {
+        "name": "N'Djamena",
+        "coordinates": [15.047202, 12.115042]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-caf",
+      "region:ne-cmr",
+      "region:ne-lby",
+      "region:ne-ner",
+      "region:ne-nga",
+      "region:ne-sdn"
+    ]
+  },
+  {
+    "nationId": "nation:tgo",
+    "regionId": "region:ne-tgo",
+    "name": "Togo",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Togo",
+    "isoA3": "TGO",
+    "continent": "Africa",
+    "subregion": "Western Africa",
+    "capitals": [
+      {
+        "name": "Lomé",
+        "coordinates": [1.220811, 6.133883]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-ben", "region:ne-bfa", "region:ne-gha"]
+  },
+  {
+    "nationId": "nation:tha",
+    "regionId": "region:ne-tha",
+    "name": "Thailand",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Thailand",
+    "isoA3": "THA",
+    "continent": "Asia",
+    "subregion": "South-Eastern Asia",
+    "capitals": [
+      {
+        "name": "Bangkok",
+        "coordinates": [100.514699, 13.751945]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-khm",
+      "region:ne-lao",
+      "region:ne-mmr",
+      "region:ne-mys"
+    ]
+  },
+  {
+    "nationId": "nation:tjk",
+    "regionId": "region:ne-tjk",
+    "name": "Tajikistan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Tajikistan",
+    "isoA3": "TJK",
+    "continent": "Asia",
+    "subregion": "Central Asia",
+    "capitals": [
+      {
+        "name": "Dushanbe",
+        "coordinates": [68.773879, 38.560035]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-afg",
+      "region:ne-chn",
+      "region:ne-kgz",
+      "region:ne-uzb"
+    ]
+  },
+  {
+    "nationId": "nation:tkm",
+    "regionId": "region:ne-tkm",
+    "name": "Turkmenistan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Turkmenistan",
+    "isoA3": "TKM",
+    "continent": "Asia",
+    "subregion": "Central Asia",
+    "capitals": [
+      {
+        "name": "Ashgabat",
+        "coordinates": [58.383299, 37.949995]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-afg",
+      "region:ne-irn",
+      "region:ne-kaz",
+      "region:ne-uzb"
+    ]
+  },
+  {
+    "nationId": "nation:tls",
+    "regionId": "region:ne-tls",
+    "name": "East Timor",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "East Timor",
+    "isoA3": "TLS",
+    "continent": "Asia",
+    "subregion": "South-Eastern Asia",
+    "capitals": [
+      {
+        "name": "Dili",
+        "coordinates": [125.579456, -8.559388]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-idn"]
+  },
+  {
+    "nationId": "nation:ton",
+    "regionId": "region:ne-ton",
+    "name": "Tonga",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Tonga",
+    "isoA3": "TON",
+    "continent": "Oceania",
+    "subregion": "Polynesia",
+    "capitals": [
+      {
+        "name": "Nuku'alofa",
+        "coordinates": [-175.220564, -21.138512]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:tto",
+    "regionId": "region:ne-tto",
+    "name": "Trinidad and Tobago",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Trinidad and Tobago",
+    "isoA3": "TTO",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Port-of-Spain",
+        "coordinates": [-61.517031, 10.651997]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:tun",
+    "regionId": "region:ne-tun",
+    "name": "Tunisia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Tunisia",
+    "isoA3": "TUN",
+    "continent": "Africa",
+    "subregion": "Northern Africa",
+    "capitals": [
+      {
+        "name": "Tunis",
+        "coordinates": [10.179678, 36.802778]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-dza", "region:ne-lby"]
+  },
+  {
+    "nationId": "nation:tur",
+    "regionId": "region:ne-tur",
+    "name": "Turkey",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Turkey",
+    "isoA3": "TUR",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Ankara",
+        "coordinates": [32.862446, 39.929184]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-arm",
+      "region:ne-aze",
+      "region:ne-bgr",
+      "region:ne-geo",
+      "region:ne-grc",
+      "region:ne-irn",
+      "region:ne-irq",
+      "region:ne-syr"
+    ]
+  },
+  {
+    "nationId": "nation:tuv",
+    "regionId": "region:ne-tuv",
+    "name": "Tuvalu",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Tuvalu",
+    "isoA3": "TUV",
+    "continent": "Oceania",
+    "subregion": "Polynesia",
+    "capitals": [
+      {
+        "name": "Funafuti",
+        "coordinates": [179.216647, -8.516652]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:twn",
+    "regionId": "region:ne-twn",
+    "name": "Taiwan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Taiwan",
+    "isoA3": "TWN",
+    "continent": "Asia",
+    "subregion": "Eastern Asia",
+    "capitals": [
+      {
+        "name": "Taipei",
+        "coordinates": [121.568333, 25.035833]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:tza",
+    "regionId": "region:ne-tza",
+    "name": "United Republic of Tanzania",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "United Republic of Tanzania",
+    "isoA3": "TZA",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Dar es Salaam",
+        "coordinates": [39.266396, -6.798067]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bdi",
+      "region:ne-cod",
+      "region:ne-ken",
+      "region:ne-moz",
+      "region:ne-mwi",
+      "region:ne-rwa",
+      "region:ne-uga",
+      "region:ne-zmb"
+    ]
+  },
+  {
+    "nationId": "nation:uga",
+    "regionId": "region:ne-uga",
+    "name": "Uganda",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Uganda",
+    "isoA3": "UGA",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Kampala",
+        "coordinates": [32.581378, 0.318605]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-cod",
+      "region:ne-ken",
+      "region:ne-rwa",
+      "region:ne-sds",
+      "region:ne-tza"
+    ]
+  },
+  {
+    "nationId": "nation:ukr",
+    "regionId": "region:ne-ukr",
+    "name": "Ukraine",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Ukraine",
+    "isoA3": "UKR",
+    "continent": "Europe",
+    "subregion": "Eastern Europe",
+    "capitals": [
+      {
+        "name": "Kyiv",
+        "coordinates": [30.514682, 50.435313]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-blr",
+      "region:ne-hun",
+      "region:ne-mda",
+      "region:ne-pol",
+      "region:ne-rou",
+      "region:ne-rus",
+      "region:ne-svk"
+    ]
+  },
+  {
+    "nationId": "nation:ury",
+    "regionId": "region:ne-ury",
+    "name": "Uruguay",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Uruguay",
+    "isoA3": "URY",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "Montevideo",
+        "coordinates": [-56.186823, -34.905376]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-arg", "region:ne-bra"]
+  },
+  {
+    "nationId": "nation:usa",
+    "regionId": "region:ne-usa",
+    "name": "United States of America",
+    "sourceType": "Country",
+    "sourceSovereign": "United States of America",
+    "isoA3": "USA",
+    "continent": "North America",
+    "subregion": "Northern America",
+    "capitals": [
+      {
+        "name": "Washington,  D.C.",
+        "coordinates": [-77.011364, 38.901495]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-can", "region:ne-mex"]
+  },
+  {
+    "nationId": "nation:uzb",
+    "regionId": "region:ne-uzb",
+    "name": "Uzbekistan",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Uzbekistan",
+    "isoA3": "UZB",
+    "continent": "Asia",
+    "subregion": "Central Asia",
+    "capitals": [
+      {
+        "name": "Tashkent",
+        "coordinates": [69.268823, 41.303828]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-afg",
+      "region:ne-kaz",
+      "region:ne-kgz",
+      "region:ne-tjk",
+      "region:ne-tkm"
+    ]
+  },
+  {
+    "nationId": "nation:vat",
+    "regionId": "region:ne-vat",
+    "name": "Vatican",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Vatican",
+    "isoA3": "VAT",
+    "continent": "Europe",
+    "subregion": "Southern Europe",
+    "capitals": [
+      {
+        "name": "Vatican City",
+        "coordinates": [12.453387, 41.903282]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-ita"]
+  },
+  {
+    "nationId": "nation:vct",
+    "regionId": "region:ne-vct",
+    "name": "Saint Vincent and the Grenadines",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Saint Vincent and the Grenadines",
+    "isoA3": "VCT",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [
+      {
+        "name": "Kingstown",
+        "coordinates": [-61.220236, 13.155756]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:ven",
+    "regionId": "region:ne-ven",
+    "name": "Venezuela",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Venezuela",
+    "isoA3": "VEN",
+    "continent": "South America",
+    "subregion": "South America",
+    "capitals": [
+      {
+        "name": "Caracas",
+        "coordinates": [-66.918983, 10.502944]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-bra", "region:ne-col", "region:ne-guy"]
+  },
+  {
+    "nationId": "nation:vgb",
+    "regionId": "region:ne-vgb",
+    "name": "British Virgin Islands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United Kingdom",
+    "isoA3": "VGB",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:vir",
+    "regionId": "region:ne-vir",
+    "name": "United States Virgin Islands",
+    "sourceType": "Dependency",
+    "sourceSovereign": "United States of America",
+    "isoA3": "VIR",
+    "continent": "North America",
+    "subregion": "Caribbean",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:vnm",
+    "regionId": "region:ne-vnm",
+    "name": "Vietnam",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Vietnam",
+    "isoA3": "VNM",
+    "continent": "Asia",
+    "subregion": "South-Eastern Asia",
+    "capitals": [
+      {
+        "name": "Hanoi",
+        "coordinates": [105.848068, 21.035273]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-chn", "region:ne-khm", "region:ne-lao"]
+  },
+  {
+    "nationId": "nation:vut",
+    "regionId": "region:ne-vut",
+    "name": "Vanuatu",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Vanuatu",
+    "isoA3": "VUT",
+    "continent": "Oceania",
+    "subregion": "Melanesia",
+    "capitals": [
+      {
+        "name": "Port Vila",
+        "coordinates": [168.316641, -17.73335]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:wlf",
+    "regionId": "region:ne-wlf",
+    "name": "Wallis and Futuna",
+    "sourceType": "Dependency",
+    "sourceSovereign": "France",
+    "isoA3": "WLF",
+    "continent": "Oceania",
+    "subregion": "Polynesia",
+    "capitals": [],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:wsm",
+    "regionId": "region:ne-wsm",
+    "name": "Samoa",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Samoa",
+    "isoA3": "WSM",
+    "continent": "Oceania",
+    "subregion": "Polynesia",
+    "capitals": [
+      {
+        "name": "Apia",
+        "coordinates": [-171.768599, -13.835715]
+      }
+    ],
+    "adjacentRegionIds": []
+  },
+  {
+    "nationId": "nation:yem",
+    "regionId": "region:ne-yem",
+    "name": "Yemen",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Yemen",
+    "isoA3": "YEM",
+    "continent": "Asia",
+    "subregion": "Western Asia",
+    "capitals": [
+      {
+        "name": "Sanaa",
+        "coordinates": [44.204648, 15.356679]
+      }
+    ],
+    "adjacentRegionIds": ["region:ne-omn", "region:ne-sau"]
+  },
+  {
+    "nationId": "nation:zaf",
+    "regionId": "region:ne-zaf",
+    "name": "South Africa",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "South Africa",
+    "isoA3": "ZAF",
+    "continent": "Africa",
+    "subregion": "Southern Africa",
+    "capitals": [
+      {
+        "name": "Bloemfontein",
+        "coordinates": [26.229913, -29.119994]
+      },
+      {
+        "name": "Cape Town",
+        "coordinates": [18.433042, -33.918065]
+      },
+      {
+        "name": "Pretoria",
+        "coordinates": [28.227483, -25.704975]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bwa",
+      "region:ne-lso",
+      "region:ne-moz",
+      "region:ne-nam",
+      "region:ne-swz",
+      "region:ne-zwe"
+    ]
+  },
+  {
+    "nationId": "nation:zmb",
+    "regionId": "region:ne-zmb",
+    "name": "Zambia",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Zambia",
+    "isoA3": "ZMB",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Lusaka",
+        "coordinates": [28.281382, -15.414698]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-ago",
+      "region:ne-cod",
+      "region:ne-moz",
+      "region:ne-mwi",
+      "region:ne-nam",
+      "region:ne-tza",
+      "region:ne-zwe"
+    ]
+  },
+  {
+    "nationId": "nation:zwe",
+    "regionId": "region:ne-zwe",
+    "name": "Zimbabwe",
+    "sourceType": "Sovereign country",
+    "sourceSovereign": "Zimbabwe",
+    "isoA3": "ZWE",
+    "continent": "Africa",
+    "subregion": "Eastern Africa",
+    "capitals": [
+      {
+        "name": "Harare",
+        "coordinates": [31.042764, -17.815844]
+      }
+    ],
+    "adjacentRegionIds": [
+      "region:ne-bwa",
+      "region:ne-moz",
+      "region:ne-zaf",
+      "region:ne-zmb"
+    ]
+  }
+]
