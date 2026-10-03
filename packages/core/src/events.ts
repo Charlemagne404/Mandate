@@ -20,7 +20,9 @@ export function factualEvent(
       case 'DISCLOSE_INFORMATION':
         return `${n(c.issuer)} shares ${c.confidence} ${c.subject.kind} information`;
       case 'THEATER_ACTION':
-        return `${n(c.nationId)} sets ${c.posture} at ${c.allocation}% force allocation`;
+        return c.posture === 'major-offensive'
+          ? `${n(c.nationId)} begins an invasion offensive in ${c.regionIds.map(r).join(', ')}`
+          : `${n(c.nationId)} sets ${c.posture} at ${c.allocation}% force allocation`;
       case 'OPEN_CRISIS':
         return `Crisis emerges: ${c.crisis.title}`;
       case 'CRISIS_ACTION':
@@ -39,8 +41,14 @@ export function factualEvent(
         return `${n(c.tenure.nationId)} schedules election for ${c.tenure.nextElectionDate}`;
       case 'REVISE_GOAL_EVALUATION':
         return `Goal success criteria revised: ${w.goals.find((g) => g.id === c.goalId)!.title}`;
-      case 'SET_STRATEGY':
+      case 'SET_STRATEGY': {
+        const old = w.nations.find((v) => v.id === c.nationId)!.strategy;
+        if (c.strategy.militaryBudgetShare !== old.militaryBudgetShare)
+          return `${n(c.nationId)} assigns ${c.strategy.militaryBudgetShare}% of fiscal capacity to defense`;
+        if (c.strategy.taxRate !== old.taxRate)
+          return `${n(c.nationId)} sets the tax burden to ${c.strategy.taxRate}%`;
         return `${n(c.nationId)} updates strategic directives`;
+      }
       case 'START_INITIATIVE':
         return `${n(c.initiative.nationId)} begins ${c.initiative.name}`;
       case 'CANCEL_INITIATIVE':
@@ -63,12 +71,27 @@ export function factualEvent(
         return `${n(c.nationId)} ${c.member ? 'joins' : 'leaves'} ${w.organizations.find((v) => v.id === c.organizationId)!.name}`;
       case 'APPLY_DOMESTIC_PRESSURE':
         return `${n(c.nationId)} faces domestic pressure: ${c.cause}`;
+      case 'MOBILIZE_FORCE':
+        return `${n(c.nationId)} orders ${c.level} military mobilization`;
+      case 'STRATEGIC_ATTACK': {
+        const conflict = w.conflicts.find((f) => f.id === c.conflictId)!;
+        const invasion =
+          conflict.theaters.some(
+            (theater) =>
+              theater.nationId === c.attackerNationId &&
+              theater.posture === 'major-offensive',
+          ) ||
+          conflict.campaigns.some(
+            (campaign) => campaign.nationId === c.attackerNationId,
+          );
+        return `${n(c.attackerNationId)} launches a ${c.scale} strategic attack abstraction against ${n(c.targetNationId)} (weapon-specific effects are not simulated)${invasion ? ' as an invasion offensive begins' : ''}`;
+      }
       case 'CONFLICT_ACTION':
         return c.stance === 'offensive'
           ? `${n(c.nationId)} offensive: ${w.regions.find((v) => v.id === c.regionId)!.controllerNationId === c.nationId ? 'control secured' : (w.conflicts.find((f) => f.id === c.conflictId)!.campaigns.find((v) => v.regionId === c.regionId && v.nationId === c.nationId)?.progress ?? 0) > 0 ? 'campaign advances' : 'attack repelled'} in ${r(c.regionId!)}`
           : `${n(c.nationId)}: ${c.stance} in conflict`;
       case 'ADJUST_RELATION':
-        return `${n(c.nationA)} / ${n(c.nationB)} relation adjusted by ${c.delta}`;
+        return `${n(c.nationA)} / ${n(c.nationB)} relation adjusted by ${c.delta}${c.trustDelta ? `; trust ${c.trustDelta < 0 ? 'fell' : 'rose'} by ${Math.abs(c.trustDelta)}` : ''}`;
       case 'ADJUST_NATION_STAT':
         return `${n(c.nationId)}: ${c.stat} adjusted by ${c.delta}`;
       case 'TRANSFER_CONTROL':
@@ -174,27 +197,35 @@ export function factualEvent(
       w.negotiations.find((v) => v.id === c.negotiationId)!.conflictId
         ? [w.negotiations.find((v) => v.id === c.negotiationId)!.conflictId!]
         : (refs.conflictIds as Event['conflictIds']),
-    importance: ['OPEN_CRISIS', 'IMPOSE_SANCTION', 'OPEN_CONFERENCE'].includes(
-      c.type,
-    )
-      ? 70
-      : c.type === 'START_CONFLICT'
-        ? 80
-        : c.type === 'END_CONFLICT'
-          ? 75
-          : c.type === 'RESPOND_NEGOTIATION' &&
-              c.move === 'accept' &&
-              w.negotiations.find((v) => v.id === c.negotiationId)!.kind ===
-                'peace'
+    importance: [
+      'OPEN_CRISIS',
+      'IMPOSE_SANCTION',
+      'OPEN_CONFERENCE',
+      'MOBILIZE_FORCE',
+      'STRATEGIC_ATTACK',
+    ].includes(c.type)
+      ? c.type === 'STRATEGIC_ATTACK'
+        ? 100
+        : 70
+      : c.type === 'THEATER_ACTION' && c.posture === 'major-offensive'
+        ? 90
+        : c.type === 'START_CONFLICT'
+          ? 80
+          : c.type === 'END_CONFLICT'
             ? 75
             : c.type === 'RESPOND_NEGOTIATION' &&
                 c.move === 'accept' &&
                 w.negotiations.find((v) => v.id === c.negotiationId)!.kind ===
-                  'ceasefire'
-              ? 65
-              : c.type === 'TRANSFER_CONTROL'
-                ? 60
-                : 30,
+                  'peace'
+              ? 75
+              : c.type === 'RESPOND_NEGOTIATION' &&
+                  c.move === 'accept' &&
+                  w.negotiations.find((v) => v.id === c.negotiationId)!.kind ===
+                    'ceasefire'
+                ? 65
+                : c.type === 'TRANSFER_CONTROL'
+                  ? 60
+                  : 30,
     topics: [c.type.toLowerCase()],
     visibility:
       c.type === 'DISCLOSE_INFORMATION'

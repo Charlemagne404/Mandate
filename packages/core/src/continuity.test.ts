@@ -739,3 +739,50 @@ it.each([false, true])(
     expect(w.crises[0]!.status).toBe('resolved');
   },
 );
+
+it('commits a full mobilization order under treasury shortfall and applies the shortfall as consequences', () => {
+  const w = fixture();
+  const sweden = w.nations.find((n) => n.id === swe)!;
+  sweden.stats.treasury = 5;
+  sweden.stats.readiness = 40;
+  const after = step(w, [
+    { type: 'MOBILIZE_FORCE', nationId: swe, level: 'full' },
+  ]);
+  const mobilized = after.nations.find((n) => n.id === swe)!;
+  expect(mobilized.stats.treasury).toBe(0);
+  expect(mobilized.stats.readiness).toBe(44);
+  expect(mobilized.stats.fiscal).toBe(sweden.stats.fiscal - 3);
+  expect(mobilized.stats.unrest).toBe(sweden.stats.unrest + 2);
+  expect(
+    after.commands.some((record) => record.command.type === 'MOBILIZE_FORCE'),
+  ).toBe(true);
+});
+
+it('applies recurring defense and tax policy through deterministic budget consequences', () => {
+  let baseline = fixture();
+  const unmodifiedTreasury = baseline.nations.find((n) => n.id === swe)!.stats
+    .treasury;
+  const date = '2025-01-31';
+  baseline = step(baseline, [{ type: 'ADVANCE_DATE', date }]);
+  let reckless = fixture();
+  const sweden = reckless.nations.find((n) => n.id === swe)!;
+  sweden.stats.treasury = 5;
+  const strategy = structuredClone(sweden.strategy);
+  strategy.militaryBudgetShare = 100;
+  strategy.taxRate = 0;
+  reckless = step(reckless, [
+    { type: 'SET_STRATEGY', nationId: swe, strategy },
+    { type: 'ADVANCE_DATE', date },
+  ]);
+  const cautiousState = baseline.nations.find((n) => n.id === swe)!;
+  const recklessState = reckless.nations.find((n) => n.id === swe)!;
+  expect(cautiousState.stats.treasury).toBeGreaterThan(unmodifiedTreasury);
+  expect(recklessState.stats.readiness).toBeGreaterThan(
+    cautiousState.stats.readiness,
+  );
+  expect(recklessState.stats.treasury).toBeLessThan(
+    cautiousState.stats.treasury,
+  );
+  expect(recklessState.stats.fiscal).toBeLessThan(sweden.stats.fiscal);
+  expect(recklessState.stats.unrest).toBeGreaterThan(sweden.stats.unrest);
+});

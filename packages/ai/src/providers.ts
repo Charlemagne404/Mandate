@@ -20,6 +20,8 @@ export class ProviderError extends Error {
 class HttpProvider implements LlmProvider {
   readonly id: string;
   private readonly endpoint: URL;
+  private inFlight = 0;
+  private readonly queue: Array<() => void> = [];
   constructor(private readonly config: ProviderConfig) {
     this.id = config.kind;
     this.endpoint = new URL(
@@ -120,6 +122,28 @@ class HttpProvider implements LlmProvider {
   async generateStructured(
     request: GenerationRequest,
   ): Promise<GenerationResult> {
+    request.signal?.throwIfAborted();
+    const limit =
+      this.config.concurrency ?? (this.config.kind === 'ollama' ? 1 : 2);
+    if (this.inFlight >= limit) {
+      if (this.queue.length >= 80)
+        throw new ProviderError(
+          'Inference queue is full. Wait for the current turn.',
+        );
+      await new Promise<void>((resolve) => this.queue.push(resolve));
+    } else this.inFlight++;
+    try {
+      request.signal?.throwIfAborted();
+      return await this.generate(request);
+    } finally {
+      const next = this.queue.shift();
+      if (next) next();
+      else this.inFlight--;
+    }
+  }
+  private async generate(
+    request: GenerationRequest,
+  ): Promise<GenerationResult> {
     const started = performance.now();
     let retries = 0;
     while (true) {
@@ -134,6 +158,7 @@ class HttpProvider implements LlmProvider {
             ? {
                 model: request.model,
                 stream: false,
+                think: false,
                 messages,
                 format: request.jsonSchema,
                 options: {

@@ -35,7 +35,13 @@ export interface ContextBundle {
   exactEventIds: EventId[];
   summaryIds: string[];
   canonical: {
-    nations: Array<Omit<Nation, 'stats'> & { stats: Partial<Nation['stats']> }>;
+    nations: Array<
+      Omit<Nation, 'stats' | 'strategy'> & {
+        stats: Partial<Nation['stats']>;
+        strategy: Omit<Nation['strategy'], 'militaryBudgetShare' | 'taxRate'> &
+          Partial<Pick<Nation['strategy'], 'militaryBudgetShare' | 'taxRate'>>;
+      }
+    >;
     regions: WorldState['regions'];
     relations: WorldState['relations'];
     treaties: WorldState['treaties'];
@@ -219,29 +225,31 @@ export function buildContext(
   }
   const nations = world.nations
     .filter((n) => ids.has(n.id))
-    .map((n) =>
-      n.id === perspective
-        ? n
-        : {
-            ...n,
-            strategy: {
-              ...n.strategy,
-              directives: n.strategy.directives.filter(
-                (d) => d.visibility === 'public',
-              ),
-              redLines: [],
-            },
-            stats: {
-              economy: n.stats.economy,
-              military: n.stats.military,
-              stability: n.stats.stability,
-              legitimacy: n.stats.legitimacy,
-              industrial: n.stats.industrial,
-              technology: n.stats.technology,
-              influence: n.stats.influence,
-            },
-          },
-    );
+    .map((n) => {
+      if (n.id === perspective) return n;
+      const { militaryBudgetShare, taxRate, ...publicStrategy } = n.strategy;
+      return {
+        ...n,
+        strategy: {
+          ...publicStrategy,
+          directives: n.strategy.directives.filter(
+            (d) => d.visibility === 'public',
+          ),
+          redLines: [],
+          ...(militaryBudgetShare !== 35 ? { militaryBudgetShare } : {}),
+          ...(taxRate !== 50 ? { taxRate } : {}),
+        },
+        stats: {
+          economy: n.stats.economy,
+          military: n.stats.military,
+          stability: n.stats.stability,
+          legitimacy: n.stats.legitimacy,
+          industrial: n.stats.industrial,
+          technology: n.stats.technology,
+          influence: n.stats.influence,
+        },
+      };
+    });
   const regions = world.regions.filter(
     (r) => ids.has(r.ownerNationId) || ids.has(r.controllerNationId),
   );

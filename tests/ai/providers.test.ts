@@ -177,3 +177,52 @@ it('reports attempted retries even when all transport attempts fail', async () =
   ).rejects.toMatchObject({ retries: 1 });
   expect(fetch).toHaveBeenCalledTimes(2);
 });
+
+it('serializes local inference with bounded backpressure', async () => {
+  let active = 0,
+    peak = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 10));
+      active--;
+      return new Response(JSON.stringify({ message: { content: '{}' } }));
+    }),
+  );
+  const provider = createProvider({ kind: 'ollama', concurrency: 1 });
+  await Promise.all(
+    Array.from({ length: 6 }, () => provider.generateStructured(generation)),
+  );
+  expect(peak).toBe(1);
+});
+
+it('a queued cancellation never reaches the endpoint and does not leak the queue slot', async () => {
+  let release: () => void = () => {};
+  const fetch = vi
+    .fn()
+    .mockImplementationOnce(async () => {
+      await new Promise<void>((r) => {
+        release = r;
+      });
+      return new Response(JSON.stringify({ message: { content: '{}' } }));
+    })
+    .mockImplementation(
+      async () => new Response(JSON.stringify({ message: { content: '{}' } })),
+    );
+  vi.stubGlobal('fetch', fetch);
+  const provider = createProvider({ kind: 'ollama', concurrency: 1 });
+  const first = provider.generateStructured(generation);
+  const controller = new AbortController();
+  const second = provider.generateStructured({
+    ...generation,
+    signal: controller.signal,
+  });
+  controller.abort();
+  release();
+  await first;
+  await expect(second).rejects.toThrow();
+  await provider.generateStructured(generation);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});

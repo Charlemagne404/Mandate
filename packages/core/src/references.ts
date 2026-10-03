@@ -105,6 +105,8 @@ export function commandReferences(c: WorldCommand) {
       };
     case 'APPLY_DOMESTIC_PRESSURE':
       return { ...empty, nationIds: [c.nationId] };
+    case 'MOBILIZE_FORCE':
+      return { ...empty, nationIds: [c.nationId] };
     case 'CONFLICT_ACTION':
       return {
         ...empty,
@@ -140,6 +142,12 @@ export function commandReferences(c: WorldCommand) {
         ...empty,
         nationIds: [...c.conflict.attackers, ...c.conflict.defenders],
         conflictIds: [c.conflict.id],
+      };
+    case 'STRATEGIC_ATTACK':
+      return {
+        ...empty,
+        nationIds: [c.attackerNationId, c.targetNationId],
+        conflictIds: [c.conflictId],
       };
     case 'UPDATE_CONFLICT':
     case 'END_CONFLICT':

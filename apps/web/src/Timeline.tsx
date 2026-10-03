@@ -3,7 +3,13 @@ import { TurnSummary } from './TurnSummary.js';
 import type { WorldState } from '@mandate/schemas';
 import { useState } from 'react';
 import { api } from './api.js';
-function Explanation({ turnId }: { turnId: string }) {
+function Explanation({
+  turnId,
+  developerMode,
+}: {
+  turnId: string;
+  developerMode: boolean;
+}) {
   const [data, setData] = useState<unknown>(null);
   const [error, setError] = useState('');
   const evidence =
@@ -39,7 +45,11 @@ function Explanation({ turnId }: { turnId: string }) {
             .catch((e) => setError(String(e)));
       }}
     >
-      <summary>Government plans, context & model records</summary>
+      <summary>
+        {developerMode
+          ? 'Government plans, context & model records'
+          : 'Government response & reasons'}
+      </summary>
       {error && <p className="error">{error}</p>}
       {evidence && (
         <div className="causal-chain">
@@ -92,13 +102,15 @@ function Explanation({ turnId }: { turnId: string }) {
           No model workflow was attached to this direct command.
         </p>
       )}
-      <details>
-        <summary>Advanced developer evidence</summary>
-        <small>
-          All participating perspectives. Observable decisions only.
-        </small>
-        <pre>{JSON.stringify(data, null, 2) || 'Loading evidence…'}</pre>
-      </details>
+      {developerMode && (
+        <details>
+          <summary>Advanced developer evidence</summary>
+          <small>
+            All participating perspectives. Observable decisions only.
+          </small>
+          <pre>{JSON.stringify(data, null, 2) || 'Loading evidence…'}</pre>
+        </details>
+      )}
     </details>
   );
 }
@@ -106,11 +118,18 @@ export function Timeline({
   world,
   onSelect,
   selected,
+  developerMode = false,
+  followed = [],
+  references = [],
 }: {
   world: WorldState;
+  developerMode?: boolean;
+  followed?: string[];
+  references?: { nationId: string; subregion: string }[];
   selected?: import('@mandate/schemas').NationId;
   onSelect?: (id: import('@mandate/schemas').NationId) => void;
 }) {
+  const [region, setRegion] = useState('');
   const [filter, setFilter] = useState('relevant');
   const known = world.events.filter((e) =>
     knowsInformation(world, world.playerNationId, { kind: 'event', id: e.id }),
@@ -122,6 +141,19 @@ export function Timeline({
         <span>{known.length.toString().padStart(2, '0')}</span>
       </div>
       <TurnSummary world={world} />
+      <select
+        aria-label="News region"
+        value={region}
+        onChange={(e) => setRegion(e.target.value)}
+      >
+        <option value="">All regions</option>
+        {[...new Set(references.map((r) => r.subregion))]
+          .filter(Boolean)
+          .sort()
+          .map((r) => (
+            <option key={r}>{r}</option>
+          ))}
+      </select>
       <p className="muted ledger-intro">
         Committed facts. Every entry has a source.
       </p>
@@ -132,7 +164,8 @@ export function Timeline({
       >
         <option value="relevant">Major & relevant developments</option>
         <option value="all">All known events</option>
-        <option value="major">Major events</option>
+        <option value="major">World news · major events</option>
+        <option value="followed">Followed countries</option>
         <option value="country">Your country</option>
         <option value="diplomacy">Diplomacy</option>
         <option value="conflict">Conflicts</option>
@@ -153,6 +186,7 @@ export function Timeline({
           (e) =>
             (filter === 'relevant' &&
               (e.importance >= 70 ||
+                e.nationIds.some((id) => followed.includes(id)) ||
                 e.nationIds.includes(world.playerNationId) ||
                 (selected && e.nationIds.includes(selected)) ||
                 e.regionIds.some((id) =>
@@ -173,6 +207,8 @@ export function Timeline({
                     g.targetNationIds.some((id) => e.nationIds.includes(id)),
                 ))) ||
             filter === 'all' ||
+            (filter === 'followed' &&
+              e.nationIds.some((id) => followed.includes(id))) ||
             (filter === 'major' && e.importance >= 60) ||
             (filter === 'country' &&
               e.nationIds.includes(world.playerNationId)) ||
@@ -181,6 +217,16 @@ export function Timeline({
             (filter === 'conflict' && e.conflictIds.length > 0) ||
             (filter === 'economy' && /INITIATIVE|STAT|DATE/.test(e.type)),
         )
+        .filter(
+          (e) =>
+            !region ||
+            e.nationIds.some((id) =>
+              references.some(
+                (r) => r.nationId === id && r.subregion === region,
+              ),
+            ),
+        )
+        .filter((e) => developerMode || e.type !== 'ADVANCE_DATE')
         .reverse()
         .slice(0, 30)
         .map((event) => {
@@ -200,37 +246,41 @@ export function Timeline({
               </div>
               <h3>{event.title}</h3>
               {!!event.effects.length && (
-                <dl className="event-effects">
-                  {event.effects
-                    .filter(
-                      (effect) =>
-                        effect.nationId === world.playerNationId ||
-                        [
-                          'economy',
-                          'military',
-                          'stability',
-                          'legitimacy',
-                          'industrial',
-                          'technology',
-                          'influence',
-                        ].includes(effect.stat),
-                    )
-                    .slice(0, 10)
-                    .map((effect, i) => (
-                      <div key={i} className="dossier-pair">
-                        <dt>
-                          {
-                            world.nations.find((n) => n.id === effect.nationId)
-                              ?.name
-                          }{' '}
-                          / {effect.stat}
-                        </dt>
-                        <dd>
-                          {effect.before} → {effect.after}
-                        </dd>
-                      </div>
-                    ))}
-                </dl>
+                <div>
+                  <strong>WORLD OUTCOME</strong>
+                  <dl className="event-effects">
+                    {event.effects
+                      .filter(
+                        (effect) =>
+                          effect.nationId === world.playerNationId ||
+                          [
+                            'economy',
+                            'military',
+                            'stability',
+                            'legitimacy',
+                            'industrial',
+                            'technology',
+                            'influence',
+                          ].includes(effect.stat),
+                      )
+                      .slice(0, 10)
+                      .map((effect, i) => (
+                        <div key={i} className="dossier-pair">
+                          <dt>
+                            {
+                              world.nations.find(
+                                (n) => n.id === effect.nationId,
+                              )?.name
+                            }{' '}
+                            / {effect.stat}
+                          </dt>
+                          <dd>
+                            {effect.before} → {effect.after}
+                          </dd>
+                        </div>
+                      ))}
+                  </dl>
+                </div>
               )}
               <div className="event-actors">
                 {event.nationIds.slice(0, 5).map((id) => (
@@ -243,21 +293,64 @@ export function Timeline({
                 <summary>Why did this happen?</summary>
                 <div className="provenance">
                   <p>
-                    <strong>Trigger:</strong> {action.text}
+                    <strong>PLAYER ORDER</strong>{' '}
+                    <small>Original wording, not a committed world fact.</small>{' '}
+                    {developerMode ||
+                    action.actorNationId === world.playerNationId
+                      ? action.text
+                      : 'Independent government decision'}
                   </p>
-                  {commands.map((c) => (
-                    <div key={c.id}>
-                      <p>
-                        <strong>Reason:</strong> {c.reason}
-                      </p>
-                      <small>
-                        {c.validation} · {c.id}
-                      </small>
-                      <pre>{JSON.stringify(c.command, null, 2)}</pre>
-                    </div>
-                  ))}
+                  <p>
+                    <strong>COMMITTED ACTION</strong> {event.title}
+                  </p>
+                  {commands
+                    .filter((c) => {
+                      if (developerMode) return true;
+                      const command = c.command;
+                      const actor =
+                        'nationId' in command
+                          ? command.nationId
+                          : command.type === 'STRATEGIC_ATTACK'
+                            ? command.attackerNationId
+                            : command.type === 'START_CONFLICT'
+                              ? command.conflict.attackers.includes(
+                                  world.playerNationId,
+                                )
+                                ? world.playerNationId
+                                : null
+                              : command.type === 'OPEN_CRISIS'
+                                ? command.crisis.participants[0]
+                                : command.type === 'START_INITIATIVE'
+                                  ? command.initiative.nationId
+                                  : command.type === 'OPEN_NEGOTIATION'
+                                    ? command.negotiation.proposerNationId
+                                    : command.type === 'CREATE_STRATEGIC_GOAL'
+                                      ? command.goal.nationId
+                                      : null;
+                      return actor === world.playerNationId;
+                    })
+                    .map((c) => (
+                      <div key={c.id}>
+                        <p>
+                          <strong>Reason:</strong> {c.reason}
+                        </p>
+                        {developerMode && (
+                          <>
+                            <small>
+                              {c.validation} · {c.id}
+                            </small>
+                            <pre>{JSON.stringify(c.command, null, 2)}</pre>
+                          </>
+                        )}
+                      </div>
+                    ))}
                   <small>Committed {turn.recordedAt}</small>
-                  <Explanation turnId={turn.id} />
+                  {developerMode && (
+                    <Explanation
+                      turnId={turn.id}
+                      developerMode={developerMode}
+                    />
+                  )}
                 </div>
               </details>
             </article>

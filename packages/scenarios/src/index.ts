@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { parseScenario, WorldError } from '@mandate/core';
 import type { WorldState } from '@mandate/schemas';
+export { resolveCapitalOwnerIds } from './geography.js';
 export function loadScenario(filename: string): WorldState {
   return parseScenario(JSON.parse(readFileSync(filename, 'utf8')));
 }

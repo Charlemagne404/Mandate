@@ -33,6 +33,8 @@ export async function inferenceOptions() {
           'local-model',
         apiKey: process.env.MANDATE_AI_API_KEY ?? process.env.OPENAI_API_KEY,
         timeoutMs: Number(process.env.MANDATE_AI_TIMEOUT ?? 60000),
+        retries: Number(process.env.MANDATE_AI_RETRIES ?? 1),
+        contextBudget: Number(process.env.MANDATE_AI_CONTEXT ?? 48000),
         ...(process.env.MANDATE_AI_CONTEXT_TOKENS
           ? { contextTokens: Number(process.env.MANDATE_AI_CONTEXT_TOKENS) }
           : {}),

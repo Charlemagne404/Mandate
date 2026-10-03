@@ -18,7 +18,7 @@ export function useWorld() {
     void refresh();
   }, [refresh]);
   const commit = async (
-    command: WorldCommand,
+    command: WorldCommand | WorldCommand[],
     reason: string,
   ): Promise<boolean> => {
     if (!state || busy) return false;

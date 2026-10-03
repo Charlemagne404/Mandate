@@ -68,6 +68,16 @@ export function openArchive(directory?: string) {
         )
         .all();
     },
+    rename(id: string, name: string) {
+      const result = db
+        .prepare('UPDATE snapshots SET name=? WHERE id=?')
+        .run(name, id);
+      if (!result.changes) throw new Error('Saved timeline does not exist.');
+    },
+    remove(id: string) {
+      const result = db.prepare('DELETE FROM snapshots WHERE id=?').run(id);
+      if (!result.changes) throw new Error('Saved timeline does not exist.');
+    },
     restore(
       store: WorldStore,
       id: string,

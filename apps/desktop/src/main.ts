@@ -75,7 +75,11 @@ async function launch() {
     ? join(app.getAppPath(), 'resources')
     : resolve(app.getAppPath(), '../..');
   const configuration = readConfiguration(userData);
-  for (const name of ['global-alpha.json', 'northern-sandbox.json']) {
+  for (const name of [
+    'global-alpha.json',
+    'northern-sandbox.json',
+    'nordic-strategy.json',
+  ]) {
     const target = join(directories.scenarios, name);
     if (!existsSync(target))
       copyFileSync(join(resources, 'data/scenarios', name), target);
@@ -199,6 +203,20 @@ async function launch() {
       )
         throw new Error('Unknown folder');
       const error = await shell.openPath(directories[kind]);
+      if (error) throw new Error(error);
+    });
+    ipcMain.handle('mandate:start-ollama', async (event) => {
+      authorize(event);
+      const paths = [
+        '/Applications/Ollama.app',
+        join(app.getPath('home'), 'Applications/Ollama.app'),
+      ];
+      const path = paths.find(existsSync);
+      if (!path)
+        throw new Error(
+          'Ollama is not installed. Install it from ollama.com, then return to AI setup.',
+        );
+      const error = await shell.openPath(path);
       if (error) throw new Error(error);
     });
     ipcMain.handle('mandate:configuration', (event) => {

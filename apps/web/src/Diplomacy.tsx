@@ -13,6 +13,8 @@ export function Diplomacy({
   busy: boolean;
   operate: Operation;
 }) {
+  const [counterId, setCounterId] = useState<string | null>(null);
+  const [counter, setCounter] = useState('');
   const [message, setMessage] = useState('');
   const [pledge, setPledge] = useState(false);
   const [investment, setInvestment] = useState(4);
@@ -124,7 +126,18 @@ export function Diplomacy({
             {name(n.proposerNationId)} → {name(n.recipientNationId)} · expires{' '}
             {n.expiresDate}
           </small>
-          <p>{n.terms}</p>
+          <div className="current-terms">
+            <span className="eyebrow">
+              {n.status === 'open' ? 'OUTSTANDING TERMS' : 'FINAL TERMS'}
+            </span>
+            <p>{n.terms}</p>
+          </div>
+          {n.initialTerms && n.initialTerms !== n.terms && (
+            <details>
+              <summary>Original proposal</summary>
+              <p>{n.initialTerms}</p>
+            </details>
+          )}
           {n.obligations.map((o, index) => (
             <p key={index}>
               {o.type}: {o.terms} · due {o.dueDate ?? 'ongoing'}
@@ -148,12 +161,72 @@ export function Diplomacy({
             </blockquote>
           ))}
           {n.status === 'open' &&
+            world.treaties.some(
+              (t) =>
+                t.status === 'active' &&
+                t.kind === n.kind &&
+                t.parties.length === 2 &&
+                t.parties.includes(n.proposerNationId) &&
+                t.parties.includes(n.recipientNationId),
+            ) && (
+              <p className="muted">
+                An equivalent agreement is already active. This offer cannot
+                create a duplicate treaty; reject it or revise the discussion.
+              </p>
+            )}
+          {n.status === 'open' &&
             n.recipientNationId === world.playerNationId && (
               <div className="inline-form">
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    setCounterId(n.id);
+                    setCounter(n.terms);
+                  }}
+                >
+                  Revise terms
+                </button>
+                {counterId === n.id && (
+                  <div>
+                    <label>
+                      Revised proposal
+                      <textarea
+                        value={counter}
+                        onChange={(e) => setCounter(e.target.value)}
+                      />
+                    </label>
+                    <button
+                      disabled={busy || !counter.trim()}
+                      onClick={() =>
+                        void operate('/api/diplomacy/respond', {
+                          negotiationId: n.id,
+                          move: 'counter',
+                          message: 'We propose these revised terms.',
+                          counterTerms: counter,
+                        }).then((r) => {
+                          if (r) setCounterId(null);
+                        })
+                      }
+                    >
+                      Send counteroffer
+                    </button>
+                  </div>
+                )}
                 {(['accept', 'reject', 'delay'] as const).map((move) => (
                   <button
                     key={move}
-                    disabled={busy}
+                    disabled={
+                      busy ||
+                      (move === 'accept' &&
+                        world.treaties.some(
+                          (t) =>
+                            t.status === 'active' &&
+                            t.kind === n.kind &&
+                            t.parties.length === 2 &&
+                            t.parties.includes(n.proposerNationId) &&
+                            t.parties.includes(n.recipientNationId),
+                        ))
+                    }
                     onClick={() =>
                       void operate('/api/diplomacy/respond', {
                         negotiationId: n.id,
@@ -201,7 +274,10 @@ export function Conflicts({ world }: { world: WorldState }) {
               <dt>Logistics</dt>
               <dd>{c.logistics}</dd>
             </dl>
-            <small>{c.warGoals.join(' · ')}</small>
+            <small>
+              STATED WAR GOALS · Strategic objectives, not confirmed world
+              outcomes: {c.warGoals.join(' · ')}
+            </small>
             {c.theaters.map((t) => (
               <p key={t.id}>
                 {name(t.nationId)}: {t.posture} · allocation {t.allocation}% ·

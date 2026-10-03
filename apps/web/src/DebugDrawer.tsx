@@ -9,7 +9,10 @@ interface Props {
   busy: boolean;
   validationError: string;
   close: () => void;
-  commit: (c: WorldCommand, reason: string) => Promise<boolean>;
+  commit: (
+    c: WorldCommand | WorldCommand[],
+    reason: string,
+  ) => Promise<boolean>;
 }
 export function DebugDrawer({
   world,
@@ -57,6 +60,33 @@ export function DebugDrawer({
       setError(e instanceof Error ? e.message : 'Invalid command');
     }
   };
+  const forceTerritorialTransfer = async () => {
+    const region = world.regions.find((r) => r.id === regionId);
+    if (!region) {
+      setError('Select a canonical map region first.');
+      return;
+    }
+    const commands: WorldCommand[] = [];
+    if (region.ownerNationId !== target)
+      commands.push({ type: 'TRANSFER_OWNERSHIP', regionId, nationId: target });
+    if (region.controllerNationId !== target)
+      commands.push({ type: 'TRANSFER_CONTROL', regionId, nationId: target });
+    if (!commands.length) {
+      setError(
+        `${region.name} already belongs to and is controlled by the selected country.`,
+      );
+      return;
+    }
+    const recipient =
+      world.nations.find((n) => n.id === target)?.name ?? target;
+    if (
+      await commit(
+        commands,
+        `Developer outcome override: force ${region.name} under ${recipient} ownership and control`,
+      )
+    )
+      close();
+  };
   return (
     <section
       className="debug-drawer"
@@ -93,7 +123,7 @@ export function DebugDrawer({
         <>
           <p className="muted">
             Explicit sandbox edits. Commands validate and commit as one audited
-            turn.
+            turn. Developer outcome overrides directly change canonical state.
           </p>
           <div className="form-pair">
             <label>
@@ -162,6 +192,20 @@ export function DebugDrawer({
               {busy ? 'Validating…' : 'Commit command'}
             </button>
           </footer>
+          <section className="developer-override">
+            <strong>Developer outcome override</strong>
+            <p className="muted">
+              Force the selected region into the target country immediately.
+              This bypasses normal policy, diplomacy and conflict outcomes.
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void forceTerritorialTransfer()}
+            >
+              Force territorial transfer
+            </button>
+          </section>
         </>
       )}
     </section>

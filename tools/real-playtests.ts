@@ -417,6 +417,10 @@ for (const run of runs) {
             targetNationIds: [actor],
             targetRegionIds: [],
             visibility: 'public' as const,
+            policyOrders: [],
+            desiredOutcomes: [],
+            constraints: [],
+            majorIntentClauses: [],
             intentions: [
               {
                 kind: 'diplomacy' as const,

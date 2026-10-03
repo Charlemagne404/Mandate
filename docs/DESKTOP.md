@@ -27,7 +27,7 @@ Electron's operating-system user-data location stores these folders:
 | -------------------- | -------------------------------------------------------------------------------- |
 | `saves/world.sqlite` | Active canonical world, transactional command/audit history and SQLite WAL files |
 | `services/`          | Timeline checkpoints, presentation metadata and provider configuration           |
-| `scenarios/`         | User scenario files; the two built-in scenarios are copied here only if absent   |
+| `scenarios/`         | User scenario files; the three built-in scenarios are copied here only if absent |
 | `exports/`           | Default destination for native JSON save exports                                 |
 | `logs/desktop.log`   | Startup/runtime version records and startup failures                             |
 | `desktop.json`       | Versioned, schema-validated window size and maximization preferences             |
@@ -36,7 +36,7 @@ For macOS this is normally `~/Library/Application Support/Mandate`. The File men
 
 ## Renderer boundary
 
-The renderer has `nodeIntegration: false`, `contextIsolation: true`, an OS sandbox, web security and a restrictive content security policy. New windows, webviews, external navigation/network requests and permission requests are denied. The preload exposes four fixed methods: open a named app folder, native import, native export and desktop capability metadata. Every IPC handler validates the main-frame sender and exact local service origin; no arbitrary filesystem path, shell, Electron module or IPC dispatcher is exposed.
+The renderer has `nodeIntegration: false`, `contextIsolation: true`, an OS sandbox, web security and a restrictive content security policy. New windows, webviews, external navigation/network requests and permission requests are denied. The preload exposes five fixed methods: open an installed Ollama app, open a named app folder, native import, native export and desktop capability metadata. Every IPC handler validates the main-frame sender and exact local service origin; no arbitrary filesystem path, shell, Electron module or IPC dispatcher is exposed.
 
 The local service accepts only loopback hosts and the exact renderer origin. AI provider network access is main/service-side and remains separate from renderer privileges. Synchronous canonical transactions remain serialized; model generation occurs before commit.
 

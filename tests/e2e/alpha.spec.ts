@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 test.beforeEach(async ({ page }) => {
+  await page.request.post('/api/experience', {
+    data: { onboarded: true, developerMode: true },
+  });
   const before = await (await page.request.get('/api/world')).json();
   const scenario = JSON.parse(
     readFileSync(resolve('data/scenarios/northern-sandbox.json'), 'utf8'),

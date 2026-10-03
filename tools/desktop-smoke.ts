@@ -61,6 +61,16 @@ try {
     () => Boolean(document.querySelector('canvas')),
     { timeout: 30_000 },
   );
+  await window.getByRole('heading', { name: 'Welcome to Mandate' }).waitFor();
+  assert.equal(
+    await window.getByRole('button', { name: 'Debug', exact: true }).count(),
+    0,
+  );
+  const firstOrigin = new URL(window.url()).origin;
+  const scenarios = (await (
+    await fetch(firstOrigin + '/api/scenarios')
+  ).json()) as { filename: string }[];
+  assert(scenarios.some((s) => s.filename === 'nordic-strategy.json'));
   const versions = await desktop.evaluate(() => ({
     electron: process.versions.electron,
     node: process.versions.node,
@@ -237,6 +247,9 @@ try {
     JSON.stringify({
       versions,
       isolation,
+      firstLaunchWizard: true,
+      developerControlsHidden: true,
+      nordicScenarioBundled: true,
       transactionCommitted: true,
       staleWriteRejected: true,
       foreignOriginRejected: true,

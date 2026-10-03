@@ -7,3 +7,7 @@ export * from './perspective.js';
 export * from './discovery.js';
 export * from './behavior.js';
 export * from './metrics.js';
+
+export * from './profile.js';
+export * from './player-executor.js';
+export * from './agency-evaluation.js';

@@ -492,9 +492,15 @@ describe('perspective, diplomacy and historical continuity', () => {
       expect(foreign.payload).not.toContain('northern Sweden');
       expect(foreign.payload).not.toContain('mobilization');
     }
-    expect(captured.find((p) => p.nation === 'nation:swe')?.payload).toContain(
+    expect(captured.some((p) => p.nation === 'nation:swe')).toBe(false);
+    expect(result.trace.playerExecution?.orders.join(' ')).toContain(
       'northern Sweden',
     );
+    expect(
+      result.trace.intent?.policyOrders.find((o) =>
+        o.text.includes('northern Sweden'),
+      )?.visibility,
+    ).toBe('private');
     for (const c of result.request.commands)
       if (c.command.type === 'OPEN_NEGOTIATION') {
         expect(c.command.negotiation.terms).not.toContain('mobilization');

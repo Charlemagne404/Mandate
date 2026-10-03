@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import staticPlugin from '@fastify/static';
 import { openWorldStore } from '@mandate/persistence';
@@ -58,7 +58,9 @@ if (!Number.isInteger(port) || port < 1024 || port > 65535)
   throw new Error('PORT must be an integer between 1024 and 65535');
 const webPort = Number(process.env.MANDATE_WEB_PORT ?? 5173);
 const services = createAlphaServices(store, {
-  directory: resolve(dirname(filename), 'services'),
+  directory: process.env.MANDATE_DB
+    ? resolve(dirname(filename), basename(filename) + '-services')
+    : resolve(dirname(filename), 'services'),
   scenariosDirectory: resolve(root, 'data/scenarios'),
 });
 const app = buildServer({

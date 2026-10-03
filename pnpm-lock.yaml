@@ -175,6 +175,9 @@ importers:
       '@mandate/memory':
         specifier: workspace:*
         version: link:../memory
+      '@mandate/scenarios':
+        specifier: workspace:*
+        version: link:../scenarios
       '@mandate/schemas':
         specifier: workspace:*
         version: link:../schemas

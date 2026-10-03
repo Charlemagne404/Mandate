@@ -1,3 +1,4 @@
+import { ModelSetup } from './Launch.js';
 import { useEffect, useState } from 'react';
 import { api } from './api.js';
 import type { WorldState } from '@mandate/schemas';
@@ -35,11 +36,15 @@ export function Operations({
   busy,
   operate,
   close,
+  developerMode,
+  onDeveloperMode,
 }: {
   world: WorldState;
   busy: boolean;
   operate: Operation;
   close: () => void;
+  developerMode: boolean;
+  onDeveloperMode: (enabled: boolean) => void;
 }) {
   const [tab, setTab] = useState('Timelines');
   const [saves, setSaves] = useState<Snapshot[]>([]);
@@ -58,6 +63,9 @@ export function Operations({
   >([]);
   const [roles, setRoles] = useState('{}');
   const [failures, setFailures] = useState<unknown>([]);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
   const [turns, setTurns] = useState(10);
   const reload = async () => {
     const [snapshots, config, scenarioList, errors] = await Promise.all([
@@ -98,14 +106,32 @@ export function Operations({
           Close
         </button>
       </header>
+      <label>
+        <input
+          type="checkbox"
+          checked={developerMode}
+          onChange={(e) => {
+            const enabled = e.target.checked;
+            void api('/api/experience', {
+              method: 'POST',
+              body: JSON.stringify({ developerMode: enabled }),
+            }).then(() => onDeveloperMode(enabled));
+          }}
+        />{' '}
+        Developer mode
+      </label>
       <div className="drawer-tabs">
-        {['Timelines', 'Scenario', 'Models', 'Autoplay', 'Diagnostics'].map(
-          (t) => (
-            <button key={t} aria-pressed={tab === t} onClick={() => setTab(t)}>
-              {t}
-            </button>
-          ),
-        )}
+        {[
+          'Timelines',
+          'Scenario',
+          'Models',
+          'Autoplay',
+          ...(developerMode ? ['Diagnostics'] : []),
+        ].map((t) => (
+          <button key={t} aria-pressed={tab === t} onClick={() => setTab(t)}>
+            {t}
+          </button>
+        ))}
       </div>
       {status && (
         <p role="status" className="operations-status">
@@ -135,42 +161,103 @@ export function Operations({
               Rollback last turn
             </button>
           </div>
-          <small>
-            Active {world.saveId} ·{' '}
-            {world.ancestry
-              ? `branched from ${world.ancestry.parentSaveId} at turn ${world.ancestry.parentRevision}`
-              : 'original timeline'}
-          </small>
+          {developerMode && (
+            <small>
+              Active {world.saveId} ·{' '}
+              {world.ancestry
+                ? `branched from ${world.ancestry.parentSaveId} at turn ${world.ancestry.parentRevision}`
+                : 'original timeline'}
+            </small>
+          )}
           <div className="snapshot-list">
-            {saves.map((s) => (
-              <article key={s.id}>
-                <div>
-                  <strong>{s.name}</strong>
-                  <small>
-                    {s.date} · turn {s.revision} · {s.kind}
-                  </small>
-                </div>
+            {saves
+              .filter(
+                (s) => developerMode || ['named', 'branch'].includes(s.kind),
+              )
+              .map((s) => (
+                <article key={s.id}>
+                  <div>
+                    <strong>
+                      {s.kind === 'branch' ? '↳ ' : ''}
+                      {s.name}
+                    </strong>
+                    <small>
+                      {s.date} · turn {s.revision} · {s.kind}
+                    </small>
+                  </div>
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      void run('/api/timelines/restore', { id: s.id })
+                    }
+                  >
+                    Load
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      void run('/api/timelines/restore', {
+                        id: s.id,
+                        branch: true,
+                      })
+                    }
+                  >
+                    Branch
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => {
+                      setRenameId(s.id);
+                      setRenameText(s.name);
+                    }}
+                  >
+                    Rename
+                  </button>
+                  <button disabled={busy} onClick={() => setDeleteId(s.id)}>
+                    Delete
+                  </button>
+                </article>
+              ))}
+            {renameId && (
+              <div className="inline-form">
+                <input
+                  aria-label="New timeline name"
+                  value={renameText}
+                  onChange={(e) => setRenameText(e.target.value)}
+                />
+                <button
+                  disabled={busy || !renameText.trim()}
+                  onClick={() =>
+                    void run('/api/timelines/rename', {
+                      id: renameId,
+                      name: renameText,
+                    }).then(() => setRenameId(null))
+                  }
+                >
+                  Rename saved timeline
+                </button>
+              </div>
+            )}
+            {deleteId && (
+              <div role="alert">
+                <p>
+                  Delete this saved point? The active world and other saved
+                  timelines remain available.
+                </p>
+                <button onClick={() => setDeleteId(null)}>Keep snapshot</button>
                 <button
                   disabled={busy}
                   onClick={() =>
-                    void run('/api/timelines/restore', { id: s.id })
+                    void run('/api/timelines/delete', {
+                      id: deleteId,
+                      confirmed: true,
+                    }).then(() => setDeleteId(null))
                   }
                 >
-                  Load
+                  Confirm delete snapshot
                 </button>
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void run('/api/timelines/restore', {
-                      id: s.id,
-                      branch: true,
-                    })
-                  }
-                >
-                  Branch
-                </button>
-              </article>
-            ))}
+              </div>
+            )}
           </div>
         </>
       )}
@@ -197,7 +284,8 @@ export function Operations({
           ))}
         </>
       )}
-      {tab === 'Models' && settings && (
+      {tab === 'Models' && <ModelSetup />}
+      {tab === 'Models' && settings && developerMode && (
         <>
           <button
             disabled={busy}

@@ -24,10 +24,11 @@ export function parseResponse(value: WorldResponse): WorldResponse {
 }
 export function commandRequest(
   world: World,
-  command: WorldCommand,
+  command: WorldCommand | WorldCommand[],
   reason: string,
   expectedHash: string,
 ) {
+  const commands = Array.isArray(command) ? command : [command];
   return {
     expectedRevision: world.revision,
     expectedHash,
@@ -36,6 +37,13 @@ export function commandRequest(
       actorNationId: world.playerNationId,
       text: reason,
     },
-    commands: [{ id: `command:${crypto.randomUUID()}`, reason, command }],
+    commands: commands.map((entry, index) => ({
+      id: `command:${crypto.randomUUID()}`,
+      reason:
+        commands.length > 1
+          ? `${reason} (${index + 1}/${commands.length})`
+          : reason,
+      command: entry,
+    })),
   };
 }

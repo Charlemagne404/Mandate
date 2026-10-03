@@ -6,9 +6,11 @@ Mandate has a pure deterministic simulation core, structured SQLite truth, a ser
 Electron main → loopback Fastify + canonical SQLite + snapshot archive
 Electron sandboxed renderer → production React/MapLibre
 
-Player directive → typed intent → deterministic relevance/activation
-→ perspective contexts → concurrent nation planners → diplomatic moves
-→ resolver proposal → capability/reference checks → pure sequential preview
+Player directive → canonical clauses → authoritative policy orders, desired outcomes and constraints
+→ deterministic Player Action Executor → typed player commands
+→ deterministic relevance/activation → foreign perspective contexts and planners
+→ foreign diplomatic moves and world proposal
+→ capability/reference checks → merge with player commands → pure sequential preview
 → selective critic → bounded repair or abort
 → stale-write recheck inside BEGIN IMMEDIATE
 → state + action + commands + factual events + time + turn audit → COMMIT
@@ -18,6 +20,8 @@ Player directive → typed intent → deterministic relevance/activation
 `packages/schemas` owns runtime contracts, branded IDs, branding and versioned formats. `packages/core` owns domain transitions, bounded time mechanics, factual events and executable invariants. It imports no providers, persistence, Node or Electron. `packages/persistence` owns checksummed migrations, SQL transactions, stale revision/hash checks and readback verification. Scenarios are validated genesis imports; geography remains immutable reference data outside saves.
 
 `packages/ai` owns provider transport, role schemas, orchestration and a labeled deterministic fake provider. It gets a value snapshot, never a database handle. Resolver capabilities are narrower than debug capabilities. Arbitrary ownership transfers, direct stat patches, player switching, arbitrary events and direct treaty creation cannot be proposed by a model. Nation planning runs concurrently, but resolution and commit are serial. No transaction is held over a model/network call. Cancellation is checked immediately before synchronous commit; narration failure after commit uses factual fallback rather than undoing reality.
+
+**Player authority rule:** the player controls their government; the simulation controls the consequences. The formalizer binds player policy orders to exact source clauses and records desired foreign/world outcomes and explicit constraints separately. `Player Action Executor` turns the controlled government's valid orders into canonical `WorldCommand`s before commit. The player polity does not run a strategic planner to decide whether to obey. A model critic or resolver cannot veto or replace those commands because an order is risky, implausible or strategically inconsistent. Schema, domain rules and world invariants still apply. Other governments respond autonomously, and a desired external outcome such as annexation is not granted by an order alone.
 
 `packages/memory` constructs perspective contexts with exact visible recent events, current commitments/goals/conflicts, and source-linked deterministic historical summaries. Intent disclosure uses source clauses and per-intention audiences; a targeted diplomatic proposal does not disclose a separate private domestic or military intention. Summaries have no mechanical authority.
 

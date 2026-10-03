@@ -53,6 +53,8 @@ export function applyCommand(
     case 'CREATE_ORGANIZATION':
     case 'SET_ORGANIZATION_MEMBERSHIP':
     case 'CONFLICT_ACTION':
+    case 'STRATEGIC_ATTACK':
+    case 'MOBILIZE_FORCE':
     case 'APPLY_DOMESTIC_PRESSURE':
       return;
     case 'ADJUST_RELATION': {
@@ -70,7 +72,14 @@ export function applyCommand(
         current + c.delta >= -100 && current + c.delta <= 100,
         'Relation outside bounds',
       );
-      relationshipEffect(w, c.nationA, c.nationB, c.delta, 0, reason);
+      relationshipEffect(
+        w,
+        c.nationA,
+        c.nationB,
+        c.delta,
+        c.trustDelta ?? 0,
+        reason,
+      );
       return;
     }
     case 'ADJUST_NATION_STAT':

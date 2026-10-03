@@ -63,6 +63,10 @@ export const Government = z.strictObject({ type: Name, ideology: Name });
 export const Strategy = z
   .strictObject({
     riskTolerance: z.number().int().min(0).max(100).default(40),
+    // Share of modeled fiscal capacity assigned to recurring defense spending.
+    // The deterministic time engine applies readiness and fiscal consequences.
+    militaryBudgetShare: z.number().int().min(0).max(100).default(35),
+    taxRate: z.number().int().min(0).max(100).default(50),
     orientation: z
       .enum(['security', 'economic', 'diplomatic', 'domestic'])
       .default('security'),
@@ -83,6 +87,8 @@ export const Strategy = z
   })
   .default({
     riskTolerance: 40,
+    militaryBudgetShare: 35,
+    taxRate: 50,
     orientation: 'security',
     redLines: [],
     directives: [],

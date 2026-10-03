@@ -8,6 +8,7 @@ Read @/Users/charliearnerstal/.codex/RTK.md when available; prefix shell command
 - Mutations use schema-validated typed WorldCommands, then sequential domain validation and hard invariants before commit. Scenario genesis/import are validated transactional boundaries.
 - A turn commits atomically, including actions, command provenance, factual events, revision, and simulation time. Failures roll back everything.
 - Every committed command has provenance; narration describes committed facts only.
+- **The player controls their government; the simulation controls the consequences.** For the player-controlled polity, valid player policy orders are authoritative. Strategic AI may advise on implementation and consequences, but may not veto or substitute player intent merely because it considers the decision unwise. External outcomes remain governed by simulation mechanics and autonomous actors.
 - Region IDs and geometry are permanent; ownership/control changes never rewrite geometry.
 - Save/scenario formats are versioned. Untrusted imports pass schemas, references, domain rules, and invariants before transactional replacement.
 - Every new mechanic needs tests. Never hide failing tests or bypass invariants; fix the architecture.

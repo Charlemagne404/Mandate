@@ -48,6 +48,11 @@ test('production bundle survives actual server termination/restart and renders w
   };
   try {
     await start();
+    await fetch('http://127.0.0.1:3126/api/experience', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ onboarded: true }),
+    });
     const before = await (
       await fetch('http://127.0.0.1:3126/api/world')
     ).json();

@@ -485,7 +485,13 @@ export function Inspector({
                   {f.settlementState} · exhaustion {f.exhaustion} · logistics{' '}
                   {f.logistics}
                 </small>
-                <p>{f.warGoals.join(' · ')}</p>
+                <div>
+                  <strong>STATED WAR GOALS</strong>
+                  <p>
+                    Strategic objectives only; they are not confirmed world
+                    outcomes. {f.warGoals.join(' · ')}
+                  </p>
+                </div>
                 {f.theaters.map((t) => (
                   <p key={t.id}>
                     {t.regionIds

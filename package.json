@@ -1,7 +1,7 @@
 {
   "name": "mandate",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0-alpha.1",
   "type": "module",
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -34,7 +34,9 @@
     "ai:discover": "tsx tools/discover-models.ts",
     "ai:benchmark": "tsx tools/behavior-eval.ts",
     "ai:benchmark:real": "tsx tools/behavior-eval.ts --real",
-    "ai:playtests:real": "tsx tools/real-playtests.ts"
+    "ai:playtests:real": "tsx tools/real-playtests.ts",
+    "ai:playtest:agency:real": "tsx tools/player-agency-playtest.ts",
+    "ai:playtest:intent:real": "tsx tools/player-intent-regression-real.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

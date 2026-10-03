@@ -1,3 +1,4 @@
+import { Launch } from './Launch.js';
 import { WorldDepth, BranchComparison } from './WorldDepth.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NationId, RegionId, branding } from '@mandate/schemas';
@@ -18,6 +19,7 @@ declare global {
     render_game_to_text?: () => string;
     advanceTime?: (ms: number) => Promise<void>;
     mandateDesktop?: {
+      startOllama?: () => Promise<void>;
       openFolder: (
         kind: 'saves' | 'scenarios' | 'exports' | 'logs',
       ) => Promise<void>;
@@ -30,16 +32,37 @@ declare global {
 export function App() {
   const { state, error, busy, refresh, commit, importSave, operate } =
     useWorld();
+  const [followed, setFollowed] = useState<string[]>([]);
+  const [launch, setLaunch] = useState(false);
+  const [firstRun, setFirstRun] = useState(false);
+  const [developerMode, setDeveloperMode] = useState(false);
+  const [observerPlaying, setObserverPlaying] = useState(false);
+  const [observerSpeed, setObserverSpeed] = useState(3000);
   const [operations, setOperations] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState('Events');
   const [directive, setDirective] = useState('');
-  const [quality, setQuality] = useState('balanced');
-  const [days, setDays] = useState(7);
+  const [quality, setQuality] = useState(() => {
+    const saved = localStorage.getItem('mandate-quality');
+    return saved && ['fast', 'balanced', 'deep'].includes(saved)
+      ? saved
+      : 'balanced';
+  });
+  const [days, setDays] = useState(() => {
+    const saved = Number(localStorage.getItem('mandate-days'));
+    return [7, 30, 90, 365].includes(saved) ? saved : 7;
+  });
+  useEffect(() => {
+    localStorage.setItem('mandate-quality', quality);
+    localStorage.setItem('mandate-days', String(days));
+  }, [quality, days]);
   const [progress, setProgress] = useState<{
     stage: string;
     completed: number;
     total: number;
     running: boolean;
+    actor?: string;
+    startedAt?: string;
+    warnings?: string[];
   } | null>(null);
   const [provider, setProvider] = useState('fake');
   const [references, setReferences] = useState<
@@ -68,6 +91,21 @@ export function App() {
   const nation =
     world?.nations.find((n) => n.id === selected) ?? world?.nations[0];
   useEffect(() => {
+    if (world?.playerNationId) {
+      setSelected(world.playerNationId);
+      setRegionId(null);
+    }
+  }, [world?.playerNationId]);
+  useEffect(() => {
+    void api<{ onboarded: boolean; developerMode: boolean }>(
+      '/api/experience',
+    ).then((e) => {
+      setDeveloperMode(e.developerMode);
+      if (!e.onboarded) {
+        setFirstRun(true);
+        setLaunch(true);
+      }
+    });
     document.title = `${branding.name} · ${branding.subtitle}`;
     void api<typeof references>('/api/geographic-reference')
       .then(setReferences)
@@ -80,6 +118,14 @@ export function App() {
   }, [operations]);
   useEffect(() => {
     if (!busy) {
+      void api<{ warnings?: string[] }>('/api/play/status')
+        .then((p) => {
+          if (p.warnings?.length)
+            setNotice(
+              `${p.warnings.length} inference warnings were recorded. Open the turn summary for skipped background decisions; the committed world remains valid.`,
+            );
+        })
+        .catch(() => {});
       setProgress(null);
       return;
     }
@@ -126,6 +172,37 @@ export function App() {
       delete window.advanceTime;
     };
   }, [world, nation, mode, mapReady, regionId, state, debug, error]);
+  useEffect(() => {
+    if (!observerPlaying || !world?.observerMode || busy) return;
+    const timer = setTimeout(() => {
+      void operate('/api/play', { text: '', days, quality }).then((r) => {
+        if (!r) setObserverPlaying(false);
+      });
+    }, observerSpeed);
+    return () => clearTimeout(timer);
+  }, [
+    observerPlaying,
+    world?.revision,
+    world?.observerMode,
+    busy,
+    days,
+    quality,
+    observerSpeed,
+    operate,
+  ]);
+  useEffect(() => {
+    if (world) {
+      try {
+        setFollowed(
+          JSON.parse(
+            localStorage.getItem('mandate-followed:' + world.saveId) ?? '[]',
+          ) as string[],
+        );
+      } catch {
+        setFollowed([]);
+      }
+    }
+  }, [world?.saveId]);
   const selectNation = (id: NationId) => {
     setSelected(id);
     setRegionId(
@@ -230,9 +307,26 @@ export function App() {
           >
             {world.observerMode ? 'Resume control' : 'Observe world'}
           </button>
-          <button disabled={busy} onClick={advance}>
-            + 7 days
+          <button onClick={() => setLaunch(true)}>Menu</button>
+          <button
+            onClick={() => {
+              const name = `Before ${directive.trim().slice(0, 45) || 'next decision'} — ${world.date}`;
+              void operate('/api/timelines/branch', { name }).then((r) => {
+                if (r)
+                  setNotice(
+                    'Timeline branched. The original decision point is saved.',
+                  );
+              });
+            }}
+            disabled={busy}
+          >
+            Branch timeline
           </button>
+          {developerMode && (
+            <button disabled={busy} onClick={advance}>
+              + 7 days
+            </button>
+          )}
           <button
             disabled={busy}
             onClick={() =>
@@ -260,9 +354,9 @@ export function App() {
           <button onClick={() => void refresh()} disabled={busy}>
             Refresh
           </button>
-          <button className="primary" onClick={() => setDebug(true)}>
-            Debug
-          </button>
+          {developerMode && (
+            <button onClick={() => setDebug(true)}>Debug</button>
+          )}
           <button onClick={() => setOperations(true)}>World & settings</button>
         </nav>
       </header>
@@ -310,6 +404,21 @@ export function App() {
             ))}
           </select>
         </label>
+        <button
+          aria-pressed={followed.includes(nation.id)}
+          onClick={() => {
+            const next = followed.includes(nation.id)
+              ? followed.filter((id) => id !== nation.id)
+              : [...followed, nation.id];
+            setFollowed(next);
+            localStorage.setItem(
+              'mandate-followed:' + world.saveId,
+              JSON.stringify(next),
+            );
+          }}
+        >
+          {followed.includes(nation.id) ? 'Following' : 'Follow country'}
+        </button>
         <span className="live-status">
           {provider === 'fake' ? 'DETERMINISTIC DEMO' : provider.toUpperCase()}{' '}
           <span className="status-dot" />
@@ -373,6 +482,9 @@ export function App() {
             <Timeline
               world={world}
               selected={nation.id}
+              developerMode={developerMode}
+              followed={followed}
+              references={references}
               onSelect={selectNation}
             />
           )}
@@ -418,8 +530,8 @@ export function App() {
             </label>
             <small>
               {provider === 'fake'
-                ? 'Demo rules: diplomacy, investment, readiness, reform, conflict. Configure a model for broader interpretation.'
-                : 'Governments deliberate from their interests. Outcomes are validated before commit.'}
+                ? 'Player orders drive policy; foreign responses use demo rules. A configured model adds broader interpretation.'
+                : 'Your government acts on your orders. Other governments decide their response; outcomes follow simulation rules.'}
             </small>
           </div>
           <div className="directive-input">
@@ -462,11 +574,65 @@ export function App() {
               </button>
             </div>
           </div>
+          {!busy && !world.observerMode && (
+            <div className="action-suggestions">
+              {[
+                'Review our current priorities and continue existing policy.',
+                ...world.goals
+                  .filter(
+                    (g) => g.nationId === player.id && g.status === 'active',
+                  )
+                  .slice(0, 2)
+                  .map((g) => g.title),
+                ...world.negotiations
+                  .filter(
+                    (n) =>
+                      n.status === 'open' && n.recipientNationId === player.id,
+                  )
+                  .slice(0, 1)
+                  .map(
+                    (n) =>
+                      `Review the counteroffer from ${world.nations.find((a) => a.id === n.proposerNationId)?.name}`,
+                  ),
+              ].map((text) => (
+                <button
+                  type="button"
+                  key={text}
+                  onClick={() => setDirective(text)}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          )}
+          {world.observerMode && (
+            <div className="observer-controls">
+              <button
+                type="button"
+                onClick={() => setObserverPlaying((v) => !v)}
+              >
+                {observerPlaying ? 'Pause' : 'Play history'}
+              </button>
+              <select
+                aria-label="Observer speed"
+                value={observerSpeed}
+                onChange={(e) => setObserverSpeed(Number(e.target.value))}
+              >
+                <option value={10000}>Reflect · 10s between turns</option>
+                <option value={3000}>Normal · 3s between turns</option>
+                <option value={0}>Fast · when inference finishes</option>
+              </select>
+              <small>
+                Advance world steps once. Select a controlled country to enter
+                this history.
+              </small>
+            </div>
+          )}
           {busy && (
             <div className="turn-progress" role="status">
               <span className="status-dot" />
               {progress?.running
-                ? `${progress.stage} · ${progress.completed}/${progress.total}`
+                ? `${progress.actor ? progress.actor + ' is considering its options' : progress.stage.replaceAll('-', ' ')} · ${Math.floor((Date.now() - Date.parse(progress.startedAt ?? new Date().toISOString())) / 1000)}s elapsed`
                 : 'Applying commands…'}
               <button
                 type="button"
@@ -481,9 +647,31 @@ export function App() {
         </form>
         <div className="save-status">
           <span className="status-dot" /> Persisted locally
-          <small title={state.hash}>State {state.hash.slice(0, 12)}</small>
+          <small>
+            {world.turns.at(-1)
+              ? `Saved ${new Date(world.turns.at(-1)!.recordedAt).toLocaleTimeString()}`
+              : 'Ready for your first decision'}
+          </small>
         </div>
       </footer>
+      {launch && (
+        <Modal>
+          <Launch
+            world={world}
+            busy={busy}
+            operate={operate}
+            firstRun={firstRun}
+            onClose={() => {
+              setLaunch(false);
+              setFirstRun(false);
+            }}
+            onQuality={(q, d) => {
+              setQuality(q);
+              setDays(d);
+            }}
+          />
+        </Modal>
+      )}
       {operations && (
         <Modal>
           <Operations
@@ -491,6 +679,8 @@ export function App() {
             busy={busy}
             operate={operate}
             close={() => setOperations(false)}
+            developerMode={developerMode}
+            onDeveloperMode={setDeveloperMode}
           />
         </Modal>
       )}

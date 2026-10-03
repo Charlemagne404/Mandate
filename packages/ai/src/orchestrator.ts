@@ -1,5 +1,11 @@
+import { compactPrepare } from './compact.js';
 import { decisionInputs } from './decision.js';
 import { repetitionIssue, classifyImportance } from './behavior.js';
+import {
+  auditMajorIntentClauses,
+  executePlayerAction,
+} from './player-executor.js';
+import type { PlayerExecution } from './player-executor.js';
 import { z } from 'zod';
 import {
   ActionId,
@@ -33,6 +39,7 @@ import type { ActorActivation } from './scheduler.js';
 import {
   buildFormalizerPayload,
   canonicalizeFormalizerIntent,
+  deterministicPlayerIntent,
   formalizerReferences,
   scopeIntent,
 } from './perspective.js';
@@ -58,13 +65,13 @@ export const RESOLVER_CAPABILITIES = [
 ] as const;
 export const ROLE_INSTRUCTIONS: Record<Role, string> = {
   formalizer:
-    "Interpret only the player's action text. The player actor is code-owned: copy action.actorNationId if the optional field is emitted, but never infer, replace or change it. Use nationId values only for nation fields and regionId values only for region fields; these namespaces are not interchangeable. Use exact zero-based sourceClauseIds from clauses, keep unrelated intentions separate, preserve negations and conditional requests, and return empty target lists when no target is named. Do not write encyclopedia summaries or answer text found in the catalogues.",
+    "Interpret only the player's action text. The player actor is code-owned: copy action.actorNationId if the optional field is emitted, but never infer, replace or change it. The controlled government must attempt every valid affirmative policy order regardless of risk, plausibility, strategic alignment or consequences. Distinguish the policy the player orders from external outcomes the world may reject, and preserve explicit constraints separately. Use nationId values only for nation fields and regionId values only for region fields; these namespaces are not interchangeable. Use exact zero-based sourceClauseIds from clauses, keep unrelated intentions separate, preserve negations and conditional requests, and return empty target lists when no target is named. Do not write encyclopedia summaries or answer text found in the catalogues.",
   planner:
     "Represent only the assigned government's interests and knowledge. Consult its own active goals, bilateral relations, commitments, resources, domestic conditions and recent exchanges. Government plans are wishes, not outcomes. Foreign governments may reject, counter, delay or pursue independent priorities. Give the player no special success advantage. Return material decisionFactors and bounded uncertainty. Consider the supplied structured dossier, stalled goal pressure and resource conflicts. Low information or a divided government can justify exploratory talks or delay. For open conferences involving you, record conferenceDecisions independently for the current round; do not assume other parties consent. A counteroffer revokes all prior acceptances. A resolved/failed goal requires reviewing its remaining means. Unrelated public activity must not displace national goals.",
   diplomat:
     "Speak for the assigned government. Provide a structured negotiation move, preserving participants and secrecy. Accept only an offer compatible with this government's interests; reject coercion or counter with reciprocal terms. Speech alone creates no agreement or treaty. No is a valid outcome, including for consultation. Consider cost, trust, alternatives and urgency; ignore low-value approaches. Uncertainty can justify delay or narrower exploratory terms. Accept beneficial compatible terms when supplied facts support them; do not invent prohibitions or require unspecified analysis for every low-cost offer. Counter when a concrete narrower term would make cooperation worthwhile. Delay only for material unresolved information or domestic constraints. Never accept merely because a proposal exists.",
   resolver:
-    'Adjudicate competing observable intentions. Only listed finite command capabilities are available. State changes require mechanical justification and independent consent where applicable. Never create a treaty directly or fabricate prior agreement. Preserve existing treaties, rejections, active wars and ongoing projects. Initiative effects happen over time. Use the supplied runId prefix for new entity IDs.',
+    'Adjudicate foreign/world responses and independent intentions. The deterministic Player Action Executor commits valid policy components ordered by the player; do not veto or substitute those orders because they are risky, implausible or strategically inconsistent. Only listed finite command capabilities are available. State changes require mechanical justification and independent consent where applicable. Never create a treaty directly or fabricate prior agreement. Preserve existing treaties, rejections, active wars and ongoing projects. Initiative effects happen over time. Use the supplied runId prefix for new entity IDs.',
   critic:
     'Check observable semantic consistency against canonical facts, plans, consent and proposal. Flag unexplained success, violated commitments, secrecy disclosure, invented references or factual contradictions. Already executed domain validation is authoritative; you can reject but cannot bypass it.',
   narrator:
@@ -90,6 +97,7 @@ export interface TurnTrace {
   id: string;
   revision: number;
   intent: PlayerIntent | null;
+  playerExecution: PlayerExecution | null;
   relevance: ReturnType<typeof selectRelevance>;
   activations: ActorActivation[];
   contexts: ContextBundle[];
@@ -125,7 +133,7 @@ export interface PrepareInput {
   quality?: 'fast' | 'balanced' | 'deep';
   runId?: string;
   signal?: AbortSignal;
-  onProgress?: (stage: ProgressStage) => void;
+  onProgress?: (stage: ProgressStage, actor?: string) => void;
   fault?: (
     stage:
       'before-request' | 'after-plan' | 'after-proposal' | 'during-validation',
@@ -209,7 +217,11 @@ export function createOrchestrator(
         prompt,
         jsonSchema: contractSchema(schema),
         temperature: config.temperature,
-        maxTokens: 4000,
+        maxTokens:
+          config.workflow === 'compact' ||
+          (config.workflow === 'auto' && config.kind === 'ollama')
+            ? 400
+            : 4000,
         ...(signal ? { signal } : {}),
       });
       record.rawOutput = result.rawText.slice(0, 100000);
@@ -239,7 +251,12 @@ export function createOrchestrator(
     input: PrepareInput,
   ): Promise<{ request: z.infer<typeof CommitRequest>; trace: TurnTrace }> {
     const started = performance.now();
-    const { world, signal } = input;
+    const world = input.world;
+    const deadline = AbortSignal.timeout(config.maxTurnMs);
+    const signal = input.signal
+      ? AbortSignal.any([input.signal, deadline])
+      : deadline;
+    input = { ...input, signal };
     const runId = (input.runId ?? crypto.randomUUID())
       .replace(/[^a-z0-9._-]/g, '')
       .slice(0, 48);
@@ -249,6 +266,7 @@ export function createOrchestrator(
       id: runId,
       revision: world.revision,
       intent: null,
+      playerExecution: null,
       relevance: selectRelevance(world, null),
       activations: [],
       contexts: [],
@@ -266,7 +284,19 @@ export function createOrchestrator(
     if (input.fault) faults.set(trace, input.fault);
     budgets.set(
       trace,
-      input.quality === 'fast' ? 24 : input.quality === 'deep' ? 80 : 48,
+      config.maxCalls ??
+        (config.workflow === 'compact' ||
+        (config.workflow === 'auto' && config.kind === 'ollama')
+          ? input.quality === 'deep'
+            ? 12
+            : input.quality === 'fast'
+              ? 5
+              : 8
+          : input.quality === 'fast'
+            ? 24
+            : input.quality === 'deep'
+              ? 80
+              : 48),
     );
     const progress = (stage: ProgressStage) => {
       signal?.throwIfAborted();
@@ -281,10 +311,25 @@ export function createOrchestrator(
         (input.days ?? 30) > 365
       )
         throw new Error('Turn duration must be 1–365 days');
+      if (
+        config.workflow === 'compact' ||
+        (config.workflow === 'auto' && config.kind === 'ollama')
+      ) {
+        const request = await compactPrepare(
+          input,
+          trace,
+          config,
+          (role, schema, payload, references, attempt = 0) =>
+            call(role, schema, payload, trace, references, signal, attempt),
+        );
+        trace.status = 'prepared';
+        trace.latencyMs = performance.now() - started;
+        return { request, trace };
+      }
       if (input.action.source === 'player') {
         progress('interpreting');
         const payload = buildFormalizerPayload(world, input.action);
-        for (let attempt = 0; attempt < 2; attempt++) {
+        for (let attempt = 0; attempt <= config.maxRepairs; attempt++) {
           try {
             const draft = await call(
               'formalizer',
@@ -356,10 +401,47 @@ export function createOrchestrator(
             signal?.throwIfAborted();
             trace.failures.push(message(error));
             trace.intent = null;
-            if (attempt === 1) throw error;
+            if (attempt === config.maxRepairs) {
+              trace.intent = deterministicPlayerIntent(world, input.action);
+              trace.validatorResults.push(
+                'Formalizer unavailable; exact player clauses were interpreted using deterministic world references and provider-independent rules.',
+              );
+              break;
+            }
           }
         }
       }
+      trace.playerExecution =
+        input.action.source === 'player'
+          ? executePlayerAction(world, trace.intent, runId)
+          : null;
+      const playerCommands = trace.playerExecution?.commands ?? [];
+      // Aggressive policy effects must be visible to governments planning their
+      // response this turn. A newly created diplomatic offer is different: the
+      // recipient gets a chance to answer on a later turn, not in the offer's
+      // own preparation pass.
+      const reactionPreviewCommands = playerCommands.filter(
+        (entry) => entry.command.type !== 'OPEN_NEGOTIATION',
+      );
+      const planningWorld = reactionPreviewCommands.length
+        ? resolveTurn(
+            world,
+            {
+              expectedRevision: world.revision,
+              action: input.action,
+              commands: reactionPreviewCommands.map((entry, index) => ({
+                id: CommandId.parse(`command:player-preview-${runId}-${index}`),
+                reason: entry.reason,
+                command: entry.command,
+              })),
+            },
+            {
+              turnId: TurnId.parse(`turn:player-preview-${runId}`),
+              actionId: ActionId.parse(`action:player-preview-${runId}`),
+              recordedAt: '2026-10-03T00:00:00.000Z',
+            },
+          )
+        : world;
       progress('gathering-context');
       trace.relevance = selectRelevance(world, trace.intent);
       const quality = input.quality ?? 'balanced';
@@ -374,7 +456,7 @@ export function createOrchestrator(
         trace.activations.map((a) => a.nationId),
       );
       // Open proposals activate their recipient, independently from new player activity.
-      for (const n of world.negotiations
+      for (const n of planningWorld.negotiations
         .filter((n) => n.status === 'open')
         .slice(0, 8)) {
         for (const id of [n.proposerNationId, n.recipientNationId])
@@ -386,7 +468,7 @@ export function createOrchestrator(
               background: true,
             });
       }
-      for (const conference of world.conferences
+      for (const conference of planningWorld.conferences
         .filter((c) => c.status === 'open')
         .slice(0, 2)) {
         for (const id of conference.parties)
@@ -401,16 +483,23 @@ export function createOrchestrator(
       progress('governments-deliberating');
       const planning = trace.activations.map(async (activation) => {
         const nationId = activation.nationId;
+        if (
+          input.action.source === 'player' &&
+          nationId === world.playerNationId
+        ) {
+          input.fault?.('after-plan');
+          return null;
+        }
         const relevant = [
           ...trace.relevance.directNationIds,
           ...trace.relevance.secondaryNationIds,
         ];
-        const ownNegotiations = world.negotiations.filter(
+        const ownNegotiations = planningWorld.negotiations.filter(
           (n) =>
             n.status === 'open' &&
             [n.proposerNationId, n.recipientNationId].includes(nationId),
         );
-        world.goals
+        planningWorld.goals
           .filter(
             (g) =>
               g.nationId === nationId &&
@@ -419,7 +508,7 @@ export function createOrchestrator(
               ),
           )
           .forEach((g) => relevant.push(...g.targetNationIds));
-        world.commitments
+        planningWorld.commitments
           .filter(
             (c) => c.issuer === nationId || c.recipients.includes(nationId),
           )
@@ -427,7 +516,7 @@ export function createOrchestrator(
         ownNegotiations.forEach((n) =>
           relevant.push(n.proposerNationId, n.recipientNationId),
         );
-        const context = buildContext(world, nationId, relevant, {
+        const context = buildContext(planningWorld, nationId, relevant, {
           recentLimit: quality === 'deep' ? 40 : 18,
           eventBudget: Math.floor(config.contextBudget / 5),
           topics: [
@@ -436,7 +525,7 @@ export function createOrchestrator(
               : '',
             ...ownNegotiations.map((n) => n.topic),
           ],
-          summaries: [summarizeHistory(world, nationId)],
+          summaries: [summarizeHistory(planningWorld, nationId)],
         });
         trace.contexts.push(context);
         let intent = trace.intent ? scopeIntent(trace.intent, nationId) : null;
@@ -449,6 +538,10 @@ export function createOrchestrator(
             targetNationIds: [n.recipientNationId],
             targetRegionIds: [],
             visibility: n.visibility,
+            policyOrders: [],
+            desiredOutcomes: [],
+            constraints: [],
+            majorIntentClauses: [],
             intentions: [
               {
                 kind: 'diplomacy',
@@ -503,7 +596,7 @@ export function createOrchestrator(
           continue;
         try {
           const negotiationId =
-            world.negotiations.find(
+            planningWorld.negotiations.find(
               (n) =>
                 n.status === 'open' &&
                 n.recipientNationId === plan.nationId &&
@@ -535,77 +628,91 @@ export function createOrchestrator(
         } catch (error) {
           signal?.throwIfAborted();
           trace.failures.push(message(error));
+          if (
+            trace.intent?.targetNationIds.includes(plan.nationId) ||
+            planningWorld.negotiations.some(
+              (n) =>
+                n.terms === intent?.summary &&
+                n.status === 'open' &&
+                n.recipientNationId === plan.nationId,
+            )
+          )
+            throw new Error(
+              `Important diplomatic response unavailable: ${message(error)}. Retry this turn; no outcome has been committed.`,
+              { cause: error },
+            );
         }
       }
       progress('resolving');
-      const nextDate = new Date(world.date + 'T00:00:00Z');
+      const nextDate = new Date(planningWorld.date + 'T00:00:00Z');
       nextDate.setUTCDate(nextDate.getUTCDate() + (input.days ?? 30));
       const plannedIds = trace.plans.map((p) => p.nationId);
       const resolutionWorld = {
-        ...world,
+        ...planningWorld,
         scenario: {
-          ...world.scenario,
-          neighborhoods: world.scenario.neighborhoods?.filter((n) =>
+          ...planningWorld.scenario,
+          neighborhoods: planningWorld.scenario.neighborhoods?.filter((n) =>
             plannedIds.includes(n.nationId),
           ),
         },
-        nations: world.nations.filter((n) => plannedIds.includes(n.id)),
-        regions: world.regions.filter(
+        nations: planningWorld.nations.filter((n) => plannedIds.includes(n.id)),
+        regions: planningWorld.regions.filter(
           (r) =>
             plannedIds.includes(r.ownerNationId) ||
             plannedIds.includes(r.controllerNationId),
         ),
-        relations: world.relations.filter(
+        relations: planningWorld.relations.filter(
           (r) =>
             plannedIds.includes(r.nationA) && plannedIds.includes(r.nationB),
         ),
-        treaties: world.treaties.filter((t) =>
+        treaties: planningWorld.treaties.filter((t) =>
           t.parties.some((id) => plannedIds.includes(id)),
         ),
-        conflicts: world.conflicts.filter((c) =>
+        conflicts: planningWorld.conflicts.filter((c) =>
           [...c.attackers, ...c.defenders].some((id) =>
             plannedIds.includes(id),
           ),
         ),
-        organizations: world.organizations.filter((o) =>
+        organizations: planningWorld.organizations.filter((o) =>
           o.members.some((id) => plannedIds.includes(id)),
         ),
-        goals: world.goals.filter(
+        goals: planningWorld.goals.filter(
           (g) =>
             plannedIds.includes(g.nationId) &&
             (!['achieved', 'failed', 'abandoned', 'superseded'].includes(
               g.status,
             ) ||
               g.updatedDate >=
-                (world.turns.at(-2)?.date ?? world.scenario.startDate)),
+                (planningWorld.turns.at(-2)?.date ??
+                  planningWorld.scenario.startDate)),
         ),
-        initiatives: world.initiatives.filter(
+        initiatives: planningWorld.initiatives.filter(
           (i) => plannedIds.includes(i.nationId) && i.status === 'active',
         ),
-        negotiations: world.negotiations.filter(
+        negotiations: planningWorld.negotiations.filter(
           (n) =>
             plannedIds.includes(n.proposerNationId) ||
             plannedIds.includes(n.recipientNationId),
         ),
-        commitments: world.commitments.filter(
+        commitments: planningWorld.commitments.filter(
           (c) =>
             plannedIds.includes(c.issuer) ||
             c.recipients.some((id) => plannedIds.includes(id)),
         ),
-        crises: world.crises.filter(
+        crises: planningWorld.crises.filter(
           (c) =>
             c.visibility === 'public' &&
             c.participants.some((id) => plannedIds.includes(id)),
         ),
-        economicLinks: world.economicLinks.filter(
+        economicLinks: planningWorld.economicLinks.filter(
           (l) =>
             plannedIds.includes(l.dependentNationId) &&
             plannedIds.includes(l.partnerNationId),
         ),
-        sanctions: world.sanctions.filter(
+        sanctions: planningWorld.sanctions.filter(
           (s) => plannedIds.includes(s.issuer) || plannedIds.includes(s.target),
         ),
-        conferences: world.conferences.filter(
+        conferences: planningWorld.conferences.filter(
           (c) =>
             c.visibility === 'public' &&
             c.parties.some((id) => plannedIds.includes(id)),
@@ -618,8 +725,15 @@ export function createOrchestrator(
       };
       const payload = {
         world: resolutionWorld,
-        action: input.action,
-        intent: trace.intent,
+        action:
+          input.action.source === 'player'
+            ? {
+                actorNationId: planningWorld.playerNationId,
+                source: 'system',
+                text: 'Resolve independent world developments. Player policy orders have already been executed.',
+              }
+            : input.action,
+        intent: input.action.source === 'player' ? null : trace.intent,
         plans: trace.plans,
         moves: trace.moves,
         capabilities: RESOLVER_CAPABILITIES,
@@ -636,7 +750,7 @@ export function createOrchestrator(
         instruction:
           "Only proposal commands. Do not ADVANCE_DATE (the engine adds it). No territorial transfer or stat/debug mutation. Preserve secrecy. Respond only on behalf of a planned government. Acceptance must match that government's recorded diplomatic move. Create no treaty directly. Initiatives must start now with zero progress. New object IDs must use the supplied runId prefix.",
       };
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 0; attempt <= config.maxRepairs; attempt++) {
         try {
           trace.proposal = await call(
             'resolver',
@@ -686,7 +800,7 @@ export function createOrchestrator(
             }
           }
           validateCapabilities(
-            world,
+            planningWorld,
             trace.proposal,
             trace.plans,
             trace.moves,
@@ -698,6 +812,7 @@ export function createOrchestrator(
             expectedHash: input.expectedHash,
             action: input.action,
             commands: [
+              ...playerCommands,
               ...trace.proposal.commands,
               {
                 command: { type: 'ADVANCE_DATE', date: payload.nextDate },
@@ -716,6 +831,24 @@ export function createOrchestrator(
             actionId: ActionId.parse(`action:preview-${runId}`),
             recordedAt: '2026-10-01T00:00:00.000Z',
           });
+          if (trace.intent && trace.playerExecution) {
+            const audit = auditMajorIntentClauses(
+              world,
+              trace.intent,
+              request.commands.map((entry) => entry.command),
+            );
+            trace.playerExecution.intentSatisfactionAudit = audit;
+            const unsupported = audit.filter(
+              (entry) => entry.status === 'UNSUPPORTED',
+            );
+            if (unsupported.length)
+              throw new Error(
+                `Major player intent satisfaction audit failed: ${unsupported.map((entry) => `${entry.clauseId} (${entry.explanation})`).join('; ')}`,
+              );
+            trace.validatorResults.push(
+              `Major player-intent audit represented ${audit.filter((entry) => entry.status !== 'BLOCKED_BY_REAL_WORLD_CONSTRAINT').length}/${audit.length} clauses in validated mechanics; explicit world constraints are recorded separately.`,
+            );
+          }
           trace.validatorResults.push(
             'Schema, ID/capability validation, sequential domain checks and world invariants passed.',
           );
@@ -754,6 +887,12 @@ export function createOrchestrator(
               'Consistency review accepted observable proposal.',
             );
           }
+          if (playerCommands.length) {
+            trace.proposal.commands.push(...playerCommands);
+            trace.validatorResults.push(
+              `Player Action Executor preserved ${trace.playerExecution?.orders.length ?? 0} authoritative order(s) through ${playerCommands.length} validated canonical command(s).`,
+            );
+          }
           signal?.throwIfAborted();
           trace.status = 'prepared';
           trace.latencyMs = performance.now() - started;
@@ -761,7 +900,7 @@ export function createOrchestrator(
         } catch (error) {
           signal?.throwIfAborted();
           trace.failures.push(message(error));
-          if (attempt === 1) throw error;
+          if (attempt === config.maxRepairs) throw error;
           progress('resolving');
         }
       }
@@ -791,6 +930,15 @@ export function createOrchestrator(
     let headlines = fallback;
     try {
       input.fault?.('during-narration');
+      if (
+        config.workflow === 'compact' ||
+        (config.workflow === 'auto' && config.kind === 'ollama')
+      )
+        return {
+          headlines: fallback,
+          summary: summarizeHistory(input.after, input.after.playerNationId),
+          modelCalls: [],
+        };
       const payload = NarrationInput.parse({
         version: 1,
         date: input.after.date,
@@ -1105,6 +1253,7 @@ export function validateCapabilities(
           );
         if (
           Math.abs(command.delta) > 5 ||
+          command.trustDelta !== undefined ||
           !planned.has(command.nationA) ||
           !planned.has(command.nationB)
         )

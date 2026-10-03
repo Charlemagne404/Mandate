@@ -137,6 +137,18 @@ export const WorldCommand = z.discriminatedUnion('type', [
     ]),
     regionId: RegionId.optional(),
   }),
+  command('STRATEGIC_ATTACK', {
+    attackerNationId: NationId,
+    targetNationId: NationId,
+    conflictId: ConflictId,
+    crisisId: CrisisId.optional(),
+    scale: z.enum(['major', 'catastrophic']),
+    abstraction: z.literal('abstracted-effects-no-nuclear-weapons-model'),
+  }),
+  command('MOBILIZE_FORCE', {
+    nationId: NationId,
+    level: z.enum(['partial', 'full']),
+  }),
   command('APPLY_DOMESTIC_PRESSURE', {
     nationId: NationId,
     amount: z.number().int().min(1).max(20),
@@ -146,6 +158,7 @@ export const WorldCommand = z.discriminatedUnion('type', [
     nationA: NationId,
     nationB: NationId,
     delta: z.number().int().min(-200).max(200),
+    trustDelta: z.number().int().min(-100).max(100).optional(),
   }),
   command('ADJUST_NATION_STAT', {
     nationId: NationId,

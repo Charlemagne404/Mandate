@@ -48,23 +48,86 @@ export function demandFulfilled(w: WorldState, d: Crisis['demands'][number]) {
   }
 }
 function recordCrisis(
+  w: WorldState,
   c: Crisis,
   date: string,
   nationId: NationId | null,
   action: string,
+  aggressiveAction = false,
 ) {
   const old = c.severity;
   c.severity = crisisSeverity(c);
+  const sameDateHistory = c.history.filter((entry) => entry.date === date);
+  const turnBaseline =
+    sameDateHistory[0]?.severity ?? c.history.at(-1)?.severity ?? old;
+  const actionId = w.actions.at(-1)?.id;
+  const escalatoryCommand = (command: WorldCommand) => {
+    const participants = new Set(c.participants);
+    switch (command.type) {
+      case 'STRATEGIC_ATTACK':
+        return (
+          participants.has(command.attackerNationId) &&
+          participants.has(command.targetNationId)
+        );
+      case 'CRISIS_ACTION':
+        return (
+          command.crisisId === c.id &&
+          (command.move === 'mobilize' || command.move === 'warn')
+        );
+      case 'MOBILIZE_FORCE':
+        return participants.has(command.nationId);
+      case 'START_CONFLICT':
+        return (
+          [...command.conflict.attackers, ...command.conflict.defenders].filter(
+            (id) => participants.has(id),
+          ).length >= 2
+        );
+      case 'THEATER_ACTION':
+        return (
+          ['limited-offensive', 'major-offensive', 'air-pressure'].includes(
+            command.posture,
+          ) &&
+          w.conflicts.some(
+            (conflict) =>
+              conflict.id === command.conflictId &&
+              [...conflict.attackers, ...conflict.defenders].every((id) =>
+                participants.has(id),
+              ),
+          )
+        );
+      case 'CONFLICT_ACTION':
+        return (
+          ['offensive', 'mobilize', 'reinforce'].includes(command.stance) &&
+          w.conflicts.some(
+            (conflict) =>
+              conflict.id === command.conflictId &&
+              [...conflict.attackers, ...conflict.defenders].every((id) =>
+                participants.has(id),
+              ),
+          )
+        );
+      default:
+        return false;
+    }
+  };
+  const turnHadAggression =
+    aggressiveAction ||
+    w.commands.some(
+      (record) =>
+        record.actionId === actionId && escalatoryCommand(record.command),
+    );
   c.status =
     c.demands.length > 0 &&
     c.demands.every((d) => d.satisfied) &&
     c.militaryPosture <= 10 &&
     c.diplomaticBreakdown <= 10
       ? 'resolved'
-      : c.severity > old
+      : c.severity > turnBaseline
         ? 'escalating'
-        : c.severity < old
-          ? 'de-escalating'
+        : c.severity < turnBaseline
+          ? turnHadAggression
+            ? 'active'
+            : 'de-escalating'
           : c.status === 'frozen'
             ? 'frozen'
             : 'active';
@@ -369,7 +432,142 @@ export function applyContinuityCommand(
         v.diplomaticBreakdown = clamp(v.diplomaticBreakdown - 20);
       }
       if (c.move === 'freeze') v.status = 'frozen';
-      recordCrisis(v, w.date, c.nationId, c.move);
+      recordCrisis(
+        w,
+        v,
+        w.date,
+        c.nationId,
+        c.move,
+        c.move === 'mobilize' || c.move === 'warn',
+      );
+      return true;
+    }
+    case 'STRATEGIC_ATTACK': {
+      const attacker = nation(c.attackerNationId);
+      const target = nation(c.targetNationId);
+      requireDomain(attacker.id !== target.id, 'A nation cannot attack itself');
+      const conflict = w.conflicts.find((item) => item.id === c.conflictId);
+      requireDomain(
+        conflict?.status === 'active' &&
+          conflict.settlementState === 'fighting' &&
+          conflict.attackers.includes(attacker.id) &&
+          conflict.defenders.includes(target.id),
+        'Strategic attack abstraction requires an active offensive conflict',
+      );
+      const crisis = c.crisisId
+        ? w.crises.find((item) => item.id === c.crisisId)
+        : undefined;
+      if (c.crisisId)
+        requireDomain(
+          crisis &&
+            crisis.status !== 'resolved' &&
+            crisis.participants.includes(attacker.id) &&
+            crisis.participants.includes(target.id),
+          'Strategic attack abstraction requires its recorded bilateral crisis',
+        );
+      requireDomain(
+        !w.commands.some(
+          (record) =>
+            record.actionId === w.actions.at(-1)?.id &&
+            record.command.type === 'STRATEGIC_ATTACK' &&
+            record.command.attackerNationId === attacker.id &&
+            record.command.targetNationId === target.id,
+        ),
+        'One strategic attack abstraction per target per turn',
+      );
+      const catastrophic = c.scale === 'catastrophic';
+      const change = (
+        n: typeof attacker,
+        stat: keyof typeof n.stats,
+        delta: number,
+      ) => {
+        if (stat === 'treasury')
+          n.stats.treasury = Math.max(0, n.stats.treasury + delta);
+        else n.stats[stat] = clamp(n.stats[stat] + delta);
+      };
+      change(target, 'economy', catastrophic ? -18 : -9);
+      change(target, 'industrial', catastrophic ? -16 : -8);
+      change(target, 'military', catastrophic ? -10 : -5);
+      change(target, 'readiness', catastrophic ? -22 : -12);
+      change(target, 'stability', catastrophic ? -22 : -12);
+      change(target, 'legitimacy', catastrophic ? -18 : -9);
+      change(target, 'fiscal', catastrophic ? -14 : -8);
+      change(target, 'unrest', catastrophic ? 26 : 14);
+      change(target, 'treasury', catastrophic ? -20 : -10);
+      change(attacker, 'economy', catastrophic ? -8 : -4);
+      change(attacker, 'fiscal', catastrophic ? -12 : -7);
+      change(attacker, 'readiness', catastrophic ? -12 : -7);
+      change(attacker, 'stability', catastrophic ? -12 : -7);
+      change(attacker, 'legitimacy', catastrophic ? -16 : -9);
+      change(attacker, 'unrest', catastrophic ? 20 : 11);
+      change(attacker, 'treasury', catastrophic ? -25 : -14);
+      conflict.escalation = clamp(
+        conflict.escalation + (catastrophic ? 30 : 18),
+      );
+      conflict.exhaustion = clamp(
+        conflict.exhaustion + (catastrophic ? 10 : 6),
+      );
+      if (crisis) {
+        crisis.militaryPosture = clamp(
+          crisis.militaryPosture + (catastrophic ? 70 : 20),
+        );
+        crisis.rhetoric = clamp(crisis.rhetoric + (catastrophic ? 75 : 14));
+        crisis.diplomaticBreakdown = clamp(
+          crisis.diplomaticBreakdown + (catastrophic ? 75 : 18),
+        );
+      }
+      relationshipEffect(
+        w,
+        attacker.id,
+        target.id,
+        catastrophic ? -70 : -50,
+        catastrophic ? -70 : -50,
+        catastrophic
+          ? 'Catastrophic strategic attack abstraction; weapon-specific effects are not simulated'
+          : 'Major strategic attack abstraction; weapon-specific effects are not simulated',
+      );
+      if (crisis)
+        recordCrisis(
+          w,
+          crisis,
+          w.date,
+          attacker.id,
+          'abstracted strategic attack and military escalation',
+          true,
+        );
+      return true;
+    }
+    case 'MOBILIZE_FORCE': {
+      const n = nation(c.nationId);
+      const required = c.level === 'full' ? 20 : 8;
+      const readiness = c.level === 'full' ? 16 : 7;
+      // The order is valid even when the treasury cannot fund it. Available
+      // funds determine how much readiness actually materializes; the shortfall
+      // damages fiscal capacity and public order instead of vetoing the order.
+      const paid = Math.min(n.stats.treasury, required);
+      n.stats.treasury -= paid;
+      n.stats.readiness = clamp(
+        n.stats.readiness + Math.floor((readiness * paid) / required),
+      );
+      if (paid < required) {
+        const shortfall = required - paid;
+        n.stats.fiscal = clamp(n.stats.fiscal - Math.ceil(shortfall / 5));
+        n.stats.unrest = clamp(n.stats.unrest + Math.ceil(shortfall / 10));
+      }
+      for (const crisis of w.crises.filter(
+        (item) =>
+          item.status !== 'resolved' && item.participants.includes(n.id),
+      )) {
+        crisis.militaryPosture = clamp(crisis.militaryPosture + 10);
+        recordCrisis(
+          w,
+          crisis,
+          w.date,
+          n.id,
+          `${c.level} military mobilization ordered`,
+          true,
+        );
+      }
       return true;
     }
     case 'SET_ECONOMIC_LINK': {
@@ -863,6 +1061,7 @@ export function updateContinuity(
     if (breached) c.diplomaticBreakdown = clamp(c.diplomaticBreakdown + 15);
     if (crisisSeverity(c) !== c.severity || demandsChanged)
       recordCrisis(
+        w,
         c,
         date,
         null,

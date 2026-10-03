@@ -6,6 +6,7 @@ import type {
 } from '@mandate/schemas';
 export const commandTypes: WorldCommand['type'][] = [
   'THEATER_ACTION',
+  'STRATEGIC_ATTACK',
   'OPEN_CRISIS',
   'CRISIS_ACTION',
   'SET_ECONOMIC_LINK',
@@ -76,6 +77,22 @@ export function template(
         posture: 'hold',
         allocation: 50,
       };
+    case 'STRATEGIC_ATTACK': {
+      const conflict = w.conflicts.find(
+        (item) =>
+          item.status === 'active' &&
+          [...item.attackers, ...item.defenders].includes(selected) &&
+          [...item.attackers, ...item.defenders].includes(target),
+      );
+      return {
+        type,
+        attackerNationId: selected,
+        targetNationId: target,
+        conflictId: conflict?.id ?? 'conflict:select-existing',
+        scale: 'major',
+        abstraction: 'abstracted-effects-no-nuclear-weapons-model',
+      };
+    }
     case 'OPEN_CRISIS':
       return {
         type,
@@ -308,6 +325,8 @@ export function template(
         amount: 5,
         cause: 'Development stress test: rising fiscal pressure.',
       };
+    case 'MOBILIZE_FORCE':
+      return { type, nationId: selected, level: 'full' };
     case 'TRANSFER_CONTROL':
     case 'TRANSFER_OWNERSHIP':
     case 'ADD_CLAIM':

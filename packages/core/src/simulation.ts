@@ -55,12 +55,19 @@ export function advanceSimulation(w: WorldState, nextDate: string): void {
           Math.min(6, trade.length * 2) -
           disruption,
       );
+      const defenseShare = n.strategy.militaryBudgetShare;
+      const defenseCost = Math.max(0, Math.ceil((defenseShare - 35) / 13));
+      const defenseSavings = defenseShare <= 10 ? 1 : 0;
+      const taxAdjustment = Math.trunc((n.strategy.taxRate - 50) / 15);
       n.stats.treasury = Math.min(
         1000000000,
         Math.max(
           0,
           n.stats.treasury +
-            income -
+            income +
+            taxAdjustment -
+            defenseCost +
+            defenseSavings -
             burden -
             (fighting.length ? Math.floor(n.stats.energyExposure / 25) : 0),
         ),
@@ -77,6 +84,24 @@ export function advanceSimulation(w: WorldState, nextDate: string): void {
         n.stats.economy = clamp(
           n.stats.economy + Math.sign(potential - n.stats.economy),
         );
+      }
+      if (defenseShare >= 60)
+        n.stats.readiness = clamp(
+          n.stats.readiness + 1 + (defenseShare >= 90 ? 1 : 0),
+        );
+      else if (defenseShare <= 10)
+        n.stats.readiness = clamp(n.stats.readiness - 1);
+      if (defenseShare >= 85 && n.stats.treasury < 10) {
+        n.stats.fiscal = clamp(n.stats.fiscal - 1);
+        n.stats.unrest = clamp(n.stats.unrest + 1);
+      } else if (defenseShare <= 10) {
+        n.stats.fiscal = clamp(n.stats.fiscal + 1);
+      }
+      if (n.strategy.taxRate >= 85)
+        n.stats.economy = clamp(n.stats.economy - 1);
+      else if (n.strategy.taxRate <= 10 && n.stats.treasury < 10) {
+        n.stats.fiscal = clamp(n.stats.fiscal - 1);
+        n.stats.unrest = clamp(n.stats.unrest + 1);
       }
       if (n.stats.unrest >= 60) {
         n.stats.stability = clamp(n.stats.stability - 2);

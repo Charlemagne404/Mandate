@@ -22,6 +22,36 @@ export const Role = z.enum([
 ]);
 export type Role = z.infer<typeof Role>;
 const reason = z.string().trim().min(1).max(2000);
+export const MajorIntentClause = z.strictObject({
+  id: z.string().trim().min(1).max(160),
+  kind: z.enum([
+    'strategic-strike',
+    'armed-conflict-initiation',
+    'invasion-offensive',
+    'conquest-objective',
+    'military-mobilization',
+    'declaration-of-war',
+  ]),
+  description: reason,
+  sourceClauseIds: z.array(z.number().int().min(0).max(19)).min(1).max(20),
+  targetNationIds: z.array(NationId).max(20),
+  targetRegionIds: z.array(RegionId).max(20),
+});
+export type MajorIntentClause = z.infer<typeof MajorIntentClause>;
+export const MajorIntentSatisfaction = z.strictObject({
+  clauseId: z.string().trim().min(1).max(160),
+  kind: MajorIntentClause.shape.kind,
+  status: z.enum([
+    'EXECUTED',
+    'ATTEMPTED',
+    'REPRESENTED_BY_VALID_ABSTRACTION',
+    'BLOCKED_BY_REAL_WORLD_CONSTRAINT',
+    'UNSUPPORTED',
+  ]),
+  evidence: z.array(reason).max(12),
+  explanation: reason,
+});
+export type MajorIntentSatisfaction = z.infer<typeof MajorIntentSatisfaction>;
 export const PlayerIntent = z.strictObject({
   version: z.literal(1),
   actorNationId: NationId,
@@ -29,6 +59,81 @@ export const PlayerIntent = z.strictObject({
   targetNationIds: z.array(NationId).max(20),
   targetRegionIds: z.array(RegionId).max(20),
   visibility: z.enum(['public', 'private']),
+  // A player policy order records what the controlled government must attempt.
+  // Desired outcomes are separate because other governments and world mechanics
+  // determine whether those outcomes happen.
+  policyOrders: z
+    .array(
+      z.strictObject({
+        authority: z.literal('player-policy-order'),
+        kind: z.enum([
+          'diplomacy',
+          'economy',
+          'military',
+          'domestic',
+          'territory',
+          'wait',
+          'other',
+        ]),
+        text: reason,
+        sourceClauseIds: z
+          .array(z.number().int().min(0).max(19))
+          .min(1)
+          .max(20),
+        targetNationIds: z.array(NationId).max(20),
+        targetRegionIds: z.array(RegionId).max(20),
+        intensity: z.enum(['low', 'medium', 'high', 'extreme']),
+        persistent: z.boolean(),
+        visibility: z.enum(['public', 'private']),
+      }),
+    )
+    .max(12)
+    .default([]),
+  desiredOutcomes: z
+    .array(
+      z.strictObject({
+        kind: z.enum([
+          'territory',
+          'war',
+          'alliance',
+          'treaty',
+          'recognition',
+          'peace',
+          'other',
+        ]),
+        description: reason,
+        sourceClauseIds: z
+          .array(z.number().int().min(0).max(19))
+          .min(1)
+          .max(20),
+        targetNationIds: z.array(NationId).max(20),
+        targetRegionIds: z.array(RegionId).max(20),
+      }),
+    )
+    .max(12)
+    .default([]),
+  constraints: z
+    .array(
+      z.strictObject({
+        kind: z.enum([
+          'avoid-war',
+          'avoid-mobilization',
+          'avoid-public-announcement',
+          'avoid-treaty-break',
+          'other',
+        ]),
+        description: reason,
+        sourceClauseIds: z
+          .array(z.number().int().min(0).max(19))
+          .min(1)
+          .max(20),
+      }),
+    )
+    .max(20)
+    .default([]),
+  // Derived deterministically from the player's exact clauses after formalizer
+  // classification. Providers cannot remove high-impact intent from this list.
+  majorIntentClauses: z.array(MajorIntentClause).max(40).default([]),
   intentions: z
     .array(
       z.strictObject({
@@ -193,6 +298,12 @@ export const ProviderConfig = z.strictObject({
   temperature: z.number().min(0).max(2).default(0.2),
   contextBudget: z.number().int().min(2000).max(200000).default(48000),
   contextTokens: z.number().int().min(1024).max(131072).optional(),
+  workflow: z.enum(['auto', 'compact', 'standard']).default('auto'),
+  concurrency: z.number().int().min(1).max(8).optional(),
+  maxCalls: z.number().int().min(3).max(80).optional(),
+  maxBackgroundPlanners: z.number().int().min(0).max(8).default(1),
+  maxTurnMs: z.number().int().min(10000).max(600000).default(180000),
+  maxRepairs: z.number().int().min(0).max(1).default(1),
   apiKey: z.string().max(1000).optional(),
 });
 export type ProviderConfig = z.infer<typeof ProviderConfig>;

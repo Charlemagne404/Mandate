@@ -1,3 +1,4 @@
+import { installLocalModel } from './model-install.js';
 import { readdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -9,6 +10,8 @@ import {
   createProvider,
   createOrchestrator,
   discoverLocalProviders,
+  profileProvider,
+  profileKey,
 } from '@mandate/ai';
 import { loadScenario } from '@mandate/scenarios';
 import {
@@ -60,6 +63,9 @@ export function createAlphaServices(
     completed: 0,
     total: 0,
     error: '',
+    actor: '',
+    startedAt: '',
+    warnings: [] as string[],
   };
   const unlocked = () => {
     if (active)
@@ -90,13 +96,25 @@ export function createAlphaServices(
     quality: 'fast' | 'balanced' | 'deep',
     signal: AbortSignal,
   ) => {
+    signal = AbortSignal.any([signal, AbortSignal.timeout(config.maxTurnMs)]);
     const before = store.load();
     if (before.observerMode && text)
       throw new WorldError(
         'DOMAIN',
         'Take control of a government before issuing a directive',
       );
-    const orchestrator = createOrchestrator(createProvider(config), config);
+    const provider = createProvider(config);
+    if (config.kind !== 'fake') {
+      const health = await provider.health(
+        AbortSignal.any([signal, AbortSignal.timeout(3000)]),
+      );
+      if (!health.ok)
+        throw new WorldError(
+          'DOMAIN',
+          'AI is unavailable. Open World & settings → Models to reconnect, or retry after the model starts. Your saved world has not changed.',
+        );
+    }
+    const orchestrator = createOrchestrator(provider, config);
     const prepared = await orchestrator.prepare({
       world: before,
       expectedHash: canonicalHash(before),
@@ -108,11 +126,13 @@ export function createAlphaServices(
       days,
       quality,
       signal,
-      onProgress: (stage) => {
+      onProgress: (stage, actor) => {
         progress.stage = stage;
+        progress.actor = actor ?? '';
       },
     });
     signal.throwIfAborted();
+    progress.warnings = prepared.trace.failures;
     progress.stage = 'committing';
     archive.checkpoint(store, 'Before turn ' + (before.revision + 1), 'undo');
     const after = store.commit(prepared.request, prepared.trace);
@@ -158,6 +178,12 @@ export function createAlphaServices(
       app.post('/api/settings', (request) => {
         unlocked();
         const incoming = ProviderConfig.parse(request.body);
+        if (
+          incoming.apiKey === undefined &&
+          incoming.kind === config.kind &&
+          incoming.baseUrl === config.baseUrl
+        )
+          incoming.apiKey = config.apiKey;
         createProvider(incoming); // Validate the endpoint boundary before persisting settings.
         config = incoming;
         archive.setSetting('provider', config);
@@ -166,6 +192,121 @@ export function createAlphaServices(
           apiKey: undefined,
           hasApiKey: Boolean(config.apiKey),
         };
+      });
+      app.post('/api/provider/install', async (request) => {
+        unlocked();
+        const { model } = z
+          .strictObject({ model: z.enum(['qwen2.5:3b', 'qwen3:4b-instruct']) })
+          .parse(request.body);
+        const controller = new AbortController();
+        active = controller;
+        progress = {
+          stage: 'Downloading model',
+          running: true,
+          completed: 0,
+          total: 1,
+          error: '',
+          actor: '',
+          startedAt: new Date().toISOString(),
+          warnings: [],
+        };
+        try {
+          return await installLocalModel(
+            model,
+            AbortSignal.any([controller.signal, AbortSignal.timeout(1200000)]),
+            (stage) => {
+              progress.stage = stage;
+            },
+          );
+        } finally {
+          active = null;
+          progress.running = false;
+        }
+      });
+      app.get('/api/provider/profile', () => {
+        const profile = archive.getSetting('capability-profile') as
+          { key?: string } | undefined;
+        return profile?.key === profileKey(config) ? profile : null;
+      });
+      app.post('/api/provider/profile', async () => {
+        unlocked();
+        const controller = new AbortController();
+        active = controller;
+        progress = {
+          stage: 'Testing six Mandate decisions',
+          running: true,
+          completed: 0,
+          total: 6,
+          error: '',
+          actor: '',
+          startedAt: new Date().toISOString(),
+          warnings: [],
+        };
+        try {
+          const profile = await profileProvider(
+            createProvider(config),
+            config,
+            AbortSignal.any([
+              controller.signal,
+              AbortSignal.timeout(config.maxTurnMs),
+            ]),
+          );
+          archive.setSetting('capability-profile', profile);
+          return profile;
+        } finally {
+          active = null;
+          progress.running = false;
+          progress.stage = 'ready';
+        }
+      });
+      app.get('/api/experience', () => {
+        const w = store.load();
+        return {
+          onboarded: archive.getSetting('onboarded') === true,
+          developerMode: archive.getSetting('developer-mode') === true,
+          timelineName:
+            archive.getSetting('timeline-name:' + w.saveId) ?? w.scenario.name,
+          lastSavedAt: w.turns.at(-1)?.recordedAt ?? null,
+        };
+      });
+      app.post('/api/experience', (request) => {
+        const input = z
+          .strictObject({
+            onboarded: z.boolean().optional(),
+            developerMode: z.boolean().optional(),
+          })
+          .parse(request.body);
+        if (input.onboarded !== undefined)
+          archive.setSetting('onboarded', input.onboarded);
+        if (input.developerMode !== undefined)
+          archive.setSetting('developer-mode', input.developerMode);
+        return { ok: true };
+      });
+      app.post('/api/timelines/branch', (request) => {
+        unlocked();
+        const input = expected
+          .extend({ name: z.string().trim().min(1).max(100) })
+          .parse(request.body);
+        check(input);
+        const id = archive.checkpoint(store, input.name, 'branch');
+        archive.restore(
+          store,
+          id,
+          input.expectedRevision,
+          input.expectedHash,
+          true,
+        );
+        archive.setSetting('timeline-name:' + store.load().saveId, input.name);
+        archive.checkpoint(store, input.name, 'branch');
+        return response();
+      });
+      app.get('/api/scenarios/:filename/preview', (request) => {
+        const { filename } = z
+          .object({ filename: z.string().regex(/^[a-zA-Z0-9_-]+\.json$/) })
+          .parse(request.params);
+        if (!options.scenariosDirectory)
+          throw new WorldError('DOMAIN', 'Scenarios unavailable');
+        return loadScenario(join(options.scenariosDirectory, filename));
       });
       app.get('/api/provider/discovery', () => discoverLocalProviders());
       app.post('/api/provider/health', async () => {
@@ -191,6 +332,9 @@ export function createAlphaServices(
           completed: 0,
           total: 1,
           error: '',
+          actor: '',
+          startedAt: new Date().toISOString(),
+          warnings: [],
         };
         try {
           await execute(
@@ -237,6 +381,9 @@ export function createAlphaServices(
           completed: 0,
           total: input.turns,
           error: '',
+          actor: '',
+          startedAt: new Date().toISOString(),
+          warnings: [],
         };
         const start = performance.now();
         try {
@@ -332,6 +479,25 @@ export function createAlphaServices(
         return response();
       });
       app.get('/api/timelines', () => archive.list());
+      app.post('/api/timelines/rename', (request) => {
+        unlocked();
+        const input = expected
+          .extend({
+            id: z.string().uuid(),
+            name: z.string().trim().min(1).max(100),
+          })
+          .parse(request.body);
+        archive.rename(input.id, input.name);
+        return { ok: true };
+      });
+      app.post('/api/timelines/delete', (request) => {
+        unlocked();
+        const input = expected
+          .extend({ id: z.string().uuid(), confirmed: z.literal(true) })
+          .parse(request.body);
+        archive.remove(input.id);
+        return { ok: true };
+      });
       app.post('/api/world-action', (request) => {
         unlocked();
         const input = expected
@@ -376,6 +542,77 @@ export function createAlphaServices(
           ],
         });
         return response();
+      });
+      app.get('/api/turn-report', () => {
+        const w = store.load(),
+          turn = w.turns.at(-1);
+        const trace = turn
+          ? (store.loadAudit(turn.id) as {
+              plans?: { nationId: string; explanation: string }[];
+              failures?: string[];
+              moves?: {
+                nationId: string;
+                recipientNationId: string;
+                message: string;
+                move: string;
+              }[];
+              intent?: {
+                majorIntentClauses?: {
+                  id: string;
+                  kind: string;
+                  description: string;
+                  sourceClauseIds: number[];
+                  targetNationIds: string[];
+                  targetRegionIds: string[];
+                }[];
+              } | null;
+              playerExecution?: {
+                orders: string[];
+                desiredOutcomes: {
+                  kind: string;
+                  description: string;
+                  targetNationIds: string[];
+                  targetRegionIds: string[];
+                }[];
+                constraints: string[];
+                implementation: string[];
+                advisories: string[];
+                warnings: string[];
+                intentSatisfactionAudit: {
+                  clauseId: string;
+                  kind: string;
+                  status: string;
+                  evidence: string[];
+                  explanation: string;
+                }[];
+              } | null;
+            } | null)
+          : null;
+        return {
+          playerDecision:
+            trace?.plans?.find((p) => p.nationId === w.playerNationId)
+              ?.explanation ?? null,
+          backgroundFailures:
+            trace?.failures?.filter((f) => f.startsWith('Background')).length ??
+            0,
+          responses:
+            trace?.moves?.filter((m) =>
+              [m.nationId, m.recipientNationId].includes(w.playerNationId),
+            ) ?? [],
+          playerExecution: trace?.playerExecution
+            ? {
+                orders: trace.playerExecution.orders,
+                desiredOutcomes: trace.playerExecution.desiredOutcomes,
+                constraints: trace.playerExecution.constraints,
+                implementation: trace.playerExecution.implementation,
+                advisories: trace.playerExecution.advisories,
+                warnings: trace.playerExecution.warnings,
+                majorIntentClauses: trace.intent?.majorIntentClauses ?? [],
+                intentSatisfactionAudit:
+                  trace.playerExecution.intentSatisfactionAudit ?? [],
+              }
+            : null,
+        };
       });
       app.get('/api/briefing', () => {
         const w = store.load();
@@ -642,7 +879,11 @@ export function createAlphaServices(
       app.post('/api/scenarios/load', (request) => {
         unlocked();
         const input = expected
-          .extend({ filename: z.string().regex(/^[a-zA-Z0-9_-]+\.json$/) })
+          .extend({
+            filename: z.string().regex(/^[a-zA-Z0-9_-]+\.json$/),
+            nationId: NationId.optional(),
+            observer: z.boolean().default(false),
+          })
           .parse(request.body);
         check(input);
         if (!options.scenariosDirectory)
@@ -650,6 +891,15 @@ export function createAlphaServices(
         const world = loadScenario(
           join(options.scenariosDirectory, input.filename),
         );
+        if (input.nationId) {
+          if (!world.nations.some((n) => n.id === input.nationId))
+            throw new WorldError(
+              'DOMAIN',
+              'Choose a country from this scenario',
+            );
+          world.playerNationId = input.nationId;
+        }
+        world.observerMode = input.observer;
         archive.checkpoint(store, 'Before scenario change', 'named');
         store.import(
           exportSave(world),

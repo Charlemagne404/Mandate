@@ -6,6 +6,9 @@ const genesis: unknown = JSON.parse(
   readFileSync(resolve('data/scenarios/northern-sandbox.json'), 'utf8'),
 );
 test.beforeEach(async ({ page }) => {
+  await page.request.post('/api/experience', {
+    data: { onboarded: true, developerMode: true },
+  });
   const current = await (await page.request.get('/api/world')).json();
   const save = { ...(genesis as object), kind: 'save' };
   const response = await page.request.post('/api/import', {
@@ -73,6 +76,132 @@ test('select Finland on map, transfer control, render mode, inspect provenance a
   await expect(page.locator('[data-map-ready=true]')).toBeVisible();
   expect((await (await page.request.get('/api/world')).json()).hash).toBe(hash);
   expect(errors).toEqual([]);
+});
+test('shows a player annexation as an order, an attempted implementation, and an unresolved outcome', async ({
+  page,
+}) => {
+  await page.locator('#directive').fill('Annex Finland.');
+  await page
+    .getByRole('button', { name: 'Issue directive', exact: true })
+    .click();
+  const summary = page.locator('.turn-summary');
+  await expect(
+    summary.getByText('PLAYER ORDER', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    summary.getByText('COMMITTED ACTIONS', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    summary.getByText('WORLD OUTCOME', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    summary.getByText('MAJOR INTENT SATISFACTION AUDIT', { exact: true }),
+  ).toBeVisible();
+  await expect(summary).toContainText('Annex Finland');
+  await expect(summary).toContainText(
+    /No territorial transfer occurred\. 0 of 1 targeted region\(s\)/,
+  );
+  await expect(summary).toContainText(
+    /No territorial transfer occurred\..*Finland retains the rest/,
+  );
+  const world = (await (await page.request.get('/api/world')).json()).world;
+  expect(
+    world.regions
+      .filter(
+        (r: { ownerNationId: string }) => r.ownerNationId === 'nation:fin',
+      )
+      .every(
+        (r: { ownerNationId: string; claims: string[] }) =>
+          r.ownerNationId === 'nation:fin' && r.claims.includes('nation:swe'),
+      ),
+  ).toBe(true);
+});
+test('labels an extreme strike as an order and an abstracted committed action', async ({
+  page,
+}) => {
+  const order =
+    'Sweden nukes Finland and sends in its armed forces to take the country';
+  await page.locator('#directive').fill(order);
+  await page
+    .getByRole('button', { name: 'Issue directive', exact: true })
+    .click();
+  const summary = page.locator('.turn-summary');
+  await expect(
+    summary.getByText('PLAYER ORDER', { exact: true }),
+  ).toBeVisible();
+  await expect(summary).toContainText(order);
+  await expect(
+    summary.getByText('PARSED MAJOR INTENTS', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    summary.getByText('COMMITTED ACTIONS', { exact: true }),
+  ).toBeVisible();
+  await expect(summary).toContainText('strategic attack abstraction');
+  await expect(summary).toContainText('invasion offensive begins');
+  await expect(
+    summary.getByText('WORLD OUTCOME', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    summary.getByText('MAJOR INTENT SATISFACTION AUDIT', { exact: true }),
+  ).toBeVisible();
+  await expect(summary).not.toContainText(/Finland (?:was )?nuked/i);
+  await expect(summary).not.toContainText(/nuclear detonation/i);
+  await page.getByRole('button', { name: 'Conflicts', exact: true }).click();
+  await expect(page.locator('.conflict-card')).toContainText(
+    'Strategic objectives, not confirmed world outcomes',
+  );
+  const world = (await (await page.request.get('/api/world')).json()).world;
+  expect(
+    world.conflicts.some(
+      (conflict: {
+        status: string;
+        attackers: string[];
+        defenders: string[];
+        theaters: { posture: string }[];
+      }) =>
+        conflict.status === 'active' &&
+        conflict.attackers.includes('nation:swe') &&
+        conflict.defenders.includes('nation:fin') &&
+        conflict.theaters.some(
+          (theater) => theater.posture === 'major-offensive',
+        ),
+    ),
+  ).toBe(true);
+  expect(
+    world.regions
+      .filter(
+        (region: { ownerNationId: string }) =>
+          region.ownerNationId === 'nation:fin',
+      )
+      .every(
+        (region: { ownerNationId: string; controllerNationId: string }) =>
+          region.ownerNationId === 'nation:fin' &&
+          region.controllerNationId === 'nation:fin',
+      ),
+  ).toBe(true);
+});
+test('developer mode offers a clearly labeled immediate territorial outcome override', async ({
+  page,
+}) => {
+  await page
+    .getByRole('button', { name: 'Select Sweden on map', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Debug', exact: true }).click();
+  await page
+    .getByLabel('Target nation', { exact: true })
+    .selectOption('nation:fin');
+  await page
+    .getByRole('button', { name: 'Force territorial transfer', exact: true })
+    .click();
+  await expect(page.getByTestId('owner')).toHaveText('Finland');
+  await expect(page.getByTestId('controller')).toHaveText('Finland');
+  const world = (await (await page.request.get('/api/world')).json()).world;
+  expect(
+    world.commands
+      .slice(-2)
+      .map((entry: { command: { type: string } }) => entry.command.type)
+      .sort(),
+  ).toEqual(['TRANSFER_CONTROL', 'TRANSFER_OWNERSHIP']);
 });
 test('keyboard selection, time, country switch, treaty creation and rejection', async ({
   page,
