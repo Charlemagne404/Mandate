@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import staticPlugin from '@fastify/static';
 import { canonicalHash, openWorldStore } from '@mandate/persistence';
 import { geographyValidatorByVersion, loadScenario } from '@mandate/scenarios';
@@ -77,6 +78,7 @@ async function launch() {
   const configuration = readConfiguration(userData);
   for (const name of [
     'global-alpha.json',
+    'global-regional.json',
     'northern-sandbox.json',
     'nordic-strategy.json',
   ]) {
@@ -94,14 +96,21 @@ async function launch() {
       'utf8',
     ),
     'natural-earth-50m-v1': geography,
+    'natural-earth-admin1-v1': readFileSync(
+      join(resources, 'data/geography/world-admin1.geojson.gz'),
+    ),
   };
   const regionSets = Object.fromEntries(
     Object.entries(geographyByVersion).map(([version, content]) => [
       version,
       new Set<string>(
-        (JSON.parse(content) as { features: { id: string }[] }).features.map(
-          (feature) => feature.id,
-        ),
+        (
+          JSON.parse(
+            Buffer.isBuffer(content)
+              ? gunzipSync(content).toString('utf8')
+              : content,
+          ) as { features: { id: string }[] }
+        ).features.map((feature) => feature.id),
       ),
     ]),
   );
@@ -117,7 +126,7 @@ async function launch() {
   cancelTurns = alpha.cancel;
   try {
     store.initialize(
-      loadScenario(join(resources, 'data/scenarios/global-alpha.json')),
+      loadScenario(join(resources, 'data/scenarios/global-regional.json')),
     );
     service = buildServer({
       store,

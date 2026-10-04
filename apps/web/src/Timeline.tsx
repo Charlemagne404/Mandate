@@ -3,6 +3,7 @@ import { TurnSummary } from './TurnSummary.js';
 import type { WorldState } from '@mandate/schemas';
 import { useState } from 'react';
 import { api } from './api.js';
+import { eventHeadline } from './event-headline.js';
 function Explanation({
   turnId,
   developerMode,
@@ -137,40 +138,46 @@ export function Timeline({
   return (
     <aside className="timeline" aria-label="Event timeline">
       <div className="section-head">
-        <h2>World ledger</h2>
+        <h2>Recent history</h2>
         <span>{known.length.toString().padStart(2, '0')}</span>
       </div>
       <TurnSummary world={world} />
-      <select
-        aria-label="News region"
-        value={region}
-        onChange={(e) => setRegion(e.target.value)}
-      >
-        <option value="">All regions</option>
-        {[...new Set(references.map((r) => r.subregion))]
-          .filter(Boolean)
-          .sort()
-          .map((r) => (
-            <option key={r}>{r}</option>
-          ))}
-      </select>
-      <p className="muted ledger-intro">
-        Committed facts. Every entry has a source.
-      </p>
-      <select
-        aria-label="Filter events"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-      >
-        <option value="relevant">Major & relevant developments</option>
-        <option value="all">All known events</option>
-        <option value="major">World news · major events</option>
-        <option value="followed">Followed countries</option>
-        <option value="country">Your country</option>
-        <option value="diplomacy">Diplomacy</option>
-        <option value="conflict">Conflicts</option>
-        <option value="economy">Economy & projects</option>
-      </select>
+      <details className="timeline-filters">
+        <summary>Filter history</summary>
+        <label>
+          Focus
+          <select
+            aria-label="Filter events"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          >
+            <option value="relevant">Major & relevant</option>
+            <option value="all">All known events</option>
+            <option value="major">Major world news</option>
+            <option value="followed">Followed countries</option>
+            <option value="country">Your country</option>
+            <option value="diplomacy">Diplomacy</option>
+            <option value="conflict">Conflicts</option>
+            <option value="economy">Economy & projects</option>
+          </select>
+        </label>
+        <label>
+          Region
+          <select
+            aria-label="News region"
+            value={region}
+            onChange={(e) => setRegion(e.target.value)}
+          >
+            <option value="">All regions</option>
+            {[...new Set(references.map((r) => r.subregion))]
+              .filter(Boolean)
+              .sort()
+              .map((r) => (
+                <option key={r}>{r}</option>
+              ))}
+          </select>
+        </label>
+      </details>
       {!world.events.length && (
         <div className="empty-ledger">
           <span className="ledger-symbol">◎</span>
@@ -244,10 +251,10 @@ export function Timeline({
                 {event.date}{' '}
                 <span>TURN {turn.revision.toString().padStart(3, '0')}</span>
               </div>
-              <h3>{event.title}</h3>
+              <h3>{eventHeadline(world, event)}</h3>
               {!!event.effects.length && (
-                <div>
-                  <strong>WORLD OUTCOME</strong>
+                <details className="event-outcome">
+                  <summary>Outcome details</summary>
                   <dl className="event-effects">
                     {event.effects
                       .filter(
@@ -280,7 +287,7 @@ export function Timeline({
                         </div>
                       ))}
                   </dl>
-                </div>
+                </details>
               )}
               <div className="event-actors">
                 {event.nationIds.slice(0, 5).map((id) => (
@@ -301,7 +308,7 @@ export function Timeline({
                       : 'Independent government decision'}
                   </p>
                   <p>
-                    <strong>COMMITTED ACTION</strong> {event.title}
+                    <strong>SIMULATION RECORD</strong> {event.title}
                   </p>
                   {commands
                     .filter((c) => {

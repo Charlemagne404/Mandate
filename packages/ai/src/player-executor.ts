@@ -1,3 +1,7 @@
+import { resolveTurn } from '@mandate/core';
+import { ActionId, TurnId, CommandId, NationId } from '@mandate/schemas';
+import { validateSemanticGraph } from './semantic.js';
+import type { SemanticAudit, SemanticAction } from '@mandate/schemas';
 import {
   Conflict,
   ConflictId,
@@ -6,15 +10,20 @@ import {
   Goal,
   Initiative,
   Negotiation,
+  Nation,
   Sanction,
   TreatyId,
 } from '@mandate/schemas';
-import type { NationId, WorldCommand, WorldState } from '@mandate/schemas';
+import type { WorldCommand, WorldState } from '@mandate/schemas';
 import type { PlayerIntent } from './contracts.js';
 import type { MajorIntentSatisfaction } from './contracts.js';
-import { isTerritorialPolicyOrder } from './perspective.js';
+import {
+  deterministicPlayerIntent,
+  isTerritorialPolicyOrder,
+} from './perspective.js';
 
 export interface PlayerExecution {
+  semanticAudit?: SemanticAudit[];
   orders: string[];
   desiredOutcomes: PlayerIntent['desiredOutcomes'];
   constraints: string[];
@@ -34,9 +43,12 @@ const safe = (value: string) =>
     .replace(/[^a-z0-9._-]/g, '-')
     .slice(0, 48);
 
+const targetsFor = (node: SemanticAction) => node.targets;
+
 function orderKind(
   text: string,
   supplied: PlayerIntent['policyOrders'][number]['kind'],
+  world: WorldState,
 ) {
   if (
     /\breview\b|\bobserve\b|\bmonitor\b|\bcheck\b|\bassess\b|\bwait\b|\bstand by\b|\bdo nothing\b|\bkeep (?:the )?current strategy\b|\bcontinue it if\b/i.test(
@@ -49,7 +61,7 @@ function orderKind(
     /\b(?:policy|strategy|directive)\b/i.test(text)
   )
     return 'wait' as const;
-  if (isTerritorialPolicyOrder(text)) return 'territory' as const;
+  if (isTerritorialPolicyOrder(text, world)) return 'territory' as const;
   if (
     /sanction|treaty|alliance|recogniz|diplom|threaten|demand|withdraw|surrender|ceasefire|peace|negotiate|sever ties|cut ties|end all relations/i.test(
       text,
@@ -90,12 +102,18 @@ function containsConstraint(intent: PlayerIntent, kind: string, text: string) {
 }
 
 function diplomacyKind(text: string): Negotiation['kind'] {
-  if (/ceasefire|stand down|stop fighting/i.test(text)) return 'ceasefire';
+  if (/ceasefire|stand down|back down|stop fighting/i.test(text))
+    return 'ceasefire';
   if (/peace|settlement|surrender|withdraw from (?:the )?war/i.test(text))
     return 'peace';
   if (/trade|market access|supply/i.test(text)) return 'trade';
   if (/non.?aggression/i.test(text)) return 'nonaggression';
-  if (/alliance|mutual defense|military alliance/i.test(text)) return 'defense';
+  if (
+    /alliance|mutual defense|military alliance|guarantee.{0,40}independence|basing rights/i.test(
+      text,
+    )
+  )
+    return 'defense';
   return 'consultation';
 }
 
@@ -141,6 +159,30 @@ export function auditMajorIntentClauses(
     ),
   ];
   return intent.majorIntentClauses.map((clause) => {
+    const node = intent.actionGraph?.actions.find((a) =>
+      clause.sourceClauseIds.includes(a.clauseId),
+    );
+    const blocker =
+      node?.issues.length ||
+      node?.action === 'acquire-forces' ||
+      node?.conditions.length ||
+      node?.dependencies.some(
+        (d) =>
+          d.mandatory &&
+          d.requirement !== 'ordered' &&
+          intent.actionGraph?.actions.find((a) => a.id === d.actionId)
+            ?.action === 'acquire-forces',
+      );
+    if (blocker)
+      return {
+        clauseId: clause.id,
+        kind: clause.kind,
+        status: 'BLOCKED_BY_REAL_WORLD_CONSTRAINT' as const,
+        evidence: [],
+        explanation: node?.conditions.length
+          ? 'Conditional policy preserved; no premature execution is permitted.'
+          : 'Semantic dependency or grounding prevents execution; no substitute target or forces are allowed.',
+      };
     const targets = clause.targetNationIds;
     const records = commands.filter((command) => {
       switch (command.type) {
@@ -153,6 +195,11 @@ export function auditMajorIntentClauses(
           return (
             command.conflict.attackers.includes(actorId) &&
             command.conflict.defenders.some((id) => targets.includes(id))
+          );
+        case 'OPEN_CRISIS':
+          return (
+            command.crisis.participants.includes(actorId) &&
+            command.crisis.participants.some((id) => targets.includes(id))
           );
         case 'THEATER_ACTION':
         case 'CONFLICT_ACTION':
@@ -259,11 +306,13 @@ export function auditMajorIntentClauses(
       case 'conquest-objective':
         if (
           evidence.includes('ADD_CLAIM') ||
-          evidence.includes('CREATE_STRATEGIC_GOAL')
+          evidence.includes('CREATE_STRATEGIC_GOAL') ||
+          evidence.includes('OPEN_CRISIS')
         ) {
           status = 'ATTEMPTED';
-          explanation =
-            'A territorial claim or strategic objective was committed; ownership was not transferred by the order.';
+          explanation = evidence.includes('OPEN_CRISIS')
+            ? 'A coercive crisis was opened over the stated political objective; union or ownership still requires a later settlement.'
+            : 'A territorial claim or strategic objective was committed; ownership was not transferred by the order.';
         } else if (
           targets.length &&
           !world.regions.some((region) =>
@@ -326,8 +375,27 @@ export function executePlayerAction(
   const actor = world.nations.find((n) => n.id === world.playerNationId);
   if (!actor) return result;
   const run = safe(runId);
-  const orders = intent.policyOrders;
-  result.orders = orders.map((o) => o.text);
+  if (intent.actionGraph) {
+    const errors = validateSemanticGraph(intent.actionGraph, world);
+    if (errors.length)
+      throw new Error('Semantic validation failed: ' + errors.join('; '));
+  }
+  const semanticAudit: SemanticAudit[] = [];
+  result.semanticAudit = semanticAudit;
+  const orders = intent.policyOrders.flatMap((order) => {
+    const node = intent.actionGraph?.actions.find((a) =>
+      order.sourceClauseIds.includes(a.clauseId),
+    );
+    return node &&
+      ['invade', 'strike'].includes(node.action) &&
+      order.targetNationIds.length > 1
+      ? order.targetNationIds.map((target) => ({
+          ...order,
+          targetNationIds: [target],
+        }))
+      : [order];
+  });
+  result.orders = intent.policyOrders.map((o) => o.text);
   result.desiredOutcomes = intent.desiredOutcomes;
   result.constraints = intent.constraints.map((c) => c.description);
   if (!orders.length && !intent.majorIntentClauses.length) return result;
@@ -446,8 +514,13 @@ export function executePlayerAction(
           const cancelled = strategy.directives.findIndex(
             (d) => d.status === 'cancelled',
           );
-          const evict = cancelled >= 0 ? cancelled : 0;
-          strategy.directives.splice(evict, 1);
+          if (cancelled < 0) {
+            result.warnings.push(
+              'Standing directive capacity is full; existing active policies were preserved.',
+            );
+            return;
+          }
+          strategy.directives.splice(cancelled, 1);
         }
         strategy.directives.push({
           id: `${run}-player-policy-${index}`,
@@ -514,16 +587,222 @@ export function executePlayerAction(
 
   for (let index = 0; index < orders.length; index++) {
     const order = orders[index]!;
-    const text = order.text;
+    const node = intent.actionGraph?.actions.find((a) =>
+      order.sourceClauseIds.includes(a.clauseId),
+    );
+    const text =
+      node?.action === 'annex' && !/\bannex\b/i.test(order.text)
+        ? `${order.text} (annex objective)`
+        : node?.action === 'invade' && !/\binvade\b/i.test(order.text)
+          ? `${order.text} (invade)`
+          : order.text;
+    const conditionalDiplomacy =
+      !!node &&
+      node.conditions.length > 0 &&
+      node.targets.length > 0 &&
+      ['offer', 'communicate', 'guarantee', 'peace'].includes(node.action) &&
+      !node.conditions.some((condition) =>
+        /\b(?:accept|refuse|reject|counter)\w*\b[^.!?;]{0,32}\b(?:the|our|existing)\s+(?:deal|proposal|offer|agreement)\b/i.test(
+          condition.text,
+        ),
+      );
+    const record = (
+      status: SemanticAudit['status'],
+      explanation: string,
+      commandTypes: string[] = [],
+    ) => {
+      if (!node) return;
+      const existing = semanticAudit.find((a) => a.actionId === node.id);
+      if (existing) {
+        existing.commandTypes = [
+          ...new Set([...existing.commandTypes, ...commandTypes]),
+        ];
+        return;
+      }
+      semanticAudit.push({
+        actionId: node.id,
+        text,
+        status,
+        explanation,
+        commandTypes,
+      });
+    };
+    const persistPlan = (plan: SemanticAction) => {
+      if (
+        !strategy.directives.some(
+          (d) => d.status === 'active' && d.text === text,
+        )
+      ) {
+        if (strategy.directives.length >= 20) {
+          record(
+            'BLOCKED',
+            'Standing directive capacity is full; no existing plan was removed.',
+          );
+          return false;
+        }
+        strategy.directives.push({
+          id: `${run}-semantic-${index}`,
+          text,
+          visibility: order.visibility,
+          status: 'active',
+          createdDate: world.date,
+          semanticPlan: {
+            ...plan,
+            conditions: plan.conditions.map((c) => {
+              const previousText = intent.actionGraph?.actions.find(
+                (a) => a.id === c.actionId,
+              )?.text;
+              const newlyOpened = result.commands.find(
+                (entry) =>
+                  entry.command.type === 'OPEN_NEGOTIATION' &&
+                  (!previousText || entry.reason.includes(previousText)) &&
+                  c.subjects.some(
+                    (n) =>
+                      entry.command.type === 'OPEN_NEGOTIATION' &&
+                      [
+                        entry.command.negotiation.recipientNationId,
+                        entry.command.negotiation.proposerNationId,
+                      ].includes(n),
+                  ),
+              );
+              const existing = !c.actionId
+                ? world.negotiations
+                    .filter((n) =>
+                      c.subjects.some((id) =>
+                        [n.proposerNationId, n.recipientNationId].includes(id),
+                      ),
+                    )
+                    .at(-1)
+                : undefined;
+              const observationId =
+                newlyOpened?.command.type === 'OPEN_NEGOTIATION'
+                  ? newlyOpened.command.negotiation.id
+                  : existing?.id;
+              return { ...c, ...(observationId ? { observationId } : {}) };
+            }),
+          },
+        });
+        strategyChanged = true;
+      }
+      return true;
+    };
+    if (node?.issues.length) {
+      record('BLOCKED', node.issues.join('; '));
+      result.warnings.push(`${text}: ${node.issues.join('; ')}`);
+      continue;
+    }
+    if (
+      (node?.conditions.length && !conditionalDiplomacy) ||
+      node?.sequence === 'before' ||
+      node?.sequence === 'until'
+    ) {
+      if (persistPlan(node))
+        record(
+          'DEFERRED',
+          'Conditional or timed plan saved. It will not execute while its condition or ordering is unresolved.',
+        );
+      continue;
+    }
+    if (node?.action === 'acquire-forces') {
+      record(
+        'IMPOSSIBLE',
+        'The requested seizure of foreign forces is understood. Existing mechanics provide no way to acquire another sovereign army; no forces changed owner.',
+      );
+      result.warnings.push(
+        `${text}: foreign military control cannot be acquired through existing mechanics.`,
+      );
+      continue;
+    }
+    const failedDependency = node?.dependencies.find(
+      (d) =>
+        d.mandatory &&
+        d.requirement !== 'ordered' &&
+        semanticAudit.some(
+          (a) =>
+            a.actionId === d.actionId &&
+            ['IMPOSSIBLE', 'FAILED', 'BLOCKED'].includes(a.status),
+        ),
+    );
+    const pendingSequence = node?.dependencies.find(
+      (d) =>
+        d.mandatory &&
+        semanticAudit.some(
+          (a) => a.actionId === d.actionId && a.status === 'DEFERRED',
+        ),
+    );
+    if (failedDependency) {
+      record(
+        'BLOCKED',
+        `Required action result ${failedDependency.actionId} is unavailable. The order did not authorize substitution of normal player forces.`,
+      );
+      continue;
+    }
+    if (pendingSequence) {
+      if (node && persistPlan(node))
+        record(
+          'DEFERRED',
+          `Waiting for preceding action ${pendingSequence.actionId}.`,
+        );
+      continue;
+    }
+    if (
+      node?.dependencies.some((d) => !d.mandatory && d.requirement === 'result')
+    )
+      result.warnings.push(
+        `${text}: the requested foreign forces are unavailable; the wording permits proceeding with the player's own forces.`,
+      );
+    if (node && ['influence', 'disrupt'].includes(node.action)) {
+      // Political influence has an existing diplomacy project. There is no
+      // strategic disruption project; preserve that objective without invented effects.
+      if (node.action === 'influence' && targetsFor(node).length) {
+        for (const target of targetsFor(node))
+          push(
+            {
+              type: 'START_INITIATIVE',
+              initiative: Initiative.parse({
+                id: `initiative:${run}-semantic-${index}-${key(target)}`,
+                nationId: actor.id,
+                name: `Political influence: ${text}`.slice(0, 160),
+                kind: 'diplomacy',
+                targetNationId: target,
+                effort: 2,
+                durationDays: 180,
+                startDate: world.date,
+                visibility: node.secrecy,
+              }),
+            },
+            `Honest abstraction of player order: ${text}`,
+          );
+        record(
+          'ABSTRACTED',
+          'A diplomacy initiative represents political influence; no bespoke propaganda effects are claimed.',
+          ['START_INITIATIVE'],
+        );
+      } else {
+        persistPlan(node);
+        record(
+          'DEFERRED',
+          'Covert disruption objective preserved as a standing directive. Existing mechanics cannot simulate a cyberattack or grid damage.',
+        );
+      }
+      continue;
+    }
     const kind =
-      order.targetRegionIds.length && isTerritorialPolicyOrder(text)
-        ? 'territory'
-        : orderKind(text, order.kind);
-    const targets = (
-      order.targetNationIds.length
-        ? order.targetNationIds
-        : intent.targetNationIds
-    ).filter((nationId) => nationId !== actor.id);
+      node &&
+      [
+        'request-participation',
+        'offer',
+        'communicate',
+        'guarantee',
+        'peace',
+      ].includes(node.action)
+        ? 'diplomacy'
+        : order.targetRegionIds.length && isTerritorialPolicyOrder(text, world)
+          ? 'territory'
+          : orderKind(text, order.kind, world);
+    const targets = order.targetNationIds.filter(
+      (nationId) => nationId !== actor.id,
+    );
     const orderMajorIntents = intent.majorIntentClauses.filter((clause) =>
       order.sourceClauseIds.some((id) => clause.sourceClauseIds.includes(id)),
     );
@@ -531,11 +810,12 @@ export function executePlayerAction(
       ? world.regions.filter((r) => order.targetRegionIds.includes(r.id))
       : [];
     const broadTerritorialOrder =
-      isTerritorialPolicyOrder(text) ||
-      (targets.length > 0 &&
-        orderMajorIntents.some((clause) =>
-          ['invasion-offensive', 'conquest-objective'].includes(clause.kind),
-        ));
+      !namedRegions.length &&
+      (isTerritorialPolicyOrder(text, world) ||
+        (targets.length > 0 &&
+          orderMajorIntents.some((clause) =>
+            ['invasion-offensive', 'conquest-objective'].includes(clause.kind),
+          )));
     const targetRegionCandidates = [
       ...new Map(
         [
@@ -556,6 +836,198 @@ export function executePlayerAction(
             targets.includes(region.ownerNationId),
           )
         : targetRegionCandidates;
+    if (node?.action === 'form-polity') {
+      const regionIds = targetRegions.map((region) => region.id);
+      const federation = /federat|\bunion\b/i.test(text);
+      if (federation && !regionIds.length && targets.length) {
+        const terms = `${text} All participating governments must agree to a binding union settlement; these talks do not change borders or dissolve any existing state.`;
+        let opened = 0;
+        for (const target of targets) {
+          const existing = world.negotiations.some(
+            (negotiation) =>
+              negotiation.status === 'open' &&
+              [
+                negotiation.proposerNationId,
+                negotiation.recipientNationId,
+              ].includes(actor.id) &&
+              [
+                negotiation.proposerNationId,
+                negotiation.recipientNationId,
+              ].includes(target) &&
+              /federation talks/i.test(negotiation.topic),
+          );
+          if (existing) continue;
+          push(
+            {
+              type: 'OPEN_NEGOTIATION',
+              negotiation: Negotiation.parse({
+                id: `negotiation:${run}-federation-${key(target)}`,
+                proposerNationId: actor.id,
+                recipientNationId: target,
+                topic: `Federation talks with ${world.nations.find((n) => n.id === target)!.name}`,
+                kind: 'consultation',
+                terms,
+                createdDate: world.date,
+                expiresDate: later(world.date, 180),
+              }),
+            },
+            `Player order: ${text}`,
+          );
+          opened++;
+        }
+        record(
+          opened ? 'ATTEMPTED' : 'DEFERRED',
+          opened
+            ? 'Opened persistent talks with each named federation partner. A union requires consent and a later binding settlement.'
+            : 'Equivalent federation talks are already open; no duplicate proposals were sent.',
+          opened ? ['OPEN_NEGOTIATION'] : [],
+        );
+        continue;
+      }
+      if (!regionIds.length) {
+        record(
+          'FAILED',
+          'No specific region or represented federation partner is grounded, so no polity or border was invented.',
+        );
+        result.warnings.push(
+          `${text}: choose a mapped region or name the governments for federation talks.`,
+        );
+        continue;
+      }
+      const regionOwners = [
+        ...new Set(targetRegions.map((region) => region.ownerNationId)),
+      ];
+      const allRegionsAreOwn = targetRegions.every(
+        (region) =>
+          region.ownerNationId === actor.id &&
+          region.controllerNationId === actor.id,
+      );
+      const parentRegions = regionsOf(actor.id);
+      const polityName = targetRegions[0]!.name;
+      const alreadyNamed = world.nations.some(
+        (nation) => nation.name.toLowerCase() === polityName.toLowerCase(),
+      );
+      if (
+        allRegionsAreOwn &&
+        regionOwners.length === 1 &&
+        parentRegions.some((region) => !regionIds.includes(region.id)) &&
+        !alreadyNamed
+      ) {
+        const sortedRegionIds = [...regionIds].sort();
+        const signature = sortedRegionIds.join('|');
+        let hash = 2166136261;
+        for (const character of signature)
+          hash = Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0;
+        const slug = safe(polityName).replace(/^-+|-+$/g, '') || 'polity';
+        const polityId = NationId.parse(
+          `nation:${slug.slice(0, 45)}-${hash.toString(36)}`,
+        );
+        const colors = [
+          '#52766D',
+          '#7B5C76',
+          '#956A42',
+          '#4E6C92',
+          '#8A6E4A',
+          '#567D8C',
+          '#80634F',
+          '#6A718C',
+          '#8B5F63',
+          '#597A58',
+          '#76669A',
+          '#957C45',
+        ];
+        const color = colors[hash % colors.length]!;
+        const share = Math.min(1, regionIds.length / parentRegions.length);
+        const scaledStats = Object.fromEntries(
+          Object.entries(actor.stats).map(([stat, value]) => [
+            stat,
+            Math.round(value * share),
+          ]),
+        ) as typeof actor.stats;
+        const polity = Nation.parse({
+          id: polityId,
+          name: polityName,
+          color,
+          government: {
+            type: 'Provisional council',
+            ideology: 'regional autonomy',
+          },
+          leader: 'Interim council',
+          stats: scaledStats,
+        });
+        push(
+          {
+            type: 'CREATE_POLITY',
+            parentNationId: actor.id,
+            polity,
+            regionIds: sortedRegionIds,
+          },
+          `Player order: ${text}. Provisional national capacity is scaled by the share of the parent's mapped regions; region counts are a coarse geographic proxy, not population data.`,
+        );
+        record(
+          'EXECUTED',
+          `${polityName} becomes an independent polity. Its named regions transfer from ${actor.name}; the parent government retains its remaining territory.`,
+          ['CREATE_POLITY'],
+        );
+        result.implementation.push(
+          `Founded ${polityName} with a persistent country identity, map color, government, and standard diplomatic capabilities. Provisional capacity uses mapped-region share because the scenario has no subnational population or economic estimates.`,
+        );
+        continue;
+      }
+      if (regionOwners.length && !allRegionsAreOwn) {
+        let supported = 0;
+        for (const owner of regionOwners) {
+          const regionNames = targetRegions
+            .filter((region) => region.ownerNationId === owner)
+            .map((region) => region.name);
+          const place = regionNames.join(', ');
+          push(
+            {
+              type: 'START_INITIATIVE',
+              initiative: Initiative.parse({
+                id: `initiative:${run}-secession-${key(owner)}`,
+                nationId: actor.id,
+                name: `Support independence in ${place}`.slice(0, 160),
+                kind: 'diplomacy',
+                targetNationId: owner,
+                effort:
+                  order.intensity === 'extreme'
+                    ? 10
+                    : order.intensity === 'high'
+                      ? 5
+                      : 2,
+                durationDays: 365,
+                startDate: world.date,
+                visibility: order.visibility,
+              }),
+            },
+            `Foreign political support ordered: ${text}`,
+          );
+          relationshipConsequence(
+            owner,
+            -12,
+            -8,
+            `Foreign-backed independence movement in ${place}`,
+          );
+          supported++;
+        }
+        record(
+          supported ? 'ABSTRACTED' : 'FAILED',
+          supported
+            ? 'The territory belongs to another government. The order starts a named political-support initiative and damages relations; no independent state or border change is claimed.'
+            : 'The selected regions are mixed or not controlled by the player, so an independent polity could not be founded.',
+          supported ? ['START_INITIATIVE', 'ADJUST_RELATION'] : [],
+        );
+        continue;
+      }
+      record(
+        'FAILED',
+        alreadyNamed
+          ? `${polityName} already exists as a government; use diplomacy or a territorial settlement to change its status.`
+          : 'A government may release a region only when it owns and controls it and retains other territory.',
+      );
+      continue;
+    }
     const warForbidden = containsConstraint(intent, 'avoid-war', text);
     const mobilizationForbidden = containsConstraint(
       intent,
@@ -566,17 +1038,18 @@ export function executePlayerAction(
       (clause) => clause.kind === 'strategic-strike',
     );
     const explicitWar =
-      /\binvad(?:e|ing)|\battack\b|\bbomb(?:s|ed|ing)?\b|\bnuk(?:e|es|ed|ing)\b|\bstrike\b|declare war|start (?:a )?war|go to war|pursue (?:the )?war|continue (?:the )?war|continue fighting|go on (?:the )?offensive|press (?:the )?offensive/i.test(
+      node?.action !== 'request-participation' &&
+      (/\binvad(?:e|ing)|\battack\b|\bbomb(?:s|ed|ing)?\b|\bnuk(?:e|es|ed|ing)\b|\bstrike\b|declare war|start (?:a )?war|go to war|pursue (?:the )?war|continue (?:the )?war|continue fighting|go on (?:the )?offensive|press (?:the )?offensive/i.test(
         text,
       ) ||
-      orderMajorIntents.some((clause) =>
-        [
-          'strategic-strike',
-          'armed-conflict-initiation',
-          'invasion-offensive',
-          'declaration-of-war',
-        ].includes(clause.kind),
-      );
+        orderMajorIntents.some((clause) =>
+          [
+            'strategic-strike',
+            'armed-conflict-initiation',
+            'invasion-offensive',
+            'declaration-of-war',
+          ].includes(clause.kind),
+        ));
     const warTargets = targets.length
       ? targets
       : activeConflicts
@@ -595,18 +1068,20 @@ export function executePlayerAction(
     const transferOrder =
       /\b(?:give|cede|transfer)\b/i.test(text) && /\bto\b/i.test(text);
     const annexation =
+      node?.action !== 'request-participation' &&
       !transferOrder &&
-      ((isTerritorialPolicyOrder(text) &&
+      ((isTerritorialPolicyOrder(text, world) &&
         /\b(?:annex|invade|conquer|take(?: over)?|seize|occupy|capture|incorporate|unify|union with)\b|\bmake\s+.+\s+join\b/i.test(
           text,
         )) ||
         (/\btake\b/i.test(text) && targets.length > 0) ||
         namedTakeover);
     const coercive =
-      annexation ||
-      /\bdemand\b|\bultimatum\b|\bthreaten(?: military action| war| sanctions)?\b/i.test(
-        text,
-      );
+      node?.action !== 'request-participation' &&
+      (annexation ||
+        /\bdemand\b|\bultimatum\b|\bthreaten(?: military action| war| sanctions)?\b/i.test(
+          text,
+        ));
 
     if (order.intensity === 'high' || order.intensity === 'extreme') {
       if (annexation || explicitWar)
@@ -678,9 +1153,13 @@ export function executePlayerAction(
       /\b(?:break|terminate|end|renounce|cancel|withdraw from)\b/i.test(text) &&
       /treaty|agreement|commitment/i.test(text)
     ) {
+      const preserveTrade = intent.actionGraph?.actions.some((a) =>
+        /keep.*trade|preserve.*trade/i.test(a.text),
+      );
       const matches = world.treaties.filter(
         (t) =>
           t.status === 'active' &&
+          !(preserveTrade && t.kind === 'trade') &&
           t.parties.includes(actor.id) &&
           (targets.length
             ? targets.some((id) => t.parties.includes(id))
@@ -1485,7 +1964,9 @@ export function executePlayerAction(
     if (
       /\b(?:sanction|impose sanctions|cut trade|embargo)\b/i.test(text) &&
       targets.length &&
-      !/threaten|unless|if .* then/i.test(text)
+      !/threaten|unless|if .* then|lift|remove|cancel|end sanctions|stop sanctions/i.test(
+        text,
+      )
     ) {
       const sector: Sanction['sector'] = /energy|oil|gas|fuel/i.test(text)
         ? 'energy'
@@ -1532,6 +2013,26 @@ export function executePlayerAction(
       }
     }
 
+    if (/\b(?:lift|remove|cancel|end|stop)\b.*\bsanctions?\b/i.test(text)) {
+      for (const sanction of world.sanctions.filter(
+        (s) =>
+          s.status === 'active' &&
+          s.issuer === actor.id &&
+          (!targets.length || targets.includes(s.target)),
+      )) {
+        push(
+          {
+            type: 'LIFT_SANCTION',
+            sanctionId: sanction.id,
+            nationId: actor.id,
+          },
+          `Player order: ${text}`,
+        );
+        result.implementation.push(
+          `Lifted the existing sanction against ${world.nations.find((n) => n.id === sanction.target)!.name}.`,
+        );
+      }
+    }
     if (
       (/\b(?:withdraw from|pull out of|end)\b/i.test(text) &&
         /war|conflict|fighting/i.test(text)) ||
@@ -1792,18 +2293,24 @@ export function executePlayerAction(
     if (
       targets.length &&
       kind === 'diplomacy' &&
-      /offer|propose|negotiate|seek|ask|request|demand|pursue|closer|alliance|trade|consult|whatever they want|diplomacy|initiative|basing|cooperation|outreach/i.test(
+      /offer|propose|negotiate|seek|ask|request|demand|tell|reassure|back off|last chance|pursue|closer|alliance|trade|consult|whatever they want|diplomacy|initiative|basing|cooperation|outreach/i.test(
         text,
       ) &&
       !/break|leave|withdraw|recogniz|sanction|threaten/i.test(text)
     ) {
       for (const target of targets) {
-        const negotiationKind = diplomacyKind(text);
+        let negotiationKind = diplomacyKind(text);
         const conflictId = ['ceasefire', 'peace'].includes(negotiationKind)
           ? (activeConflicts.find((f) =>
               [...f.attackers, ...f.defenders].includes(target),
             )?.id ?? null)
           : null;
+        if (['ceasefire', 'peace'].includes(negotiationKind) && !conflictId) {
+          negotiationKind = 'consultation';
+          result.implementation.push(
+            'A surrender or peace request without an active war is represented as a diplomatic demand; no settlement or surrender outcome is claimed.',
+          );
+        }
         const existing = world.negotiations.find(
           (n) =>
             n.status === 'open' &&
@@ -1908,6 +2415,33 @@ export function executePlayerAction(
     }
   }
 
+  // A conjunction without sequencing denotes concurrent orders. Emit an
+  // aggregate strike after the concurrent offensive so its factual event can
+  // describe the already committed campaign; explicit "then" stays ordered.
+  for (const node of intent.actionGraph?.actions ?? []) {
+    if (
+      node.action !== 'strike' ||
+      node.dependencies.length ||
+      node.conditions.length
+    )
+      continue;
+    const concurrent = intent.actionGraph?.actions.some(
+      (a) =>
+        a.action !== 'strike' &&
+        !a.dependencies.length &&
+        !a.conditions.length &&
+        a.targets.some((t) => node.targets.includes(t)) &&
+        ['invade', 'annex'].includes(a.action),
+    );
+    if (!concurrent) continue;
+    const strikes = result.commands.filter(
+      (c) =>
+        c.command.type === 'STRATEGIC_ATTACK' &&
+        node.targets.includes(c.command.targetNationId),
+    );
+    result.commands = result.commands.filter((c) => !strikes.includes(c));
+    result.commands.push(...strikes);
+  }
   if (strategyChanged)
     push(
       { type: 'SET_STRATEGY', nationId: actor.id, strategy },
@@ -1918,6 +2452,46 @@ export function executePlayerAction(
     result.warnings.push(
       'No direct game mechanic matched this wording. The original player order remains in the turn record and the simulation did not substitute a different policy.',
     );
+  }
+  for (const node of intent.actionGraph?.actions ?? []) {
+    if (semanticAudit.some((a) => a.actionId === node.id)) continue;
+    const commands = result.commands.filter((c) =>
+      c.reason.includes(node.text),
+    );
+    const types = [...new Set(commands.map((c) => c.command.type))];
+    const strategic = types.includes('STRATEGIC_ATTACK');
+    const policy = result.commands.some(
+      (c) =>
+        c.command.type === 'SET_STRATEGY' &&
+        c.command.strategy.directives.some((d) => d.text === node.text),
+    );
+    const executed =
+      (node.action === 'mobilize' && types.includes('MOBILIZE_FORCE')) ||
+      (node.action === 'sanction' && types.includes('IMPOSE_SANCTION')) ||
+      (node.action === 'cancel' &&
+        (types.includes('END_TREATY') || types.includes('LIFT_SANCTION'))) ||
+      (node.action === 'transfer' && types.includes('TRANSFER_OWNERSHIP'));
+    semanticAudit.push({
+      actionId: node.id,
+      text: node.text,
+      status: strategic
+        ? 'ABSTRACTED'
+        : executed
+          ? 'EXECUTED'
+          : commands.length
+            ? 'ATTEMPTED'
+            : policy
+              ? 'ATTEMPTED'
+              : 'BLOCKED',
+      explanation: strategic
+        ? 'Strategic attack abstraction ordered; nuclear weapons and nuclear-specific effects are not simulated.'
+        : commands.length
+          ? 'Validated commands represent this attempt. External success remains governed by the world.'
+          : policy
+            ? 'Policy objective recorded; no external outcome is claimed.'
+            : 'No available mechanic executed this clause; the original order is retained.',
+      commandTypes: types,
+    });
   }
   result.intentSatisfactionAudit = auditMajorIntentClauses(
     world,
@@ -1930,4 +2504,145 @@ export function executePlayerAction(
         `Major intent not represented (${audit.clauseId}): ${audit.explanation}`,
       );
   return result;
+}
+
+/** Evaluate only bound canonical diplomatic observations. No prose inference. */
+export function executeStandingPlayerPlans(
+  world: WorldState,
+  runId: string,
+): PlayerExecution {
+  const actor = world.nations.find((n) => n.id === world.playerNationId)!;
+  const result: PlayerExecution = {
+    orders: [],
+    desiredOutcomes: [],
+    constraints: [],
+    implementation: [],
+    advisories: [],
+    warnings: [],
+    intentSatisfactionAudit: [],
+    semanticAudit: [],
+    commands: [],
+  };
+  const strategy = structuredClone(actor.strategy);
+  for (const directive of strategy.directives) {
+    const plan = directive.semanticPlan;
+    if (
+      directive.status !== 'active' ||
+      !plan?.conditions.length ||
+      plan.issues.length
+    )
+      continue;
+    const states = plan.conditions.map((condition) => {
+      const negotiation = world.negotiations.find(
+        (n) => n.id === condition.observationId,
+      );
+      if (
+        !negotiation ||
+        !['accepted', 'rejected'].includes(negotiation.status) ||
+        !['accepted', 'refused'].includes(condition.predicate)
+      )
+        return null;
+      const matches =
+        condition.predicate === 'accepted'
+          ? negotiation.status === 'accepted'
+          : negotiation.status === 'rejected';
+      return condition.negated ? !matches : matches;
+    });
+    if (states.some((s) => s === null)) continue;
+    directive.status = 'cancelled';
+    if (states.every(Boolean)) {
+      // Targets come exclusively from the persisted resolved IDs, never from
+      // pronouns or a changed map selection. Preserve the consequent wording.
+      const names = plan.targets
+        .map((id) => world.nations.find((n) => n.id === id)!.name)
+        .join(' and ');
+      let consequent = plan.text
+        .replace(/^(?:if|unless|once|after)\b[^,]+,\s*/i, '')
+        .replace(/^otherwise\s+/i, '')
+        .replace(/\s+(?:if|unless|once|until)\s+.+$/i, '')
+        .replace(
+          /\b(?:their|them|they|both countries|both|that country)\b/gi,
+          names,
+        );
+      if (!consequent.includes(names) && names) consequent += ` (${names})`;
+      const resolved = deterministicPlayerIntent(world, {
+        actorNationId: actor.id,
+        text: consequent,
+      });
+      const execution = executePlayerAction(
+        world,
+        resolved,
+        `${runId}-standing`,
+      );
+      result.commands.push(
+        ...execution.commands.filter((c) => c.command.type !== 'SET_STRATEGY'),
+      );
+      result.orders.push(`Standing order activated: ${plan.text}`);
+      result.implementation.push(...execution.implementation);
+      result.warnings.push(...execution.warnings);
+      result.semanticAudit!.push(
+        ...(execution.semanticAudit ?? []).map((a) => ({
+          ...a,
+          actionId: `${directive.id}:${a.actionId}`,
+        })),
+      );
+    } else
+      result.semanticAudit!.push({
+        actionId: directive.id,
+        text: plan.text,
+        status: 'BLOCKED',
+        explanation:
+          'The bound diplomatic response made this conditional branch false; the plan was retired.',
+        commandTypes: [],
+      });
+  }
+  if (JSON.stringify(strategy) !== JSON.stringify(actor.strategy))
+    result.commands.push({
+      command: { type: 'SET_STRATEGY', nationId: actor.id, strategy },
+      reason:
+        'Resolve standing player plans from canonical diplomatic responses.',
+    });
+  return result;
+}
+
+export function executePlayerTurn(
+  world: WorldState,
+  intent: PlayerIntent | null,
+  runId: string,
+): PlayerExecution {
+  const standing = executeStandingPlayerPlans(world, runId);
+  const preview = standing.commands.length
+    ? resolveTurn(
+        world,
+        {
+          expectedRevision: world.revision,
+          action: {
+            actorNationId: world.playerNationId,
+            source: 'system',
+            text: 'Evaluate canonical standing directives',
+          },
+          commands: standing.commands.map((c, i) => ({
+            ...c,
+            id: CommandId.parse(`command:${safe(runId)}-standing-preview-${i}`),
+          })),
+        },
+        {
+          turnId: TurnId.parse(`turn:${safe(runId)}-standing-preview`),
+          actionId: ActionId.parse(`action:${safe(runId)}-standing-preview`),
+          recordedAt: '2000-01-01T00:00:00.000Z',
+        },
+      )
+    : world;
+  const execution = executePlayerAction(preview, intent, runId);
+  return {
+    ...execution,
+    orders: [...standing.orders, ...execution.orders],
+    implementation: [...standing.implementation, ...execution.implementation],
+    warnings: [...standing.warnings, ...execution.warnings],
+    semanticAudit: [
+      ...(standing.semanticAudit ?? []),
+      ...(execution.semanticAudit ?? []),
+    ],
+    commands: [...standing.commands, ...execution.commands],
+  };
 }

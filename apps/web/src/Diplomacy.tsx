@@ -45,22 +45,12 @@ export function Diplomacy({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void operate(
-              pledge ? '/api/diplomacy/propose' : '/api/play',
-              pledge
-                ? {
-                    recipientNationId: selected,
-                    message,
-                    minimumInvestment: investment,
-                    dueDate,
-                    visibility: 'public',
-                  }
-                : {
-                    text: `Begin diplomacy with ${name(selected)}. ${message}`,
-                    days: 7,
-                    quality: 'balanced',
-                  },
-            ).then((result) => {
+            void operate('/api/diplomacy/propose', {
+              recipientNationId: selected,
+              message,
+              ...(pledge ? { minimumInvestment: investment, dueDate } : {}),
+              visibility: 'public',
+            }).then((result) => {
               if ((result as WorldResponse | null)?.world) setMessage('');
             });
           }}

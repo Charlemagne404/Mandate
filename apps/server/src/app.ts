@@ -11,7 +11,7 @@ export interface AppOptions {
   store: WorldStore;
   geography: string;
   geographicReference?: string;
-  geographyByVersion?: Readonly<Record<string, string>>;
+  geographyByVersion?: Readonly<Record<string, string | Buffer>>;
   logger?: boolean;
   allowedOrigins?: string[];
   services?: AlphaServices;
@@ -92,15 +92,19 @@ export function buildServer(options: AppOptions) {
     inference: 'disabled',
   }));
   app.get('/api/world', response);
-  app.get('/api/geography', (_, reply) =>
-    reply
-      .type('application/geo+json')
-      .send(
-        options.geographyByVersion?.[
-          options.store.load().scenario.geographyVersion
-        ] ?? options.geography,
-      ),
-  );
+  app.get('/api/geography', (_, reply) => {
+    const data =
+      options.geographyByVersion?.[
+        options.store.load().scenario.geographyVersion
+      ] ?? options.geography;
+    if (Buffer.isBuffer(data))
+      return reply
+        .type('application/geo+json')
+        .header('Content-Encoding', 'gzip')
+        .header('Vary', 'Accept-Encoding')
+        .send(data);
+    return reply.type('application/geo+json').send(data);
+  });
   app.get('/api/geographic-reference', (_, reply) =>
     reply.type('application/json').send(options.geographicReference ?? '[]'),
   );

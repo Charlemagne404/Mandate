@@ -11,3 +11,5 @@ export * from './metrics.js';
 export * from './profile.js';
 export * from './player-executor.js';
 export * from './agency-evaluation.js';
+
+export * from './semantic.js';

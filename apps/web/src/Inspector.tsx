@@ -8,6 +8,7 @@ export function Inspector({
   regionId,
   onSelect,
   onDiplomacy,
+  onTakeControl,
   reference,
   busy = false,
   operate,
@@ -19,6 +20,7 @@ export function Inspector({
   regionId: RegionId | null;
   onSelect?: (id: import('@mandate/schemas').NationId) => void;
   onDiplomacy?: () => void;
+  onTakeControl?: () => void;
   reference?: {
     continent: string;
     subregion: string;
@@ -54,16 +56,25 @@ export function Inspector({
         <span className="nation-swatch" style={{ background: nation.color }} />
         <h1>{nation.name}</h1>
       </div>
-      <div className="code-line">
-        {nation.id.slice(7).toUpperCase()}{' '}
-        <span>
-          {nation.id === world.playerNationId
-            ? world.observerMode
-              ? 'INSPECTION PERSPECTIVE'
-              : 'PLAYER CONTROLLED'
-            : 'SCENARIO ACTOR'}
-        </span>
+      <div className="country-presence">
+        {nation.id === world.playerNationId
+          ? world.observerMode
+            ? 'Current government · observer perspective'
+            : 'Your government'
+          : 'Independent government'}
       </div>
+      {nation.id !== world.playerNationId && onDiplomacy && (
+        <button className="country-diplomacy-action" onClick={onDiplomacy}>
+          Open direct diplomacy
+        </button>
+      )}
+      {world.observerMode &&
+        nation.id !== world.playerNationId &&
+        onTakeControl && (
+          <button className="country-diplomacy-action" onClick={onTakeControl}>
+            Take control of {nation.name}
+          </button>
+        )}
       <nav className="country-tabs" aria-label="Country sections">
         {tabs.map((section) => (
           <button
@@ -96,36 +107,106 @@ export function Inspector({
         )}
       </section>
       <section hidden={!shown('Overview', 'Economy', 'Military', 'Domestic')}>
-        <h2>
-          Strategic indicators <span>PROXY / 100</span>
-        </h2>
-        {(['economy', 'military', 'stability', 'legitimacy'] as const)
-          .filter(
-            (key) =>
-              tab === 'Overview' ||
-              (tab === 'Economy' && key === 'economy') ||
-              (tab === 'Military' && key === 'military') ||
-              (tab === 'Domestic' && ['stability', 'legitimacy'].includes(key)),
-          )
-          .map((key) => (
-            <div className="stat" key={key}>
-              <div>
-                <span>{key}</span>
-                <strong>{nation.stats[key]}</strong>
-              </div>
-              <meter
-                min="0"
-                max="100"
-                value={nation.stats[key]}
-                aria-label={key}
-              />
+        {tab === 'Overview' && (
+          <div className="country-readout">
+            <div>
+              <span>Military readiness</span>
+              <strong>
+                {nation.stats.readiness >= 70
+                  ? 'High'
+                  : nation.stats.readiness >= 40
+                    ? 'Moderate'
+                    : 'Low'}
+              </strong>
             </div>
-          ))}
-        {nation.id === world.playerNationId && (
-          <div className="line-item">
-            <span>Available treasury</span>
-            <strong>{nation.stats.treasury}</strong>
+            <div>
+              <span>Fiscal capacity</span>
+              <strong>
+                {nation.stats.fiscal >= 70
+                  ? 'Strong'
+                  : nation.stats.fiscal >= 40
+                    ? 'Moderate'
+                    : 'Constrained'}
+              </strong>
+            </div>
+            {nation.id !== world.playerNationId && (
+              <div>
+                <span>Relations</span>
+                <strong>
+                  {(relation?.score ?? 0) >= 45
+                    ? 'Friendly'
+                    : (relation?.score ?? 0) >= 15
+                      ? 'Warm'
+                      : (relation?.score ?? 0) > -15
+                        ? 'Cautious'
+                        : (relation?.score ?? 0) > -45
+                          ? 'Strained'
+                          : 'Hostile'}
+                </strong>
+              </div>
+            )}
           </div>
+        )}
+        {tab === 'Overview' ? (
+          <details className="exact-country-details">
+            <summary>Exact figures</summary>
+            {(['economy', 'military', 'stability', 'legitimacy'] as const).map(
+              (key) => (
+                <div className="stat" key={key}>
+                  <div>
+                    <span>{key}</span>
+                    <strong>{nation.stats[key]}</strong>
+                  </div>
+                  <meter
+                    min="0"
+                    max="100"
+                    value={nation.stats[key]}
+                    aria-label={key}
+                  />
+                </div>
+              ),
+            )}
+            {nation.id === world.playerNationId && (
+              <div className="line-item">
+                <span>Available treasury</span>
+                <strong>{nation.stats.treasury}</strong>
+              </div>
+            )}
+          </details>
+        ) : (
+          <>
+            <h2>
+              Strategic indicators <span>PROXY / 100</span>
+            </h2>
+            {(['economy', 'military', 'stability', 'legitimacy'] as const)
+              .filter(
+                (key) =>
+                  (tab === 'Economy' && key === 'economy') ||
+                  (tab === 'Military' && key === 'military') ||
+                  (tab === 'Domestic' &&
+                    ['stability', 'legitimacy'].includes(key)),
+              )
+              .map((key) => (
+                <div className="stat" key={key}>
+                  <div>
+                    <span>{key}</span>
+                    <strong>{nation.stats[key]}</strong>
+                  </div>
+                  <meter
+                    min="0"
+                    max="100"
+                    value={nation.stats[key]}
+                    aria-label={key}
+                  />
+                </div>
+              ))}
+            {nation.id === world.playerNationId && (
+              <div className="line-item">
+                <span>Available treasury</span>
+                <strong>{nation.stats.treasury}</strong>
+              </div>
+            )}
+          </>
         )}
       </section>
       {operate && shown('Strategy', 'Diplomacy') && (

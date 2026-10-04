@@ -1,3 +1,7 @@
+import { semanticCommandIssue } from './semantic.js';
+import { executePlayerTurn } from './player-executor.js';
+import { SemanticProposal } from './contracts.js';
+import { buildFormalizerPayload } from './perspective.js';
 import { z } from 'zod';
 import { buildContext } from '@mandate/memory';
 import { resolveTurn, executionCapacity } from '@mandate/core';
@@ -22,10 +26,7 @@ import {
 } from './perspective.js';
 import { selectRelevance, scheduleActors } from './scheduler.js';
 import { repetitionIssue } from './behavior.js';
-import {
-  auditMajorIntentClauses,
-  executePlayerAction,
-} from './player-executor.js';
+import { auditMajorIntentClauses } from './player-executor.js';
 
 // Local inference proposes choices; these recipes are code-owned commands, never model code.
 // Consent is a separate government call. The sequential resolver remains authoritative.
@@ -49,7 +50,8 @@ const ClauseClassification = z.strictObject({
   visibility: z.enum(['public', 'private']),
 });
 export const CompactIntent = z.strictObject({
-  classifications: z.array(ClauseClassification).min(1).max(20),
+  classifications: z.array(ClauseClassification).min(1).max(40),
+  semanticProposals: z.array(SemanticProposal).max(40).optional(),
 });
 export type Candidate = {
   id: string;
@@ -157,6 +159,11 @@ export function compactCandidates(
     commands: WorldCommand[],
     family: string,
   ) => {
+    if (
+      player &&
+      commands.some((c) => semanticCommandIssue(w, intent?.actionGraph, c))
+    )
+      return;
     if (commands.some((c) => repetitionIssue(w, c, player ? actor : null)))
       return;
     try {
@@ -764,7 +771,10 @@ export async function compactPrepare(
               .length(clauses.length),
           }),
           {
+            ...buildFormalizerPayload(w, input.action),
             clauses,
+            semanticTask:
+              'Return semanticProposals for each clause: action, targets, sources and participants using canonical nation IDs. Asset owners are sources, allies are participants. Resolve target pronouns from the grounded graph; never annex an asset owner without an explicit targeting clause.',
             task: 'Return exactly one classification per supplied clause, in the same order. Classify each exact player clause. Energy, industry, diversification, trade capacity and spending are economy; readiness and armed force are military; reforms are domestic; proposals or talks addressed to another government are diplomacy. A policy mentioning a foreign supplier is NOT automatically diplomacy. Preserve negations and conditionality. Public framing constraints are not secrecy; quiet, secret or unannounced actions are private. Do not add outcomes.',
           },
           [w.saveId],
@@ -772,6 +782,9 @@ export async function compactPrepare(
         );
         trace.intent = canonicalizeFormalizerIntent(w, input.action, {
           version: 1,
+          ...(draft.semanticProposals
+            ? { semanticProposals: draft.semanticProposals }
+            : {}),
           summary: input.action.text.slice(0, 2000),
           targetNationIds: [],
           targetRegionIds: [],
@@ -813,10 +826,11 @@ export async function compactPrepare(
         trace.failures.push('Intent repair: ' + String(error));
       }
   }
-  trace.playerExecution =
-    input.action.source === 'player'
-      ? executePlayerAction(w, trace.intent, trace.id)
-      : null;
+  trace.playerExecution = executePlayerTurn(
+    w,
+    input.action.source === 'player' ? trace.intent : null,
+    trace.id,
+  );
   trace.relevance = selectRelevance(w, trace.intent);
   const required = [
     ...new Set([
@@ -925,7 +939,20 @@ export async function compactPrepare(
     ...(trace.playerExecution?.commands ?? []),
   ];
   const reactionPreviewCommands = commands.filter(
-    (entry) => entry.command.type !== 'OPEN_NEGOTIATION',
+    (entry) =>
+      entry.command.type !== 'OPEN_NEGOTIATION' &&
+      !(
+        entry.command.type === 'CRISIS_ACTION' &&
+        entry.command.move === 'talk' &&
+        commands.some(
+          (c) =>
+            c.command.type === 'OPEN_NEGOTIATION' &&
+            c.command.negotiation.id ===
+              (entry.command.type === 'CRISIS_ACTION'
+                ? entry.command.negotiationId
+                : undefined),
+        )
+      ),
   );
   let working = reactionPreviewCommands.length
     ? preview(
@@ -1193,7 +1220,12 @@ export async function compactPrepare(
   const request = CommitRequest.parse({
     expectedRevision: w.revision,
     expectedHash: input.expectedHash,
-    action: input.action,
+    action: {
+      ...input.action,
+      ...(trace.intent?.actionGraph
+        ? { semanticGraph: trace.intent.actionGraph }
+        : {}),
+    },
     commands: [
       ...commands,
       {

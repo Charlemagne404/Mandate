@@ -326,11 +326,13 @@ export function Launch({
   world,
   busy,
   operate,
+  hash,
   onClose,
   firstRun,
   onQuality,
 }: {
   world: WorldState;
+  hash: string;
   busy: boolean;
   operate: Operation;
   onClose: () => void;
@@ -344,7 +346,11 @@ export function Launch({
       name: string;
       description: string;
       nations: number;
+      regions: number;
       startDate: string;
+      tags: string[];
+      recommendedCountries: string[];
+      majorSituation: string;
     }>
   >([]);
   const [preview, setPreview] = useState<WorldState | null>(null);
@@ -355,6 +361,12 @@ export function Launch({
   const [days, setDays] = useState(30);
   const [observer, setObserver] = useState(false);
   const [status, setStatus] = useState('');
+  const [scenarioDraft, setScenarioDraft] = useState<{
+    sourceFilename?: string;
+    name: string;
+    description: string;
+  } | null>(null);
+  const [scenarioSaving, setScenarioSaving] = useState(false);
   useEffect(() => {
     void api<typeof scenarios>('/api/scenarios')
       .then(setScenarios)
@@ -367,6 +379,60 @@ export function Launch({
       body: JSON.stringify({ onboarded: true }),
     });
     onClose();
+  };
+  const startCampaign = async () => {
+    const result = await operate('/api/scenarios/load', {
+      filename,
+      nationId: country,
+      observer,
+    });
+    if (result) {
+      onQuality(quality, days);
+      setStatus('');
+      setStep('briefing');
+    } else {
+      setStatus(
+        'Could not start this scenario. Your current campaign is preserved.',
+      );
+    }
+  };
+  const saveScenarioDraft = async () => {
+    if (!scenarioDraft || scenarioSaving) return;
+    const stem =
+      scenarioDraft.name
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 36) || 'world';
+    const filename = `custom-${stem}-${Date.now().toString(36)}.json`;
+    setScenarioSaving(true);
+    setStatus('Saving scenario…');
+    try {
+      await api('/api/scenarios/save', {
+        method: 'POST',
+        body: JSON.stringify({
+          expectedRevision: world.revision,
+          expectedHash: hash,
+          filename,
+          ...(scenarioDraft.sourceFilename
+            ? { sourceFilename: scenarioDraft.sourceFilename }
+            : {}),
+          name: scenarioDraft.name,
+          description: scenarioDraft.description,
+        }),
+      });
+      setScenarios(await api<typeof scenarios>('/api/scenarios'));
+      setScenarioDraft(null);
+      setStatus('Scenario saved in your library.');
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : 'Scenario save failed.',
+      );
+    } finally {
+      setScenarioSaving(false);
+    }
   };
   return (
     <section
@@ -450,39 +516,124 @@ export function Launch({
         <>
           <div className="launch-grid">
             {scenarios.map((s) => (
-              <button
-                className="launch-scenario"
-                key={s.filename}
-                onClick={() => {
-                  setStatus('Opening scenario…');
-                  void api<WorldState>(
-                    '/api/scenarios/' + s.filename + '/preview',
-                  )
-                    .then((w) => {
-                      setPreview(w);
-                      setFilename(s.filename);
-                      setCountry(w.playerNationId);
-                      setStep('country');
-                      setStatus('');
+              <article className="launch-scenario-card" key={s.filename}>
+                <button
+                  className="launch-scenario"
+                  onClick={() => {
+                    setStatus('Opening scenario…');
+                    void api<WorldState>(
+                      '/api/scenarios/' + s.filename + '/preview',
+                    )
+                      .then((w) => {
+                        setPreview(w);
+                        setFilename(s.filename);
+                        setCountry(w.playerNationId);
+                        setStep('country');
+                        setStatus('');
+                      })
+                      .catch((e) => setStatus(String(e)));
+                  }}
+                >
+                  <span className="eyebrow">
+                    {s.startDate} · {s.nations} POLITIES · {s.regions} REGIONS
+                  </span>
+                  <h2>{s.name.split(' · ')[0]}</h2>
+                  <p>{s.description}</p>
+                  <p className="scenario-situation">
+                    <strong>Situation</strong> · {s.majorSituation}
+                  </p>
+                  <small>
+                    Recommended:{' '}
+                    {s.recommendedCountries.join(', ') ||
+                      'Choose any government'}
+                  </small>
+                  <span className="scenario-tags">
+                    {s.tags.map((tag) => (
+                      <i key={tag}>{tag}</i>
+                    ))}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="scenario-duplicate"
+                  onClick={() =>
+                    setScenarioDraft({
+                      sourceFilename: s.filename,
+                      name: `${s.name.split(' · ')[0]} copy`,
+                      description: s.description,
                     })
-                    .catch((e) => setStatus(String(e)));
-                }}
-              >
-                <span className="eyebrow">
-                  {s.startDate} · {s.nations} POLITIES
-                </span>
-                <h2>{s.name.split(' · ')[0]}</h2>
-                <p>{s.description}</p>
-                <small>
-                  {s.filename === 'nordic-strategy.json'
-                    ? 'Recommended: Sweden, Finland, Norway · regional energy and security choices'
-                    : s.nations > 100
-                      ? 'Global scope · broad world attention'
-                      : 'Compact scope · easier to follow'}
-                </small>
-              </button>
+                  }
+                >
+                  Duplicate & edit
+                </button>
+              </article>
             ))}
           </div>
+          <details className="scenario-workspace">
+            <summary>Create a scenario from this world</summary>
+            <p>
+              Save the current map, governments and agreements as a new starting
+              point.
+            </p>
+            <button
+              onClick={() =>
+                setScenarioDraft({
+                  name: `${world.scenario.name.split(' · ')[0]} · custom`,
+                  description: world.scenario.description,
+                })
+              }
+            >
+              Use current world
+            </button>
+          </details>
+          {scenarioDraft && (
+            <section
+              className="scenario-editor"
+              aria-label="Edit scenario copy"
+            >
+              <label>
+                Scenario name
+                <input
+                  value={scenarioDraft.name}
+                  onChange={(e) =>
+                    setScenarioDraft({ ...scenarioDraft, name: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Situation and description
+                <textarea
+                  rows={3}
+                  value={scenarioDraft.description}
+                  onChange={(e) =>
+                    setScenarioDraft({
+                      ...scenarioDraft,
+                      description: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <div className="launch-actions">
+                <button
+                  disabled={scenarioSaving}
+                  onClick={() => setScenarioDraft(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary"
+                  disabled={
+                    scenarioSaving ||
+                    !scenarioDraft.name.trim() ||
+                    !scenarioDraft.description.trim()
+                  }
+                  onClick={() => void saveScenarioDraft()}
+                >
+                  {scenarioSaving ? 'Saving…' : 'Save scenario copy'}
+                </button>
+              </div>
+            </section>
+          )}
           <button onClick={() => setStep('model')}>AI setup</button>
         </>
       )}
@@ -593,6 +744,14 @@ export function Launch({
                     .map((c) => (
                       <p key={c.id}>Active crisis: {c.title}</p>
                     ))}
+                  <label className="observer-start-option">
+                    <input
+                      type="checkbox"
+                      checked={observer}
+                      onChange={(e) => setObserver(e.target.checked)}
+                    />{' '}
+                    Watch this timeline as an observer
+                  </label>
                 </>
               )}
             </div>
@@ -602,9 +761,12 @@ export function Launch({
             <button
               className="primary"
               disabled={!own}
-              onClick={() => setStep('settings')}
+              onClick={() => void startCampaign()}
             >
-              Continue with {own?.name}
+              Start playing as {own?.name}
+            </button>
+            <button disabled={!own} onClick={() => setStep('settings')}>
+              More start options
             </button>
           </div>
         </>
@@ -654,23 +816,9 @@ export function Launch({
           <button
             className="primary"
             disabled={busy}
-            onClick={() => {
-              void operate('/api/scenarios/load', {
-                filename,
-                nationId: country,
-                observer,
-              }).then((result) => {
-                if (result) {
-                  onQuality(quality, days);
-                  setStep('briefing');
-                } else
-                  setStatus(
-                    'Could not start this scenario. Your current campaign is preserved.',
-                  );
-              });
-            }}
+            onClick={() => void startCampaign()}
           >
-            Start campaign
+            Start playing as {own?.name}
           </button>
         </>
       )}

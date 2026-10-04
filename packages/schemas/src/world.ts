@@ -1,3 +1,4 @@
+import { ActionGrounding, SemanticAction, SemanticGraph } from './semantic.js';
 import { z } from 'zod';
 import {
   ActionId,
@@ -80,6 +81,7 @@ export const Strategy = z
           visibility: z.enum(['public', 'private']),
           status: z.enum(['active', 'cancelled']),
           createdDate: SimulationDate,
+          semanticPlan: SemanticAction.optional(),
         }),
       )
       .max(20)
@@ -296,6 +298,8 @@ export const Event = EventFields.extend({
   sourceCommandIds: z.array(CommandId).min(1).max(100),
 });
 export const Action = z.strictObject({
+  semanticGraph: SemanticGraph.optional(),
+  grounding: ActionGrounding.optional(),
   id: ActionId,
   turnId: TurnId,
   actorNationId: NationId,

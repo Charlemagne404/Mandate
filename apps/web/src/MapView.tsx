@@ -10,21 +10,42 @@ import { mapModes } from '@mandate/map';
 
 type Geography = FeatureCollection<
   Polygon | MultiPolygon,
-  { regionId: string; name: string; label: [number, number] }
+  {
+    regionId: string;
+    name: string;
+    label: [number, number];
+    minZoom?: number;
+  }
 >;
 interface Props {
   world: WorldState;
   selected: NationId;
+  focusedRegion?: RegionId | null;
+  focusCoordinates?: [number, number] | undefined;
   mode: MapMode;
   onSelect: (nation: NationId, region: RegionId) => void;
   onReady: () => void;
 }
-export function MapView({ world, selected, mode, onSelect, onReady }: Props) {
+export function MapView({
+  world,
+  selected,
+  mode,
+  focusedRegion = null,
+  focusCoordinates,
+  onSelect,
+  onReady,
+}: Props) {
   const container = useRef<HTMLDivElement>(null);
   const instance = useRef<maplibregl.Map | null>(null);
   const labels = useRef<Geography['features']>([]);
-  const current = useRef({ world, mode, onSelect, selected });
-  current.current = { world, mode, onSelect, selected };
+  const current = useRef({
+    world,
+    mode,
+    onSelect,
+    selected,
+    focusedRegion,
+  });
+  current.current = { world, mode, onSelect, selected, focusedRegion };
   const updateLabels = useRef<() => void>(() => {});
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
@@ -60,9 +81,10 @@ export function MapView({ world, selected, mode, onSelect, onReady }: Props) {
     const controller = new AbortController();
     const markers: maplibregl.Marker[] = [];
     const markerInfo: {
-      marker: maplibregl.Marker;
-      nationId: NationId;
+      geometryId: RegionId;
+      name: string;
       position: [number, number];
+      minZoom: number;
       width: number;
     }[] = [];
     map.on('error', (event) => setError(event.error.message));
@@ -73,11 +95,24 @@ export function MapView({ world, selected, mode, onSelect, onReady }: Props) {
         });
         if (!response.ok) throw new Error('Geography unavailable');
         const geography = (await response.json()) as Geography;
-        labels.current = geography.features;
+        const activeGeometryIds = new Set(
+          current.current.world.regions.map((region) =>
+            String(region.geometryId),
+          ),
+        );
+        const visibleGeography: Geography = {
+          ...geography,
+          features: geography.features.filter(
+            (feature) =>
+              activeGeometryIds.has(String(feature.id)) ||
+              activeGeometryIds.has(String(feature.properties.regionId)),
+          ),
+        };
+        labels.current = visibleGeography.features;
         if (controller.signal.aborted) return;
         map.addSource('regions', {
           type: 'geojson',
-          data: geography,
+          data: visibleGeography,
           promoteId: 'regionId',
         });
         map.addLayer({
@@ -116,6 +151,22 @@ export function MapView({ world, selected, mode, onSelect, onReady }: Props) {
           },
         });
         map.addLayer({
+          id: 'disputed',
+          type: 'line',
+          source: 'regions',
+          paint: {
+            'line-color': '#b37b31',
+            'line-width': 1.5,
+            'line-dasharray': [1, 2],
+            'line-opacity': [
+              'case',
+              ['boolean', ['feature-state', 'disputed'], false],
+              0.95,
+              0,
+            ],
+          },
+        });
+        map.addLayer({
           id: 'selection',
           type: 'line',
           source: 'regions',
@@ -130,62 +181,91 @@ export function MapView({ world, selected, mode, onSelect, onReady }: Props) {
             ],
           },
         });
+        const regionsByGeometry = new Map(
+          current.current.world.regions.map((region) => [
+            region.geometryId,
+            region,
+          ]),
+        );
         for (const feature of geography.features) {
-          const region = current.current.world.regions.find(
-            (r) => r.id === feature.id,
-          );
-          if (!region) continue;
-          const label = document.createElement('button');
-          label.className = 'map-label';
-          label.textContent = region.name;
-          label.setAttribute('aria-label', `Select ${region.name} on map`);
-          label.addEventListener('click', () => {
-            const state = current.current;
-            const live = state.world.regions.find((r) => r.id === feature.id)!;
-            state.onSelect(
-              state.mode === 'control'
-                ? live.controllerNationId
-                : live.ownerNationId,
-              live.id,
-            );
+          const geometryId = RegionId.parse(String(feature.id));
+          if (!regionsByGeometry.has(geometryId)) continue;
+          markerInfo.push({
+            geometryId,
+            name: feature.properties.name,
+            position: feature.properties.label,
+            minZoom: feature.properties.minZoom ?? 0,
+            width: Math.min(160, feature.properties.name.length * 6 + 10),
           });
-          const marker = new maplibregl.Marker({ element: label })
-            .setLngLat(feature.properties.label)
+        }
+        const labelPoolSize = Math.min(
+          current.current.world.regions.length,
+          current.current.world.regions.length > 1000 ? 240 : 500,
+        );
+        for (let i = 0; i < labelPoolSize; i++) {
+          const element = document.createElement('span');
+          element.className = 'map-label';
+          element.setAttribute('aria-hidden', 'true');
+          element.style.display = 'none';
+          element.style.pointerEvents = 'none';
+          const marker = new maplibregl.Marker({
+            element,
+            anchor: 'center',
+          })
+            .setLngLat([0, 0])
             .addTo(map);
           markers.push(marker);
-          markerInfo.push({
-            marker,
-            nationId: region.ownerNationId,
-            position: feature.properties.label,
-            width: region.name.length * 6 + 10,
-          });
         }
         updateLabels.current = () => {
           const state = current.current;
           const canvas = map.getCanvas();
+          const bounds = map.getBounds();
+          const byGeometry = new Map(
+            state.world.regions.map((region) => [region.geometryId, region]),
+          );
           const boxes: { x: number; y: number; width: number }[] = [];
           const max =
-            state.world.nations.length < 30
-              ? 500
+            state.world.regions.length < 300
+              ? state.world.regions.length
               : map.getZoom() < 2
                 ? 22
                 : map.getZoom() < 3
                   ? 45
                   : map.getZoom() < 4
                     ? 80
-                    : 500;
-          const priority = (id: NationId) =>
-            id === state.selected
-              ? 10000
-              : id === state.world.playerNationId
-                ? 9000
-                : (state.world.nations.find((n) => n.id === id)?.stats
-                    .economy ?? 0);
-          for (const item of [...markerInfo].sort(
+                    : markers.length;
+          const zoom = map.getZoom();
+          const candidates = markerInfo.flatMap((item) => {
+            const region = byGeometry.get(item.geometryId);
+            if (!region) return [];
+            const isFocused = region.id === state.focusedRegion;
+            const isSelected =
+              region.ownerNationId === state.selected ||
+              region.controllerNationId === state.selected;
+            if (zoom + 0.5 < item.minZoom && !isFocused && !isSelected)
+              return [];
+            if (
+              !bounds.contains({ lng: item.position[0], lat: item.position[1] })
+            )
+              return [];
+            const nationId =
+              state.mode === 'control'
+                ? region.controllerNationId
+                : region.ownerNationId;
+            const score =
+              (isFocused ? 20000 : 0) +
+              (nationId === state.selected ? 10000 : 0) +
+              (nationId === state.world.playerNationId ? 9000 : 0) +
+              (state.world.nations.find((nation) => nation.id === nationId)
+                ?.stats.economy ?? 0);
+            return [{ item, score }];
+          });
+          candidates.sort(
             (a, b) =>
-              priority(b.nationId) - priority(a.nationId) ||
-              a.nationId.localeCompare(b.nationId),
-          )) {
+              b.score - a.score || a.item.name.localeCompare(b.item.name),
+          );
+          let markerIndex = 0;
+          for (const { item } of candidates) {
             const point = map.project(item.position);
             const box = { x: point.x, y: point.y, width: item.width };
             const visible =
@@ -194,16 +274,25 @@ export function MapView({ world, selected, mode, onSelect, onReady }: Props) {
               point.y >= 0 &&
               point.y <= canvas.clientHeight &&
               boxes.length < max &&
+              markerIndex < markers.length &&
               !boxes.some(
                 (b) =>
                   Math.abs(b.y - box.y) < 19 &&
                   Math.abs(b.x - box.x) < (b.width + box.width) / 2 + 5,
               );
-            item.marker.getElement().style.display = visible ? '' : 'none';
-            if (visible) boxes.push(box);
+            if (!visible) continue;
+            const marker = markers[markerIndex++];
+            if (!marker) continue;
+            marker.setLngLat(item.position);
+            marker.getElement().textContent = item.name;
+            marker.getElement().style.display = '';
+            boxes.push(box);
           }
+          for (const marker of markers.slice(markerIndex))
+            marker.getElement().style.display = 'none';
         };
-        map.on('move', () => updateLabels.current());
+        map.on('moveend', () => updateLabels.current());
+        map.on('zoomend', () => updateLabels.current());
         updateLabels.current();
         map.on('mousemove', 'political-fill', (event) => {
           const id = event.features?.[0]?.id;
@@ -257,14 +346,23 @@ export function MapView({ world, selected, mode, onSelect, onReady }: Props) {
   }, [ready, world, mode, selected]);
   useEffect(() => {
     if (!ready || !instance.current) return;
-    const region = world.regions.find((r) => r.ownerNationId === selected);
+    const region =
+      world.regions.find((r) => r.id === focusedRegion) ??
+      world.regions.find((r) => r.ownerNationId === selected);
     const feature = labels.current.find((f) => f.id === region?.geometryId);
-    if (feature)
+    const center = focusedRegion
+      ? feature?.properties.label
+      : (focusCoordinates ?? feature?.properties.label);
+    if (center)
       instance.current.easeTo({
-        center: feature.properties.label,
+        center,
+        zoom: Math.max(
+          instance.current.getZoom(),
+          focusedRegion ? 4 : world.nations.length > 30 ? 2.8 : 3.2,
+        ),
         duration: 650,
       });
-  }, [ready, selected, world.scenario.id]);
+  }, [ready, selected, focusedRegion, focusCoordinates, world.scenario.id]);
   return (
     <section
       className="atlas"
@@ -288,6 +386,9 @@ export function MapView({ world, selected, mode, onSelect, onReady }: Props) {
         </span>
         <span>
           <i className="key-control" /> Occupied territory
+        </span>
+        <span>
+          <i className="key-disputed" /> Disputed claims
         </span>
         <span>{mapModes.find((m) => m.value === mode)?.legend}</span>
       </div>

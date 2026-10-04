@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -14,7 +14,10 @@ afterEach(async () => {
   vi.restoreAllMocks();
   for (const fn of cleanup.splice(0)) await fn();
 });
-function setup(persistent = false) {
+function setup(
+  persistent = false,
+  scenariosDirectory = root + 'data/scenarios',
+) {
   const directory = persistent
     ? mkdtempSync(join(tmpdir(), 'mandate-alpha-api-'))
     : undefined;
@@ -25,7 +28,7 @@ function setup(persistent = false) {
   store.initialize(fixture());
   const services = createAlphaServices(store, {
     ...(directory ? { directory } : {}),
-    scenariosDirectory: root + 'data/scenarios',
+    scenariosDirectory,
   });
   const app = buildServer({ store, geography: '{}', services });
   cleanup.push(async () => {
@@ -219,6 +222,62 @@ describe('integrated alpha service', () => {
     ).toBe(true);
     expect(store.load().initiatives.some((i) => i.progress > 0)).toBe(true);
     expect((await post('/api/autoplay', { turns: 101 })).statusCode).toBe(400);
+  });
+  it('creates a replayable scenario copy from the current world without touching source scenarios', async () => {
+    const scenariosDirectory = mkdtempSync(
+      join(tmpdir(), 'mandate-scenario-library-'),
+    );
+    copyFileSync(
+      join(root, 'data/scenarios/northern-sandbox.json'),
+      join(scenariosDirectory, 'northern-sandbox.json'),
+    );
+    cleanup.push(async () =>
+      rmSync(scenariosDirectory, { recursive: true, force: true }),
+    );
+    const { post, store } = setup(false, scenariosDirectory);
+    const response = await post('/api/scenarios/save', {
+      filename: 'custom-independent-lapland.json',
+      name: 'Lapland Rising',
+      description:
+        'A new branch of history begins with an independent Lapland.',
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({
+      filename: 'custom-independent-lapland.json',
+      name: 'Lapland Rising',
+    });
+    const saved = JSON.parse(
+      readFileSync(
+        join(scenariosDirectory, 'custom-independent-lapland.json'),
+        'utf8',
+      ),
+    );
+    expect(saved).toMatchObject({
+      kind: 'scenario',
+      world: {
+        date: store.load().date,
+        revision: store.load().revision,
+        ancestry: null,
+        scenario: {
+          name: 'Lapland Rising',
+          description:
+            'A new branch of history begins with an independent Lapland.',
+          startDate: store.load().date,
+        },
+      },
+    });
+    expect(
+      (
+        await post('/api/scenarios/save', {
+          filename: 'custom-independent-lapland.json',
+          name: 'Duplicate',
+          description: 'This name is already in use.',
+        })
+      ).statusCode,
+    ).toBe(422);
+    expect(
+      readFileSync(join(scenariosDirectory, 'northern-sandbox.json'), 'utf8'),
+    ).toContain('northern-sandbox');
   });
   it('named branches preserve canonical history and AI explanation, rollback restores real state', async () => {
     const { post, store } = setup(true);
@@ -431,5 +490,41 @@ describe('intentional aid pledge gameplay', () => {
       ).statusCode,
     ).toBe(422);
     expect(canonicalHash(store.load())).toBe(hash);
+  });
+});
+
+describe('direct diplomatic proposals', () => {
+  it('opens the player written terms immediately and waits for recipient consent', async () => {
+    const { post, store } = setup();
+    const terms =
+      'Sweden will guarantee Finland’s independence if Finland permits Swedish aircraft to use its bases.';
+    const response = await post('/api/diplomacy/propose', {
+      recipientNationId: 'nation:fin',
+      message: terms,
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    const world = store.load();
+    expect(world.negotiations).toHaveLength(1);
+    expect(world.negotiations[0]).toMatchObject({
+      proposerNationId: 'nation:swe',
+      recipientNationId: 'nation:fin',
+      kind: 'defense',
+      status: 'open',
+      terms,
+    });
+    expect(world.negotiations[0]!.obligations).toEqual([]);
+    expect(world.treaties).toEqual([]);
+    expect(world.commitments).toEqual([]);
+    const turn = world.turns.find(
+      (entry) => entry.revision === world.revision,
+    )!;
+    expect(
+      world.actions.find((action) => action.id === turn.actionId),
+    ).toMatchObject({
+      source: 'player',
+      actorNationId: 'nation:swe',
+      text: terms,
+    });
   });
 });

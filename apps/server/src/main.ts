@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 import staticPlugin from '@fastify/static';
 import { openWorldStore } from '@mandate/persistence';
 import { geographyValidatorByVersion, loadScenario } from '@mandate/scenarios';
@@ -23,14 +24,19 @@ const geographyByVersion = {
     resolve(root, 'data/geography/world.geojson'),
     'utf8',
   ),
+  'natural-earth-admin1-v1': readFileSync(
+    resolve(root, 'data/geography/world-admin1.geojson.gz'),
+  ),
 };
 const geometrySets = Object.fromEntries(
   Object.entries(geographyByVersion).map(([version, data]) => [
     version,
     new Set<string>(
-      (JSON.parse(data) as { features: { id: string }[] }).features.map(
-        (f) => f.id,
-      ),
+      (
+        JSON.parse(
+          Buffer.isBuffer(data) ? gunzipSync(data).toString('utf8') : data,
+        ) as { features: { id: string }[] }
+      ).features.map((f) => f.id),
     ),
   ]),
 );
@@ -45,7 +51,7 @@ try {
       resolve(
         root,
         'data/scenarios',
-        process.env.MANDATE_SCENARIO ?? 'global-alpha.json',
+        process.env.MANDATE_SCENARIO ?? 'global-regional.json',
       ),
     ),
   );

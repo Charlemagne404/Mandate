@@ -18,6 +18,7 @@ export const commandTypes: WorldCommand['type'][] = [
   'REVISE_GOAL_EVALUATION',
   'TRANSFER_CONTROL',
   'TRANSFER_OWNERSHIP',
+  'CREATE_POLITY',
   'ADJUST_RELATION',
   'ADJUST_NATION_STAT',
   'ADD_CLAIM',
@@ -327,6 +328,28 @@ export function template(
       };
     case 'MOBILIZE_FORCE':
       return { type, nationId: selected, level: 'full' };
+    case 'CREATE_POLITY': {
+      const selectedRegion = w.regions.find((entry) => entry.id === region)!;
+      const parent = w.nations.find(
+        (entry) => entry.id === selectedRegion.ownerNationId,
+      )!;
+      return {
+        type,
+        parentNationId: parent.id,
+        polity: {
+          id: `nation:dev-${id}` as NationId,
+          name: `Independent ${selectedRegion.name}`,
+          color: '#52766D',
+          government: {
+            type: 'Provisional council',
+            ideology: 'regional autonomy',
+          },
+          leader: 'Interim council',
+          stats: parent.stats,
+        },
+        regionIds: [selectedRegion.id],
+      };
+    }
     case 'TRANSFER_CONTROL':
     case 'TRANSFER_OWNERSHIP':
     case 'ADD_CLAIM':

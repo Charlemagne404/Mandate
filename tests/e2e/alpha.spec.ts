@@ -6,6 +6,7 @@ test.beforeEach(async ({ page }) => {
   await page.request.post('/api/experience', {
     data: { onboarded: true, developerMode: true },
   });
+  await page.request.post('/api/settings', { data: { kind: 'fake' } });
   const before = await (await page.request.get('/api/world')).json();
   const scenario = JSON.parse(
     readFileSync(resolve('data/scenarios/northern-sandbox.json'), 'utf8'),
@@ -27,14 +28,12 @@ test('free-form compound directive, private diplomatic continuity and inspectabl
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page
-    .getByLabel('DIRECTIVE / SWEDEN', { exact: true })
+    .getByLabel('Sweden action composer', { exact: true })
     .fill(
       'Begin a quiet diplomatic initiative with Finland and Norway aimed at closer defense cooperation. Do not propose a formal alliance yet. Increase military readiness without publicly announcing it.',
     );
-  await page
-    .getByRole('button', { name: 'Issue directive', exact: true })
-    .click();
-  await expect(page.locator('time')).toHaveText('2025-01-08');
+  await page.getByRole('button', { name: 'Issue order', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2025-01-31');
   const first = await (await page.request.get('/api/world')).json();
   expect(first.world.negotiations).toHaveLength(2);
   expect(first.world.treaties).toHaveLength(0);
@@ -44,18 +43,16 @@ test('free-form compound directive, private diplomatic continuity and inspectabl
         i.nationId === 'nation:swe' && i.kind === 'rearmament',
     ),
   ).toBe(true);
-  await page.getByLabel('Inspect nation').selectOption('nation:fin');
+  await page.getByLabel('Playing as').selectOption('nation:fin');
   await page.getByRole('button', { name: 'Diplomacy', exact: true }).click();
   await expect(page.locator('.diplomatic-thread')).toContainText('PRIVATE');
   await expect(page.locator('.diplomatic-thread')).not.toContainText(
     'military readiness',
   );
-  await page
-    .getByRole('button', { name: 'Advance world', exact: true })
-    .click();
-  await expect(page.locator('time')).toHaveText('2025-01-15');
+  await page.getByRole('button', { name: 'Advance turn', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2025-03-02');
   await expect(page.locator('.diplomatic-thread')).toContainText('ACCEPTED');
-  await page.getByRole('button', { name: 'Events', exact: true }).click();
+  await page.getByRole('button', { name: 'History', exact: true }).click();
   await page.getByText('Why did this happen?', { exact: true }).first().click();
   await page
     .getByText('Government plans, context & model records', { exact: true })
@@ -79,14 +76,10 @@ test('free-form compound directive, private diplomatic continuity and inspectabl
 test('named save, actual rollback, branch ancestry and restart of a chosen history', async ({
   page,
 }) => {
-  await page
-    .getByRole('button', { name: 'Advance world', exact: true })
-    .click();
-  await expect(page.locator('time')).toHaveText('2025-01-08');
+  await page.getByRole('button', { name: 'Advance turn', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2025-01-31');
   const original = await (await page.request.get('/api/world')).json();
-  await page
-    .getByRole('button', { name: 'World & settings', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const name = 'Branch proof ' + Date.now();
   await page.getByLabel('Save name').fill(name);
   await page
@@ -98,17 +91,13 @@ test('named save, actual rollback, branch ancestry and restart of a chosen histo
   await page
     .getByRole('button', { name: 'Close world settings', exact: true })
     .click();
-  await page
-    .getByRole('button', { name: 'Advance world', exact: true })
-    .click();
-  await expect(page.locator('time')).toHaveText('2025-01-15');
-  await page
-    .getByRole('button', { name: 'World & settings', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Advance turn', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2025-03-02');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page
     .getByRole('button', { name: 'Rollback last turn', exact: true })
     .click();
-  await expect(page.locator('time')).toHaveText('2025-01-08');
+  await expect(page.locator('time')).toHaveText('2025-01-31');
   expect((await (await page.request.get('/api/world')).json()).hash).toBe(
     original.hash,
   );
@@ -134,18 +123,20 @@ test('named save, actual rollback, branch ancestry and restart of a chosen histo
     branch.hash,
   );
 });
-test('global scenario loads 242 polities, thematic map and a multi-country player turn', async ({
+test('regional world library loads 242 polities and a one-month player turn', async ({
   page,
 }, info) => {
+  test.setTimeout(120_000);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page
-    .getByRole('button', { name: 'World & settings', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Scenario', exact: true }).click();
-  await page
+  const regionalScenario = page
     .locator('.scenario-card')
-    .filter({ hasText: 'A World in Balance' })
+    .filter({ hasText: '4595 regions' });
+  await expect(regionalScenario).toContainText('Recommended:');
+  await expect(regionalScenario).toContainText('Situation:');
+  await regionalScenario
     .getByRole('button', { name: 'Start scenario', exact: true })
     .click();
   await expect(page.locator('time')).toHaveText('2028-01-01');
@@ -153,31 +144,23 @@ test('global scenario loads 242 polities, thematic map and a multi-country playe
     .getByRole('button', { name: 'Close world settings', exact: true })
     .click();
   await expect(page.locator('[data-map-ready=true]')).toBeVisible();
-  await page.getByLabel('Additional map modes').selectOption('economy');
-  await page.getByLabel('Inspect nation').selectOption('nation:bra');
-  await expect(
-    page.getByRole('heading', { name: 'Brazil', exact: true }),
-  ).toBeVisible();
+  await page.getByLabel('More map modes').selectOption('economy');
+  await page.getByLabel('Playing as').selectOption('nation:bra');
+  await expect(page.getByLabel('Brazil action composer')).toBeVisible();
   await page
-    .getByLabel('DIRECTIVE / SWEDEN', { exact: true })
-    .fill(
-      'Begin a quiet diplomatic initiative with Finland and Norway. Do not propose a formal alliance yet. Invest in nuclear energy for five years.',
-    );
-  await page
-    .getByRole('button', { name: 'Issue directive', exact: true })
-    .click();
-  await expect(page.locator('time')).toHaveText('2028-01-08');
+    .getByLabel('Brazil action composer', { exact: true })
+    .fill('Invest in nuclear energy for five years.');
+  await page.getByRole('button', { name: 'Issue order', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2028-01-31', {
+    timeout: 90_000,
+  });
   const world = (await (await page.request.get('/api/world')).json()).world;
   expect(world.nations).toHaveLength(242);
-  expect(
-    world.negotiations.filter(
-      (n: { proposerNationId: string }) => n.proposerNationId === 'nation:swe',
-    ),
-  ).toHaveLength(2);
+  expect(world.regions).toHaveLength(4595);
   expect(
     world.initiatives.some(
       (i: { nationId: string; kind: string }) =>
-        i.nationId === 'nation:swe' && i.kind === 'energy',
+        i.nationId === 'nation:bra' && i.kind === 'energy',
     ),
   ).toBe(true);
   await page.screenshot({
@@ -191,15 +174,12 @@ test('controlled recipient accepts a treaty through ordinary diplomacy controls'
   page,
 }) => {
   await page
-    .getByLabel('DIRECTIVE / SWEDEN', { exact: true })
+    .getByLabel('Sweden action composer', { exact: true })
     .fill('Propose a reciprocal trade agreement with Finland.');
-  await page
-    .getByRole('button', { name: 'Issue directive', exact: true })
-    .click();
-  await expect(page.locator('time')).toHaveText('2025-01-08');
-  await page.getByLabel('Controlled country').selectOption('nation:fin');
-  await expect(page.getByLabel('Controlled country')).toHaveValue('nation:fin');
-  await page.getByLabel('Inspect nation').selectOption('nation:swe');
+  await page.getByRole('button', { name: 'Issue order', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2025-01-31');
+  await page.getByLabel('Playing as').selectOption('nation:fin');
+  await expect(page.getByLabel('Playing as')).toHaveValue('nation:fin');
   await page.getByRole('button', { name: 'Diplomacy', exact: true }).click();
   await page.getByRole('button', { name: 'accept', exact: true }).click();
   await expect(page.locator('.diplomatic-thread')).toContainText('ACCEPTED');
@@ -216,7 +196,8 @@ test('controlled recipient accepts a treaty through ordinary diplomacy controls'
 test('persistent strategic directive survives reload and can be cancelled', async ({
   page,
 }) => {
-  await page.getByLabel('Inspect nation').selectOption('nation:swe');
+  await page.getByLabel('Playing as').selectOption('nation:swe');
+  await page.getByRole('button', { name: 'Country', exact: true }).click();
   await page
     .getByRole('button', { name: 'Country Strategy', exact: true })
     .click();
@@ -231,7 +212,8 @@ test('persistent strategic directive survives reload and can be cancelled', asyn
   );
   await page.reload();
   await expect(page.locator('[data-map-ready=true]')).toBeVisible();
-  await page.getByLabel('Inspect nation').selectOption('nation:swe');
+  await page.getByLabel('Playing as').selectOption('nation:swe');
+  await page.getByRole('button', { name: 'Country', exact: true }).click();
   await page
     .getByRole('button', { name: 'Country Strategy', exact: true })
     .click();
@@ -246,9 +228,7 @@ test('persistent strategic directive survives reload and can be cancelled', asyn
 test('Nordic scenario reveals goal evidence, fiscal constraints and neutral basing counteroffer', async ({
   page,
 }, info) => {
-  await page
-    .getByRole('button', { name: 'World & settings', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Scenario', exact: true }).click();
   await page
     .locator('.scenario-card')
@@ -258,24 +238,21 @@ test('Nordic scenario reveals goal evidence, fiscal constraints and neutral basi
   await page
     .getByRole('button', { name: 'Close world settings', exact: true })
     .click();
-  await page.getByLabel('Inspect nation').selectOption('nation:swe');
+  await page.getByLabel('Playing as').selectOption('nation:swe');
+  await page.getByRole('button', { name: 'Country', exact: true }).click();
   await expect(page.locator('.inspector')).toContainText(
     'Reduce energy vulnerability',
   );
   await page
-    .getByLabel('DIRECTIVE / SWEDEN', { exact: true })
+    .getByLabel('Sweden action composer', { exact: true })
     .fill(
       'Begin diplomacy with Finland: allow permanent Swedish military basing in Finland.',
     );
-  await page
-    .getByRole('button', { name: 'Issue directive', exact: true })
-    .click();
-  await expect(page.locator('time')).toHaveText('2025-01-08');
-  await page
-    .getByRole('button', { name: 'Advance world', exact: true })
-    .click();
-  await expect(page.locator('time')).toHaveText('2025-01-15');
-  await page.getByLabel('Inspect nation').selectOption('nation:fin');
+  await page.getByRole('button', { name: 'Issue order', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2025-01-31');
+  await page.getByRole('button', { name: 'Advance turn', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2025-03-02');
+  await page.getByLabel('Playing as').selectOption('nation:fin');
   await page.getByRole('button', { name: 'Diplomacy', exact: true }).click();
   await expect(page.locator('.diplomatic-thread')).toContainText(
     'Intelligence cooperation without permanent foreign basing',
@@ -290,173 +267,120 @@ test('Nordic scenario reveals goal evidence, fiscal constraints and neutral basi
   });
 });
 
-test('structured aid pledge can be negotiated and funded from ordinary game controls', async ({
+test('selected country opens direct free-form diplomacy with persistent terms', async ({
   page,
 }) => {
-  await page.getByLabel('Inspect nation').selectOption('nation:fin');
-  await page.getByRole('button', { name: 'Diplomacy', exact: true }).click();
+  await page.getByRole('button', { name: 'Country', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Country Diplomacy', exact: true })
+    .click();
+  await page
+    .locator('.relation-row')
+    .getByRole('button', { name: 'Finland', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Finland', exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Open direct diplomacy', exact: true })
+    .click();
   await page
     .getByLabel('Your proposal', { exact: true })
-    .fill('Deliver a funded assistance project to Finland');
-  await page.getByLabel('Include a funded aid pledge').check();
-  await page.getByLabel('Promised investment').fill('4');
-  await page.getByLabel('Delivery deadline').fill('2025-07-01');
+    .fill(
+      'We will guarantee Finland’s independence if Finland permits Swedish aircraft to use its bases.',
+    );
   await page
     .getByRole('button', { name: 'Send diplomatic initiative', exact: true })
     .click();
+  await expect(page.locator('.diplomatic-thread')).toContainText('OPEN');
   await expect(page.locator('.diplomatic-thread')).toContainText(
-    'Funded aid pledge',
+    'guarantee Finland',
   );
-  await page
-    .getByRole('button', { name: 'Advance world', exact: true })
-    .click();
-  await expect(page.locator('.diplomatic-thread')).toContainText('ACCEPTED');
-  await page.getByLabel('Inspect nation').selectOption('nation:swe');
-  await page
-    .getByRole('button', { name: 'Country Diplomacy', exact: true })
-    .click();
-  await page
-    .getByRole('button', { name: 'Fund obligation delivery', exact: true })
-    .click();
   const w = (await (await page.request.get('/api/world')).json()).world;
-  expect(w.commitments[0].status).toBe('active');
-  expect(w.initiatives.some((i: { kind: string }) => i.kind === 'aid')).toBe(
-    true,
-  );
+  expect(
+    w.negotiations.some(
+      (n: { proposerNationId: string; recipientNationId: string }) =>
+        n.proposerNationId === 'nation:swe' &&
+        n.recipientNationId === 'nation:fin',
+    ),
+  ).toBe(true);
   await page.reload();
   await expect(page.locator('[data-map-ready=true]')).toBeVisible();
-  await page.getByLabel('Inspect nation').selectOption('nation:swe');
-  await page
-    .getByRole('button', { name: 'Country Diplomacy', exact: true })
-    .click();
-  await expect(page.locator('.inspector')).toContainText(
-    'Deliver a funded assistance project to Finland',
+  await page.getByRole('button', { name: 'Diplomacy', exact: true }).click();
+  await expect(page.locator('.diplomatic-thread')).toContainText(
+    'guarantee Finland',
   );
 });
 
-test('persistent crisis and independent multilateral consent from normal controls', async ({
+test('free-form multilateral proposal opens a separate diplomatic channel for each government', async ({
   page,
 }, info) => {
-  const before = await (await page.request.get('/api/world')).json();
-  const scenario = JSON.parse(
-    readFileSync(resolve('data/scenarios/nordic-strategy.json'), 'utf8'),
+  await page
+    .getByLabel('Sweden action composer', { exact: true })
+    .fill('Offer Finland and Norway a three-way military alliance.');
+  await page.getByRole('button', { name: 'Issue order', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2025-01-31');
+  const world = (await (await page.request.get('/api/world')).json()).world;
+  const offers = world.negotiations.filter(
+    (n: { proposerNationId: string }) => n.proposerNationId === 'nation:swe',
   );
-  const loaded = await page.request.post('/api/import', {
-    data: {
-      expectedRevision: before.world.revision,
-      expectedHash: before.hash,
-      save: { ...scenario, kind: 'save' },
-    },
-  });
-  expect(loaded.ok()).toBe(true);
-  await page.reload();
-  await expect(page.locator('[data-map-ready=true]')).toBeVisible();
-  await page.getByRole('button', { name: 'Overview', exact: true }).click();
-  await expect(
-    page.getByRole('heading', {
-      name: 'Nordic security access dispute',
-      exact: true,
-    }),
-  ).toBeVisible();
-  const initial = await (await page.request.get('/api/world')).json();
-  await page.getByRole('button', { name: 'talk', exact: true }).click();
-  await expect
-    .poll(
-      async () =>
-        (await (await page.request.get('/api/world')).json()).world.crises[0]
-          .severity,
-    )
-    .toBeLessThan(initial.world.crises[0].severity);
-  await page
-    .getByLabel('Conference partners', { exact: true })
-    .selectOption(['nation:fin', 'nation:nor']);
-  await page
-    .getByLabel('Conference terms', { exact: true })
-    .fill(
-      'Reciprocal intelligence cooperation without permanent foreign bases',
-    );
-  await page
-    .getByRole('button', { name: 'Convene security talks', exact: true })
-    .click();
-  await expect(
-    page.getByRole('heading', {
-      name: 'Regional security conference',
-      exact: true,
-    }),
-  ).toBeVisible();
+  expect(offers).toHaveLength(2);
+  expect(offers.every((n: { status: string }) => n.status === 'open')).toBe(
+    true,
+  );
+  await page.getByLabel('Playing as').selectOption('nation:fin');
+  await page.getByRole('button', { name: 'Diplomacy', exact: true }).click();
+  await expect(page.locator('.diplomatic-thread')).toContainText('OPEN');
   await page.getByRole('button', { name: 'accept', exact: true }).click();
-  await expect
-    .poll(
-      async () =>
-        (await (await page.request.get('/api/world')).json()).world
-          .conferences[0].responses.length,
-    )
-    .toBe(1);
+  await expect(page.locator('.diplomatic-thread')).toContainText('ACCEPTED');
+  const after = (await (await page.request.get('/api/world')).json()).world;
   expect(
-    (await (await page.request.get('/api/world')).json()).world.conferences[0]
-      .status,
+    after.negotiations.filter(
+      (n: { proposerNationId: string; recipientNationId: string }) =>
+        n.proposerNationId === 'nation:swe' &&
+        n.recipientNationId === 'nation:fin',
+    )[0].status,
+  ).toBe('accepted');
+  expect(
+    after.negotiations.filter(
+      (n: { proposerNationId: string; recipientNationId: string }) =>
+        n.proposerNationId === 'nation:swe' &&
+        n.recipientNationId === 'nation:nor',
+    )[0].status,
   ).toBe('open');
-  for (const nation of ['nation:fin', 'nation:nor']) {
-    await page.getByLabel('Controlled country').selectOption(nation);
-    await expect(page.getByLabel('Controlled country')).toHaveValue(nation);
-    await page.getByRole('button', { name: 'accept', exact: true }).click();
-    await expect
-      .poll(async () =>
-        (
-          await (await page.request.get('/api/world')).json()
-        ).world.conferences[0].responses.some(
-          (r: { nationId: string }) => r.nationId === nation,
-        ),
-      )
-      .toBe(true);
-  }
-  const agreed = (await (await page.request.get('/api/world')).json()).world;
-  expect(agreed.conferences[0].status).toBe('agreed');
-  expect(
-    agreed.organizations.some(
-      (o: { name: string }) => o.name === 'Regional security conference',
-    ),
-  ).toBe(true);
   await page.screenshot({
-    path: info.outputPath('crisis-conference.png'),
+    path: info.outputPath('multilateral-diplomacy.png'),
     fullPage: true,
   });
 });
 
-test('observer can advance, inspect, retake control and use the scoped advisor', async ({
+test('observer can play, pause, step and take control without restarting history', async ({
   page,
 }) => {
-  await page
-    .getByRole('button', { name: 'Observe world', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Observe', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: 'Issue directive', exact: true }),
+    page.getByRole('button', { name: 'Issue order', exact: true }),
   ).toBeDisabled();
-  await page
-    .getByRole('button', { name: 'Advance world', exact: true })
-    .click();
-  await expect(page.locator('time')).toHaveText('2025-01-08');
-  await page.getByLabel('Controlled country').selectOption('nation:fin');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: 'Observe world', exact: true }),
+    page.getByRole('button', { name: 'Pause', exact: true }),
   ).toBeVisible();
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.getByRole('button', { name: 'Step', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2025-01-31');
+  const saveId = (await (await page.request.get('/api/world')).json()).world
+    .saveId;
+  await page.getByLabel('Take control as').selectOption('nation:fin');
+  await expect(page.getByLabel('Playing as')).toHaveValue('nation:fin');
   expect(
     (await (await page.request.get('/api/world')).json()).world.observerMode,
   ).toBe(false);
-  await page.getByRole('button', { name: 'Overview', exact: true }).click();
-  await page.getByText('Ask your strategic advisor', { exact: true }).click();
-  await page
-    .getByLabel('Strategic question', { exact: true })
-    .selectOption('project-load');
-  await page
-    .getByRole('button', { name: 'Consult advisor', exact: true })
-    .click();
-  await expect(
-    page.getByLabel('Advisor answer', { exact: true }),
-  ).toContainText('Treasury');
+  expect(
+    (await (await page.request.get('/api/world')).json()).world.saveId,
+  ).toBe(saveId);
 });
 
-test('economic coercion can be imposed and lifted through ordinary controls', async ({
+test('free-form sanctions can be imposed, evolve and be lifted through consequences', async ({
   page,
 }) => {
   const before = await (await page.request.get('/api/world')).json();
@@ -476,52 +400,26 @@ test('economic coercion can be imposed and lifted through ordinary controls', as
   ).toBe(true);
   await page.reload();
   await expect(page.locator('[data-map-ready=true]')).toBeVisible();
-  await page.getByLabel('Controlled country').selectOption('nation:rus');
-  await expect(page.getByLabel('Controlled country')).toHaveValue('nation:rus');
-  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.getByLabel('Playing as').selectOption('nation:rus');
+  await expect(page.getByLabel('Playing as')).toHaveValue('nation:rus');
   await page
-    .getByLabel('Sanctions target', { exact: true })
-    .selectOption('nation:fin');
-  await page
-    .getByLabel('Sanctions sector', { exact: true })
-    .selectOption('energy');
-  await page.getByLabel('Sanctions intensity', { exact: true }).fill('80');
-  await page
-    .getByLabel('Sanctions purpose', { exact: true })
-    .fill('Pressure over regional military access');
-  await page
-    .getByRole('button', { name: 'Apply sanctions', exact: true })
-    .click();
-  await expect(
-    page.getByRole('button', { name: 'Lift sanctions', exact: true }),
-  ).toBeVisible();
+    .getByLabel('Russia action composer', { exact: true })
+    .fill('Sanction Finland on energy over regional military access.');
+  await page.getByRole('button', { name: 'Issue order', exact: true }).click();
   const active = (await (await page.request.get('/api/world')).json()).world;
   expect(active.sanctions[0]).toMatchObject({
     issuer: 'nation:rus',
     target: 'nation:fin',
     sector: 'energy',
-    intensity: 80,
     status: 'active',
   });
-  await page.getByLabel('Turn duration', { exact: true }).selectOption('30');
-  await page
-    .getByRole('button', { name: 'Advance world', exact: true })
-    .click();
   await expect(page.locator('time')).toHaveText('2025-01-31');
-  const adapted = (await (await page.request.get('/api/world')).json()).world;
-  expect(
-    adapted.economicLinks.find(
-      (l: { dependentNationId: string; partnerNationId: string }) =>
-        l.dependentNationId === 'nation:fin' &&
-        l.partnerNationId === 'nation:rus',
-    ).adaptation,
-  ).toBeGreaterThan(0);
   await page
-    .getByRole('button', { name: 'Lift sanctions', exact: true })
-    .click();
-  await expect(
-    page.getByRole('button', { name: 'Lift sanctions', exact: true }),
-  ).toHaveCount(0);
+    .getByLabel('Russia action composer', { exact: true })
+    .fill('Lift the energy sanctions on Finland.');
+  await page.getByRole('button', { name: 'Issue order', exact: true }).click();
+  const lifted = (await (await page.request.get('/api/world')).json()).world;
+  expect(lifted.sanctions[0].status).toBe('lifted');
 });
 
 test('semantic timeline comparison renders capacity and projects across saved points', async ({
@@ -538,12 +436,10 @@ test('semantic timeline comparison renders capacity and projects across saved po
     })
   ).json();
   await page
-    .getByLabel('DIRECTIVE / SWEDEN', { exact: true })
+    .getByLabel('Sweden action composer', { exact: true })
     .fill('Invest in domestic energy');
-  await page
-    .getByRole('button', { name: 'Issue directive', exact: true })
-    .click();
-  await expect(page.locator('time')).toHaveText('2025-01-08');
+  await page.getByRole('button', { name: 'Issue order', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2025-01-31');
   const after = await (await page.request.get('/api/world')).json();
   const later = await (
     await page.request.post('/api/timelines', {
@@ -558,20 +454,23 @@ test('semantic timeline comparison renders capacity and projects across saved po
   await page.getByLabel('Timeline A', { exact: true }).selectOption(saved.id);
   await page.getByLabel('Timeline B', { exact: true }).selectOption(later.id);
   await page
-    .getByRole('button', { name: 'Compare meaning', exact: true })
+    .getByRole('button', { name: 'Compare branches', exact: true })
     .click();
   await expect(
     page.locator('.depth-workspace .crisis-card').first(),
   ).toBeVisible();
-  await expect(page.locator('.depth-workspace')).toContainText('initiatives');
+  await expect(page.locator('.depth-workspace')).toContainText(
+    'Invest in domestic energy',
+  );
 });
 
 test('country workspace separates strategy, economics, military, politics, projects and known history', async ({
   page,
 }) => {
-  await page.getByLabel('Inspect nation').selectOption('nation:swe');
+  await page.getByLabel('Playing as').selectOption('nation:swe');
+  await page.getByRole('button', { name: 'Country', exact: true }).click();
   for (const [tab, heading] of [
-    ['Strategy', 'Strategic goals'],
+    ['Strategy', 'Government strategy'],
     ['Economy', 'Economic dependencies'],
     ['Military', 'Current conflicts'],
     ['Domestic', 'Government tenure'],

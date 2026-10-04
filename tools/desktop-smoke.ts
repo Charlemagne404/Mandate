@@ -173,7 +173,7 @@ try {
   const newerGeography = (await (
     await fetch(origin + '/api/geography')
   ).json()) as { features: unknown[] };
-  assert.equal(newerGeography.features.length, 242);
+  assert.equal(newerGeography.features.length, 4595);
   assert.equal(((await restore.json()) as typeof before).hash, after.hash);
   await window.reload();
   await window.locator('[data-map-ready="true"]').waitFor({ timeout: 30_000 });
@@ -241,6 +241,63 @@ try {
   ).json()) as typeof before;
   assert.equal(recovered.hash, restored.hash);
   assert.equal(recovered.world.revision, restored.world.revision);
+  const semanticOrigin = new URL(recoveredWindow.url()).origin;
+  await fetch(semanticOrigin + '/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: semanticOrigin },
+    body: JSON.stringify({ kind: 'fake' }),
+  });
+  const semanticResponse = await fetch(semanticOrigin + '/api/play', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: semanticOrigin },
+    body: JSON.stringify({
+      expectedRevision: recovered.world.revision,
+      expectedHash: recovered.hash,
+      text: 'Offer them a defensive pact. If they refuse, mobilize.',
+      grounding: { selectedNationId: 'nation:fin' },
+      days: 7,
+    }),
+  });
+  assert.equal(
+    semanticResponse.status,
+    200,
+    await semanticResponse.clone().text(),
+  );
+  const semanticWorld = (await semanticResponse.json()) as {
+    world: {
+      actions: {
+        semanticGraph?: { rawInput: string; references: { origin: string }[] };
+      }[];
+      nations: {
+        id: string;
+        strategy: { directives: { semanticPlan?: unknown }[] };
+      }[];
+    };
+    hash: string;
+  };
+  assert(
+    semanticWorld.world.actions
+      .find(
+        (a) =>
+          a.semanticGraph?.rawInput ===
+          'Offer them a defensive pact. If they refuse, mobilize.',
+      )
+      ?.semanticGraph?.references.some((r) => r.origin === 'map'),
+    'The recorded player action must retain its map reference even when foreign responses follow it.',
+  );
+  assert(
+    semanticWorld.world.nations
+      .find((n) => n.id === recovered.world.playerNationId)
+      ?.strategy.directives.some((d) => d.semanticPlan),
+    'A conditional plan must be stored before checking restart continuity.',
+  );
+  await desktop.close();
+  desktop = await launch();
+  const semanticRestart = await desktop.firstWindow();
+  const semanticRestored = (await (
+    await fetch(new URL(semanticRestart.url()).origin + '/api/world')
+  ).json()) as { hash: string };
+  assert.equal(semanticRestored.hash, semanticWorld.hash);
   const log = readFileSync(join(userData, 'logs/desktop.log'), 'utf8');
   assert.match(log, /SQLite persistence active/);
   console.log(
@@ -257,6 +314,8 @@ try {
       versionedGeographyPreserved: true,
       processKilledDuringInference: true,
       interruptedTurnRolledBack: true,
+      semanticGraphAndMapGroundingPersisted: true,
+      conditionalPlanSurvivedNativeRestart: true,
       app: packagedExecutable ?? appPath,
     }),
   );

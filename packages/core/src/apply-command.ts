@@ -93,6 +93,45 @@ export function applyCommand(
       nation(c.nationId);
       region(c.regionId).ownerNationId = c.nationId;
       return;
+    case 'CREATE_POLITY': {
+      const parent = nation(c.parentNationId);
+      requireDomain(
+        !w.nations.some((n) => n.id === c.polity.id),
+        `Polity ID already exists: ${c.polity.id}`,
+      );
+      requireDomain(
+        !w.nations.some(
+          (n) =>
+            n.name.toLocaleLowerCase() === c.polity.name.toLocaleLowerCase(),
+        ),
+        `Polity name already exists: ${c.polity.name}`,
+      );
+      requireDomain(
+        c.regionIds.length === new Set(c.regionIds).size,
+        'Polity regions must be unique',
+      );
+      const regions = c.regionIds.map(region);
+      requireDomain(
+        regions.every(
+          (r) =>
+            r.ownerNationId === parent.id && r.controllerNationId === parent.id,
+        ),
+        'A government can release only territory it owns and controls',
+      );
+      requireDomain(
+        w.regions.some(
+          (r) => r.ownerNationId === parent.id && !c.regionIds.includes(r.id),
+        ),
+        'The parent polity must retain at least one region',
+      );
+      w.nations.push(structuredClone(c.polity));
+      for (const r of regions) {
+        r.ownerNationId = c.polity.id;
+        r.controllerNationId = c.polity.id;
+        r.claims = r.claims.filter((id) => id !== parent.id);
+      }
+      return;
+    }
     case 'ADD_CLAIM': {
       nation(c.nationId);
       const r = region(c.regionId);

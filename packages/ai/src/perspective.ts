@@ -1,3 +1,12 @@
+import {
+  buildSemanticGraph,
+  semanticClauses,
+  nationMentions,
+  regionMentions,
+  validateSemanticGraph,
+} from './semantic.js';
+import type { ActionGrounding } from '@mandate/schemas';
+import type { z } from 'zod';
 import type { NationId, RegionId, WorldState } from '@mandate/schemas';
 import { resolveCapitalOwnerIds } from '@mandate/scenarios';
 import { PlayerIntent } from './contracts.js';
@@ -30,8 +39,9 @@ export function formalizerReferences(
       'iu',
     ).test(text);
   };
-  const mentionedNations = world.nations.filter(
-    (nation) => mentions(nation.id) || mentions(nation.name),
+  const namedNationIds = new Set(nationMentions(world, text).map((m) => m.id));
+  const mentionedNations = world.nations.filter((nation) =>
+    namedNationIds.has(nation.id),
   );
   const mentionedNationIds = mentionedNations
     .filter((nation) => nation.id !== actorNationId)
@@ -44,14 +54,17 @@ export function formalizerReferences(
     ...mentionedNationIds,
     ...capitalNationIds,
   ]);
+  const isTransfer = /\b(?:give|cede|transfer)\b/i.test(text);
   const scopeOffensiveTerritoryToForeignTargets =
-    isTerritorialPolicyOrder(text) && foreignTargetNationIds.size > 0;
-  const explicitRegionIds = world.regions
+    isTerritorialPolicyOrder(text, world) &&
+    !isTransfer &&
+    foreignTargetNationIds.size > 0;
+  const explicitRegionIds = regionMentions(world, text)
     .filter(
       (region) =>
         mentions(region.id) ||
-        (mentions(region.name) &&
-          (isTerritorialPolicyOrder(text) || regionMention(region.name))),
+        isTerritorialPolicyOrder(text, world) ||
+        regionMention(region.name),
     )
     .filter(
       (region) =>
@@ -106,7 +119,11 @@ export function formalizerReferences(
  */
 export function buildFormalizerPayload(
   world: WorldState,
-  action: { actorNationId: NationId; text: string },
+  action: {
+    actorNationId: NationId;
+    text: string;
+    grounding?: z.infer<typeof ActionGrounding> | undefined;
+  },
 ) {
   const actor = world.nations.find((n) => n.id === action.actorNationId);
   if (!actor) throw new Error('Unknown player actor');
@@ -127,6 +144,7 @@ export function buildFormalizerPayload(
       name: actor.name,
     },
     clauses: splitActionClauses(action.text),
+    groundedGraph: buildSemanticGraph(world, action),
     nationCatalog: references.nations.map((nation) => ({
       nationId: nation.id,
       name: nation.name,
@@ -152,13 +170,7 @@ export function buildFormalizerPayload(
 
 /** Exact source clauses prevent a model's paraphrase from leaking another intention. */
 export function splitActionClauses(text: string): string[] {
-  return text
-    .split(
-      /(?:[.!?;]\s+|,?\s+but\s+(?=(?:don't|do not|never|avoid|without|no\b))|\n+|\bat the same time[,\s]+|\bsimultaneously[,\s]+|\s+to\s+(?=(?:take|seize|occupy|annex|conquer)\b)|\s+(?:and|or)\s+(?=(?:increase|raise|invest|mobiliz|reinforce|expand|reform|begin|launch|improve|reduce|build|spend|cut|deploy|invad|occupy|seize|conquer|annex|bomb|nuk|attack|strike|send|commit|move|take|declare war|go to war)))/i,
-    )
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 20);
+  return semanticClauses(text);
 }
 
 function orderIntensity(text: string): 'low' | 'medium' | 'high' | 'extreme' {
@@ -235,11 +247,21 @@ function privateClause(text: string) {
   );
 }
 
-export function isTerritorialPolicyOrder(text: string) {
+export function isTerritorialPolicyOrder(text: string, world?: WorldState) {
+  const namesMappedRegion =
+    !!world &&
+    regionMentions(world, text).some(
+      (region) =>
+        !world.nations.some(
+          (nation) =>
+            nation.name.toLocaleLowerCase() === region.name.toLocaleLowerCase(),
+        ),
+    );
   return (
     /\b(?:annex|invade|conquer|claim|seize|occupy|incorporate|unify|cede|transfer|take over|take)\s+(?:the\s+)?[\p{L}\p{N}]/iu.test(
       text,
     ) ||
+    (/\bdemand\b/i.test(text) && namesMappedRegion) ||
     /\b(?:union with|territorial objective|take .* territory|claim territory|seize territory|make\s+.+\s+(?:join|part of|into)|give\s+.+\s+to)\b/i.test(
       text,
     ) ||
@@ -251,9 +273,10 @@ export function isTerritorialPolicyOrder(text: string) {
 
 function fallbackClauseKind(
   text: string,
+  world: WorldState,
 ): PlayerIntent['intentions'][number]['kind'] {
   if (isConstraintOnly(text) || isInformationOnly(text)) return 'wait';
-  if (isTerritorialPolicyOrder(text)) return 'territory';
+  if (isTerritorialPolicyOrder(text, world)) return 'territory';
   if (
     /treaty|alliance|recogniz|diplom|threaten|demand|withdraw|surrender|ceasefire|peace|negotiate|offer|propose|consult|trade/i.test(
       text,
@@ -280,7 +303,11 @@ function fallbackClauseKind(
 /** Provider-independent interpretation used when a formalizer is unavailable. */
 export function deterministicPlayerIntent(
   world: WorldState,
-  action: { actorNationId: NationId; text: string },
+  action: {
+    actorNationId: NationId;
+    text: string;
+    grounding?: z.infer<typeof ActionGrounding> | undefined;
+  },
 ): PlayerIntent {
   const clauses = splitActionClauses(action.text);
   const refs = formalizerReferences(world, action.actorNationId, action.text);
@@ -292,7 +319,7 @@ export function deterministicPlayerIntent(
     targetRegionIds: refs.explicitRegionIds,
     visibility: 'public',
     intentions: clauses.map((clause, sourceClauseId) => ({
-      kind: fallbackClauseKind(clause),
+      kind: fallbackClauseKind(clause, world),
       description: clause,
       sourceClauseIds: [sourceClauseId],
       targetNationIds: formalizerReferences(world, action.actorNationId, clause)
@@ -303,14 +330,14 @@ export function deterministicPlayerIntent(
   return canonicalizeFormalizerIntent(world, action, draft);
 }
 
-function outcomeKind(text: string) {
+function outcomeKind(text: string, world: WorldState) {
   if (
     /\binvad(?:e|ing)\b|\battack\b|\bbomb(?:s|ed|ing)?\b|\bnuk(?:e|es|ed|ing)\b|\bstrike\b|\b(?:start|declare|enter) (?:a )?(?:war|conflict)|go to war/i.test(
       text,
     )
   )
     return 'war' as const;
-  if (isTerritorialPolicyOrder(text)) return 'territory' as const;
+  if (isTerritorialPolicyOrder(text, world)) return 'territory' as const;
   if (/\b(?:military alliance|defense alliance|formal alliance)\b/i.test(text))
     return 'alliance' as const;
   if (
@@ -337,7 +364,11 @@ function outcomeKind(text: string) {
  */
 function deriveMajorIntentClauses(
   world: WorldState,
-  action: { actorNationId: NationId; text: string },
+  action: {
+    actorNationId: NationId;
+    text: string;
+    grounding?: z.infer<typeof ActionGrounding> | undefined;
+  },
   clauses: string[],
 ): PlayerIntent['majorIntentClauses'] {
   const allReferences = formalizerReferences(
@@ -421,7 +452,7 @@ function deriveMajorIntentClauses(
         /\btake\b[^.!?;]{0,70}\b(?:country|nation|territory|capital|city|it|them|theirs)\b/.test(
           lower,
         ) ||
-        (isTerritorialPolicyOrder(text) &&
+        (isTerritorialPolicyOrder(text, world) &&
           allReferences.explicitNationIds.length > 0));
     const mobilization =
       !negatedMajorAction &&
@@ -470,10 +501,41 @@ function deriveMajorIntentClauses(
  */
 export function canonicalizeFormalizerIntent(
   world: WorldState,
-  action: { actorNationId: NationId; text: string },
+  action: {
+    actorNationId: NationId;
+    text: string;
+    grounding?: z.infer<typeof ActionGrounding> | undefined;
+  },
   draft: FormalizerIntentValue,
 ): PlayerIntent {
   const clauses = splitActionClauses(action.text);
+  const actionGraph = buildSemanticGraph(world, action);
+  for (const proposal of draft.semanticProposals ?? []) {
+    const node = actionGraph.actions.find(
+      (a) => a.clauseId === proposal.clauseId,
+    );
+    if (!node) {
+      actionGraph.repairs.push(`Rejected invented clause ${proposal.clauseId}`);
+      continue;
+    }
+    for (const role of ['targets', 'sources', 'participants'] as const) {
+      if (JSON.stringify(proposal[role]) !== JSON.stringify(node[role]))
+        actionGraph.repairs.push(
+          `${node.id}: repaired ${role} ${JSON.stringify(proposal[role])} to grounded ${JSON.stringify(node[role])}`,
+        );
+    }
+    // Broad unknown actions may be classified by the model, but it cannot
+    // invent references or turn an unresolved clause into executable force.
+    if (
+      node.action === 'other' &&
+      !node.issues.length &&
+      proposal.action !== 'acquire-forces'
+    )
+      node.action = proposal.action;
+  }
+  const graphErrors = validateSemanticGraph(actionGraph, world);
+  if (graphErrors.length)
+    throw new Error('Invalid semantic graph: ' + graphErrors.join('; '));
   const intentions = draft.intentions.map((intention) => {
     if (intention.sourceClauseIds.some((id) => !clauses[id]))
       throw new Error('Formalizer invented a source clause');
@@ -484,11 +546,13 @@ export function canonicalizeFormalizerIntent(
     return {
       ...intention,
       description: clauseText.slice(0, 2000),
-      targetNationIds: formalizerReferences(
-        world,
-        action.actorNationId,
-        clauseText,
-      ).explicitNationIds,
+      targetNationIds: [
+        ...new Set(
+          actionGraph.actions
+            .filter((a) => intention.sourceClauseIds.includes(a.clauseId))
+            .flatMap((a) => a.targets),
+        ),
+      ],
       visibility:
         privateIntent ||
         intention.visibility === 'private' ||
@@ -497,26 +561,19 @@ export function canonicalizeFormalizerIntent(
           : 'public',
     };
   });
-  const references = formalizerReferences(
-    world,
-    action.actorNationId,
-    action.text,
-  );
   const policyOrders: PlayerIntent['policyOrders'] = [];
   const desiredOutcomes: PlayerIntent['desiredOutcomes'] = [];
   const constraints: PlayerIntent['constraints'] = [];
   for (let index = 0; index < clauses.length; index++) {
     const clause = clauses[index]!;
     const matching = intentions.find((i) => i.sourceClauseIds.includes(index));
-    const localRefs = formalizerReferences(world, action.actorNationId, clause);
+    const node = actionGraph.actions[index]!;
     const refs = {
-      ...localRefs,
-      explicitNationIds: localRefs.explicitNationIds.length
-        ? localRefs.explicitNationIds
-        : references.explicitNationIds,
-      explicitRegionIds: localRefs.explicitRegionIds.length
-        ? localRefs.explicitRegionIds
-        : references.explicitRegionIds,
+      explicitNationIds:
+        node.action === 'request-participation'
+          ? node.participants
+          : node.targets,
+      explicitRegionIds: node.territories,
     };
     const constraint = constraintKind(clause);
     const constraintOnly = isConstraintOnly(clause);
@@ -528,7 +585,10 @@ export function canonicalizeFormalizerIntent(
       });
     }
     if (!constraintOnly && !isInformationOnly(clause)) {
-      const classifiedKind = fallbackClauseKind(clause);
+      const classifiedKind =
+        node.action === 'request-participation'
+          ? 'diplomacy'
+          : fallbackClauseKind(clause, world);
       const kind =
         classifiedKind === 'other'
           ? (matching?.kind ?? 'other')
@@ -556,7 +616,8 @@ export function canonicalizeFormalizerIntent(
             : 'public',
       });
     }
-    const outcome = outcomeKind(clause);
+    const outcome =
+      node.action === 'annex' ? 'territory' : outcomeKind(clause, world);
     if (outcome !== 'other')
       desiredOutcomes.push({
         kind: outcome,
@@ -570,12 +631,38 @@ export function canonicalizeFormalizerIntent(
     ...draft,
     actorNationId: action.actorNationId,
     summary: action.text.slice(0, 2000),
-    targetNationIds: references.explicitNationIds,
-    targetRegionIds: references.explicitRegionIds,
+    actionGraph,
+    targetNationIds: [
+      ...new Set(actionGraph.actions.flatMap((a) => a.targets)),
+    ],
+    targetRegionIds: [
+      ...new Set(actionGraph.actions.flatMap((a) => a.territories)),
+    ],
     policyOrders,
     desiredOutcomes,
     constraints,
-    majorIntentClauses: deriveMajorIntentClauses(world, action, clauses),
+    majorIntentClauses: deriveMajorIntentClauses(
+      world,
+      action,
+      clauses.map((c, i) =>
+        actionGraph.actions[i]!.action === 'annex'
+          ? `${c} (annex objective)`
+          : c,
+      ),
+    )
+      .filter(
+        (c) =>
+          actionGraph.actions[c.sourceClauseIds[0]!]!.action !==
+            'acquire-forces' &&
+          actionGraph.actions[c.sourceClauseIds[0]!]!.action !==
+            'request-participation',
+      )
+      .map((c) => ({
+        ...c,
+        targetNationIds: actionGraph.actions[c.sourceClauseIds[0]!]!.targets,
+        targetRegionIds:
+          actionGraph.actions[c.sourceClauseIds[0]!]!.territories,
+      })),
     intentions,
   });
 }
@@ -601,6 +688,8 @@ export function scopeIntent(
   const sourceClauseIds = new Set(intentions.flatMap((i) => i.sourceClauseIds));
   return {
     ...intent,
+    actionGraph: undefined,
+    semanticProposals: undefined,
     summary: intentions
       .map((i) => i.description)
       .join('; ')

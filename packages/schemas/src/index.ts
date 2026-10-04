@@ -88,3 +88,5 @@ export const ScenarioFile = z.strictObject({
 export type WorldState = z.infer<typeof WorldState>;
 export type CommandRecord = z.infer<typeof CommandRecord>;
 export type SaveFile = z.infer<typeof SaveFile>;
+
+export * from './semantic.js';

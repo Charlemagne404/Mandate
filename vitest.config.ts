@@ -8,6 +8,6 @@ export default defineConfig({
     ],
     testTimeout: 15000,
     // Bound worker memory while an optional local inference runtime shares the desktop.
-    maxWorkers: 4,
+    maxWorkers: 2,
   },
 });

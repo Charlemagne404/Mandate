@@ -1,3 +1,4 @@
+import { buildSemanticGraph } from '@mandate/ai';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   mkdtempSync,
@@ -504,7 +505,7 @@ describe('SQLite canonical persistence', () => {
     expect(
       db.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()
         ?.count,
-    ).toBe(6);
+    ).toBe(8);
     expect(db.prepare('PRAGMA integrity_check').get()?.integrity_check).toBe(
       'ok',
     );
@@ -665,4 +666,27 @@ describe('SQLite canonical persistence', () => {
     const b = open(filename);
     expect(() => b.initialize(fixture())).toThrow('Refusing to reset');
   });
+});
+
+it('persists explicit map grounding through commit, restart and export', () => {
+  const filename = join(directory(), 'grounding.sqlite');
+  const store = open(filename);
+  store.initialize(fixture());
+  const input = request(store.load(), [control]);
+  input.action.grounding = {
+    selectedNationId: fixture().nations[1]!.id,
+    selectedRegionId: fixture().regions[1]!.id,
+  };
+  input.action.text = 'Invade them.';
+  input.action.semanticGraph = buildSemanticGraph(store.load(), input.action);
+  store.commit(input);
+  const expectedGraph = input.action.semanticGraph;
+  expect(store.load().actions.at(-1)!.semanticGraph).toEqual(expectedGraph);
+  const grounded = store.load().actions.at(-1)!.grounding;
+  expect(grounded).toEqual(input.action.grounding);
+  store.close();
+  stores.splice(stores.indexOf(store), 1);
+  const reopened = open(filename, undefined, 1).load().actions.at(-1)!;
+  expect(reopened.grounding).toEqual(grounded);
+  expect(reopened.semanticGraph).toEqual(expectedGraph);
 });

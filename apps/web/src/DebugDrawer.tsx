@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { api } from './api.js';
+import { useEffect, useState } from 'react';
 import { NationId, WorldCommand } from '@mandate/schemas';
 import type { RegionId, WorldState } from '@mandate/schemas';
 import { commandTypes, template } from './debug-templates.js';
@@ -36,7 +37,15 @@ export function DebugDrawer({
   );
   const [reason, setReason] = useState('Manual sandbox directive');
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'commands' | 'state'>('commands');
+  const [tab, setTab] = useState<'commands' | 'state' | 'semantics'>(
+    'commands',
+  );
+  const [semanticDebug, setSemanticDebug] = useState<unknown>(null);
+  useEffect(() => {
+    void api('/api/semantic-debug')
+      .then(setSemanticDebug)
+      .catch(() => setSemanticDebug({ error: 'Audit unavailable' }));
+  }, [world.revision]);
   const update = (kind: WorldCommand['type'], nation: NationId) => {
     setType(kind);
     setTarget(nation);
@@ -116,8 +125,18 @@ export function DebugDrawer({
         <button aria-pressed={tab === 'state'} onClick={() => setTab('state')}>
           Canonical state
         </button>
+        <button
+          aria-pressed={tab === 'semantics'}
+          onClick={() => setTab('semantics')}
+        >
+          Player semantics
+        </button>
       </div>
-      {tab === 'state' ? (
+      {tab === 'semantics' ? (
+        <pre className="state-json">
+          {JSON.stringify(semanticDebug, null, 2)}
+        </pre>
+      ) : tab === 'state' ? (
         <pre className="state-json">{JSON.stringify(world, null, 2)}</pre>
       ) : (
         <>

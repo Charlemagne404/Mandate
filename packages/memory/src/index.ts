@@ -112,6 +112,9 @@ export function buildContext(
     eventBudget?: number;
     summaries?: HistoricalSummary[];
     topics?: string[];
+    focusRegionIds?: RegionId[];
+    regionsPerNation?: number;
+    priorityRegionLimit?: number;
   } = {},
 ): ContextBundle {
   if (!world.nations.some((n) => n.id === perspective))
@@ -150,13 +153,17 @@ export function buildContext(
     .forEach((c) =>
       [...c.attackers, ...c.defenders].forEach((id) => ids.add(id)),
     );
-  world.goals
+  const goalTargetIds = world.goals
     .filter(
       (g) =>
         g.nationId === perspective &&
         !['achieved', 'failed', 'abandoned', 'superseded'].includes(g.status),
     )
-    .forEach((g) => g.targetNationIds.forEach((id) => ids.add(id)));
+    .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
+    .flatMap((g) => g.targetNationIds)
+    .filter((id, index, all) => all.indexOf(id) === index)
+    .slice(0, 12);
+  goalTargetIds.forEach((id) => ids.add(id));
   world.commitments
     .filter(
       (c) =>
@@ -250,8 +257,52 @@ export function buildContext(
         },
       };
     });
-  const regions = world.regions.filter(
+  const regionCandidates = world.regions.filter(
     (r) => ids.has(r.ownerNationId) || ids.has(r.controllerNationId),
+  );
+  const focusedRegions = new Set(options.focusRegionIds ?? []);
+  const activeConflictRegions = new Set(
+    world.conflicts
+      .filter(
+        (conflict) =>
+          conflict.status === 'active' &&
+          [...conflict.attackers, ...conflict.defenders].some((id) =>
+            ids.has(id),
+          ),
+      )
+      .flatMap((conflict) => [
+        ...conflict.theaters.flatMap((theater) => theater.regionIds),
+        ...conflict.campaigns.map((campaign) => campaign.regionId),
+      ]),
+  );
+  const priority = (region: WorldState['regions'][number]) =>
+    (focusedRegions.has(region.id) ? 100 : 0) +
+    (activeConflictRegions.has(region.id) ? 40 : 0) +
+    (region.ownerNationId !== region.controllerNationId ? 20 : 0) +
+    (region.claims.length ? 10 : 0);
+  const selectedRegions = new Map<RegionId, WorldState['regions'][number]>();
+  const regionCounts = new Map<NationId, number>();
+  const addRegion = (region: WorldState['regions'][number]) => {
+    if (selectedRegions.has(region.id)) return;
+    selectedRegions.set(region.id, region);
+    regionCounts.set(
+      region.ownerNationId,
+      (regionCounts.get(region.ownerNationId) ?? 0) + 1,
+    );
+  };
+  const prioritizedRegions = regionCandidates
+    .filter((region) => priority(region) > 0)
+    .sort((a, b) => priority(b) - priority(a) || a.id.localeCompare(b.id));
+  prioritizedRegions
+    .slice(0, Math.max(options.priorityRegionLimit ?? 80, focusedRegions.size))
+    .forEach(addRegion);
+  const regionLimit = Math.max(1, Math.min(options.regionsPerNation ?? 16, 64));
+  for (const region of regionCandidates) {
+    if ((regionCounts.get(region.ownerNationId) ?? 0) < regionLimit)
+      addRegion(region);
+  }
+  const regions = [...selectedRegions.values()].sort((a, b) =>
+    a.id.localeCompare(b.id),
   );
   const visible = world.events.filter(
     (e) => knownTo(e, 'event') && e.nationIds.some((id) => ids.has(id)),
@@ -321,6 +372,36 @@ export function buildContext(
         ),
     )
     .slice(-6);
+  const scopedGoals = world.goals.filter(
+    (g) =>
+      ids.has(g.nationId) &&
+      (g.nationId === perspective || g.visibility === 'public'),
+  );
+  const isActiveGoal = (g: (typeof scopedGoals)[number]) =>
+    !['achieved', 'failed', 'abandoned', 'superseded'].includes(g.status);
+  const compareGoals = (
+    a: (typeof scopedGoals)[number],
+    b: (typeof scopedGoals)[number],
+  ) =>
+    Number(isActiveGoal(b)) - Number(isActiveGoal(a)) ||
+    b.priority - a.priority ||
+    a.id.localeCompare(b.id);
+  const ownGoals = scopedGoals
+    .filter((g) => g.nationId === perspective)
+    .sort(compareGoals)
+    .slice(0, 12);
+  const publicGoals = [
+    ...new Set(
+      scopedGoals
+        .filter((g) => g.nationId !== perspective)
+        .map((g) => g.nationId),
+    ),
+  ].flatMap((nationId) =>
+    scopedGoals
+      .filter((g) => g.nationId === nationId)
+      .sort(compareGoals)
+      .slice(0, 1),
+  );
   return {
     templateVersion: 'context-v3',
     simulationDate: world.date,
@@ -377,11 +458,7 @@ export function buildContext(
       conflicts: world.conflicts.filter((c) =>
         [...c.attackers, ...c.defenders].some((id) => ids.has(id)),
       ),
-      goals: world.goals.filter(
-        (g) =>
-          ids.has(g.nationId) &&
-          (g.nationId === perspective || g.visibility === 'public'),
-      ),
+      goals: [...ownGoals, ...publicGoals],
       initiatives: (extra.initiatives ?? [])
         .filter((i) => ids.has(i.nationId) && visibleTo(i, perspective))
         .filter((i) => !('status' in i) || i.status === 'active'),

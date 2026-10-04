@@ -1,3 +1,4 @@
+import { SemanticGraph } from '@mandate/schemas';
 import { z } from 'zod';
 import {
   NationId,
@@ -33,7 +34,7 @@ export const MajorIntentClause = z.strictObject({
     'declaration-of-war',
   ]),
   description: reason,
-  sourceClauseIds: z.array(z.number().int().min(0).max(19)).min(1).max(20),
+  sourceClauseIds: z.array(z.number().int().min(0).max(39)).min(1).max(20),
   targetNationIds: z.array(NationId).max(20),
   targetRegionIds: z.array(RegionId).max(20),
 });
@@ -52,7 +53,16 @@ export const MajorIntentSatisfaction = z.strictObject({
   explanation: reason,
 });
 export type MajorIntentSatisfaction = z.infer<typeof MajorIntentSatisfaction>;
+export const SemanticProposal = z.strictObject({
+  clauseId: z.number().int().min(0).max(39),
+  action: SemanticGraph.shape.actions.element.shape.action,
+  targets: z.array(NationId).max(20),
+  sources: z.array(NationId).max(20),
+  participants: z.array(NationId).max(20),
+});
 export const PlayerIntent = z.strictObject({
+  actionGraph: SemanticGraph.optional(),
+  semanticProposals: z.array(SemanticProposal).max(40).optional(),
   version: z.literal(1),
   actorNationId: NationId,
   summary: reason,
@@ -77,7 +87,7 @@ export const PlayerIntent = z.strictObject({
         ]),
         text: reason,
         sourceClauseIds: z
-          .array(z.number().int().min(0).max(19))
+          .array(z.number().int().min(0).max(39))
           .min(1)
           .max(20),
         targetNationIds: z.array(NationId).max(20),
@@ -87,7 +97,7 @@ export const PlayerIntent = z.strictObject({
         visibility: z.enum(['public', 'private']),
       }),
     )
-    .max(12)
+    .max(40)
     .default([]),
   desiredOutcomes: z
     .array(
@@ -103,14 +113,14 @@ export const PlayerIntent = z.strictObject({
         ]),
         description: reason,
         sourceClauseIds: z
-          .array(z.number().int().min(0).max(19))
+          .array(z.number().int().min(0).max(39))
           .min(1)
           .max(20),
         targetNationIds: z.array(NationId).max(20),
         targetRegionIds: z.array(RegionId).max(20),
       }),
     )
-    .max(12)
+    .max(40)
     .default([]),
   constraints: z
     .array(
@@ -124,7 +134,7 @@ export const PlayerIntent = z.strictObject({
         ]),
         description: reason,
         sourceClauseIds: z
-          .array(z.number().int().min(0).max(19))
+          .array(z.number().int().min(0).max(39))
           .min(1)
           .max(20),
       }),
@@ -148,7 +158,7 @@ export const PlayerIntent = z.strictObject({
         ]),
         description: reason,
         sourceClauseIds: z
-          .array(z.number().int().min(0).max(19))
+          .array(z.number().int().min(0).max(39))
           .min(1)
           .max(20),
         visibility: z.enum(['public', 'private']),
@@ -156,7 +166,7 @@ export const PlayerIntent = z.strictObject({
       }),
     )
     .min(1)
-    .max(12),
+    .max(40),
 });
 export type PlayerIntent = z.infer<typeof PlayerIntent>;
 export const PlayerIntentJsonSchema = z.toJSONSchema(PlayerIntent);
@@ -227,7 +237,7 @@ export const NationPlan = z.strictObject({
         references: z.array(z.string().max(160)).max(8),
       }),
     )
-    .max(12)
+    .max(40)
     .default([]),
 });
 export type NationPlan = z.infer<typeof NationPlan>;

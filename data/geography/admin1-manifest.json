@@ -1,0 +1,22 @@
+{
+  "version": "natural-earth-admin1-v1",
+  "upstreamRevision": "ca96624a56bd078437bca8184e78163e5039ad19",
+  "source": {
+    "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/ca96624a56bd078437bca8184e78163e5039ad19/geojson/ne_10m_admin_1_states_provinces.geojson",
+    "sha256": "22d0e3ad85eb3e27f17cabf8ba2d50e554fbc27a87796ff891d958185da62fb5"
+  },
+  "license": "Public domain",
+  "licenseUrl": "https://www.naturalearthdata.com/about/terms-of-use/",
+  "featureCount": 4595,
+  "polityCount": 242,
+  "subdivisionFeatureCount": 4595,
+  "nationalFallbackCount": 0,
+  "excludedSourceCodes": ["PGA"],
+  "simplification": {
+    "method": "Douglas-Peucker with closed-ring split at its farthest vertex",
+    "toleranceDegrees": 0.008
+  },
+  "geographySha256": "f2b1b7cd3fd82fb71b9b47450e5e4ac201f7277e20191b66e5f9dddd8941cae1",
+  "scenarioSha256": "ed731a5b3b8bd4432f02509181f16cb3b58e977a58ec731e4082eee570efc5b6",
+  "scope": "Natural Earth first-order administrative subdivisions. This adds regional resolution only; governments and all political starting values are synthetic. Country-scale fallback regions remain for polities without source subdivisions. Special administered areas are assigned to existing actors, and the separately coded Spratly Islands feature is omitted because it does not map to one unambiguous scenario polity."
+}

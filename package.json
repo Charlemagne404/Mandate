@@ -25,6 +25,7 @@
     "desktop:package": "pnpm build && pnpm --filter @mandate/desktop package",
     "test:desktop": "tsx tools/desktop-smoke.ts",
     "world:ingest": "tsx tools/ingest-global-world.ts",
+    "world:regional:ingest": "tsx tools/ingest-regional-world.ts",
     "scenario:validate": "tsx tools/validate-scenarios.ts",
     "test:ai": "vitest run tests/ai",
     "ai:eval": "tsx tools/ai-eval.ts",

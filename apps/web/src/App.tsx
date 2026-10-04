@@ -1,5 +1,5 @@
 import { Launch } from './Launch.js';
-import { WorldDepth, BranchComparison } from './WorldDepth.js';
+import { BranchComparison } from './WorldDepth.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NationId, RegionId, branding } from '@mandate/schemas';
 import type { MapMode } from '@mandate/map';
@@ -12,8 +12,9 @@ import { DebugDrawer } from './DebugDrawer.js';
 import { Modal } from './Modal.js';
 import { Operations } from './Operations.js';
 import { Diplomacy, Conflicts } from './Diplomacy.js';
-import { api } from './api.js';
+import { api, parseResponse } from './api.js';
 import type { WorldResponse } from './api.js';
+import { eventHeadline } from './event-headline.js';
 declare global {
   interface Window {
     render_game_to_text?: () => string;
@@ -29,6 +30,32 @@ declare global {
     };
   }
 }
+
+function addCalendarMonths(date: string, months: number): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const firstOfTarget = new Date(Date.UTC(year!, month! - 1 + months, 1));
+  const lastDay = new Date(
+    Date.UTC(
+      firstOfTarget.getUTCFullYear(),
+      firstOfTarget.getUTCMonth() + 1,
+      0,
+    ),
+  ).getUTCDate();
+  return new Date(
+    Date.UTC(
+      firstOfTarget.getUTCFullYear(),
+      firstOfTarget.getUTCMonth(),
+      Math.min(day!, lastDay),
+    ),
+  )
+    .toISOString()
+    .slice(0, 10);
+}
+
+function daysBetween(start: string, end: string): number {
+  return Math.round((Date.parse(end) - Date.parse(start)) / 86_400_000);
+}
+
 export function App() {
   const { state, error, busy, refresh, commit, importSave, operate } =
     useWorld();
@@ -38,8 +65,11 @@ export function App() {
   const [developerMode, setDeveloperMode] = useState(false);
   const [observerPlaying, setObserverPlaying] = useState(false);
   const [observerSpeed, setObserverSpeed] = useState(3000);
+  const [jumping, setJumping] = useState(false);
+  const [jumpPreset, setJumpPreset] = useState('3');
+  const [customJumpMonths, setCustomJumpMonths] = useState(12);
   const [operations, setOperations] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState('Events');
+  const [workspaceTab, setWorkspaceTab] = useState('History');
   const [directive, setDirective] = useState('');
   const [quality, setQuality] = useState(() => {
     const saved = localStorage.getItem('mandate-quality');
@@ -49,7 +79,7 @@ export function App() {
   });
   const [days, setDays] = useState(() => {
     const saved = Number(localStorage.getItem('mandate-days'));
-    return [7, 30, 90, 365].includes(saved) ? saved : 7;
+    return [7, 30, 90, 180, 365].includes(saved) ? saved : 30;
   });
   useEffect(() => {
     localStorage.setItem('mandate-quality', quality);
@@ -64,14 +94,13 @@ export function App() {
     startedAt?: string;
     warnings?: string[];
   } | null>(null);
-  const [provider, setProvider] = useState('fake');
   const [references, setReferences] = useState<
     {
       nationId: string;
       continent: string;
       subregion: string;
       sourceType: string;
-      capitals: { name: string }[];
+      capitals: { name: string; coordinates: [number, number] }[];
       adjacentRegionIds: string[];
     }[]
   >([]);
@@ -88,6 +117,7 @@ export function App() {
   const file = useRef<HTMLInputElement>(null);
   const ready = useCallback(() => setMapReady(true), []);
   const world = state?.world;
+  const isBusy = busy || jumping;
   const nation =
     world?.nations.find((n) => n.id === selected) ?? world?.nations[0];
   useEffect(() => {
@@ -95,7 +125,10 @@ export function App() {
       setSelected(world.playerNationId);
       setRegionId(null);
     }
-  }, [world?.playerNationId]);
+  }, [world?.playerNationId, world?.saveId]);
+  useEffect(() => {
+    if (!world?.observerMode) setObserverPlaying(false);
+  }, [world?.observerMode]);
   useEffect(() => {
     void api<{ onboarded: boolean; developerMode: boolean }>(
       '/api/experience',
@@ -112,20 +145,7 @@ export function App() {
       .catch(() => {});
   }, []);
   useEffect(() => {
-    void api<{ kind: string }>('/api/settings')
-      .then((config) => setProvider(config.kind))
-      .catch(() => {});
-  }, [operations]);
-  useEffect(() => {
-    if (!busy) {
-      void api<{ warnings?: string[] }>('/api/play/status')
-        .then((p) => {
-          if (p.warnings?.length)
-            setNotice(
-              `${p.warnings.length} inference warnings were recorded. Open the turn summary for skipped background decisions; the committed world remains valid.`,
-            );
-        })
-        .catch(() => {});
+    if (!isBusy) {
       setProgress(null);
       return;
     }
@@ -136,7 +156,7 @@ export function App() {
     poll();
     const timer = setInterval(poll, 500);
     return () => clearInterval(timer);
-  }, [busy]);
+  }, [isBusy]);
   useEffect(() => {
     if (!world || !nation) return;
     window.render_game_to_text = () =>
@@ -173,7 +193,7 @@ export function App() {
     };
   }, [world, nation, mode, mapReady, regionId, state, debug, error]);
   useEffect(() => {
-    if (!observerPlaying || !world?.observerMode || busy) return;
+    if (!observerPlaying || !world?.observerMode || isBusy) return;
     const timer = setTimeout(() => {
       void operate('/api/play', { text: '', days, quality }).then((r) => {
         if (!r) setObserverPlaying(false);
@@ -184,7 +204,7 @@ export function App() {
     observerPlaying,
     world?.revision,
     world?.observerMode,
-    busy,
+    isBusy,
     days,
     quality,
     observerSpeed,
@@ -205,12 +225,88 @@ export function App() {
   }, [world?.saveId]);
   const selectNation = (id: NationId) => {
     setSelected(id);
-    setRegionId(
-      world?.regions.find(
-        (r) =>
-          (mode === 'control' ? r.controllerNationId : r.ownerNationId) === id,
-      )?.id ?? null,
-    );
+    setRegionId(null);
+  };
+  const jumpForward = async () => {
+    const months =
+      jumpPreset === 'custom' ? customJumpMonths : Number(jumpPreset);
+    if (!Number.isInteger(months) || months < 1 || months > 60) {
+      setNotice('Choose a jump between 1 and 60 months.');
+      return;
+    }
+    if (isBusy) return;
+    setJumping(true);
+    setNotice('');
+    setWorkspaceTab('History');
+    let current = state;
+    let completedDate = world?.date ?? '';
+    let completedMonths = 0;
+    const headlines: { title: string; importance: number }[] = [];
+    let interrupted = false;
+    try {
+      current ??= await api<WorldResponse>('/api/world');
+      for (let month = 0; month < months; month++) {
+        const nextDate = addCalendarMonths(current.world.date, 1);
+        const stepDays = daysBetween(current.world.date, nextDate);
+        if (stepDays < 1) break;
+        const result = await api<WorldResponse>('/api/play', {
+          method: 'POST',
+          body: JSON.stringify({
+            expectedRevision: current.world.revision,
+            expectedHash: current.hash,
+            text: '',
+            days: stepDays,
+            quality,
+          }),
+        });
+        current = parseResponse(result);
+        completedDate = current.world.date;
+        completedMonths++;
+        await refresh();
+        const latestTurn = current.world.turns.at(-1);
+        const developments = current.world.events
+          .filter((event) => event.turnId === latestTurn?.id)
+          .sort((a, b) => b.importance - a.importance);
+        for (const event of developments.slice(0, 3))
+          headlines.push({
+            title: eventHeadline(current.world, event),
+            importance: event.importance,
+          });
+        const critical = developments.find(
+          (event) =>
+            event.importance >= 90 ||
+            [
+              'OPEN_CRISIS',
+              'START_CONFLICT',
+              'STRATEGIC_ATTACK',
+              'TRANSFER_CONTROL',
+            ].includes(event.type),
+        );
+        if (critical) {
+          interrupted = true;
+          break;
+        }
+      }
+      const topHeadlines = [
+        ...new Map(
+          headlines
+            .sort((a, b) => b.importance - a.importance)
+            .map((event) => [event.title, event]),
+        ).values(),
+      ]
+        .slice(0, 3)
+        .map((event) => event.title);
+      setNotice(
+        `${interrupted ? `Jump paused for a major development · ${completedMonths} of ${months} months` : `Jump complete · ${completedMonths} ${completedMonths === 1 ? 'month' : 'months'}`} · ${completedDate}${topHeadlines.length ? ` · ${topHeadlines.join(' · ')}` : ''}`,
+      );
+    } catch (e) {
+      await refresh();
+      setNotice(
+        `Jump stopped at ${completedDate || world?.date || 'the current date'}. ${e instanceof Error ? e.message : 'World could not advance.'}`,
+      );
+    } finally {
+      setJumping(false);
+    }
   };
   const exportFile = async () => {
     try {
@@ -233,6 +329,7 @@ export function App() {
       setNotice(e instanceof Error ? e.message : 'Export failed');
     }
   };
+  const importFile = () => file.current?.click();
   if (!world || !nation)
     return (
       <main className="loading">
@@ -241,19 +338,30 @@ export function App() {
         <button onClick={() => void refresh()}>Retry connection</button>
       </main>
     );
+  const player = world.nations.find((n) => n.id === world.playerNationId)!;
   const activeRegion =
     world.regions.find((r) => r.id === regionId)?.id ?? world.regions[0]!.id;
-  const player = world.nations.find((n) => n.id === world.playerNationId)!;
-  const advance = () => {
-    const date = new Date(world.date);
-    date.setUTCDate(date.getUTCDate() + 7);
-    void commit(
-      { type: 'ADVANCE_DATE', date: date.toISOString().slice(0, 10) },
-      'Advance simulation by seven days',
-    );
+  const selectedRegion = world.regions.find((r) => r.id === regionId) ?? null;
+  const regionOwner = selectedRegion
+    ? world.nations.find((n) => n.id === selectedRegion.ownerNationId)
+    : null;
+  const regionController = selectedRegion
+    ? world.nations.find((n) => n.id === selectedRegion.controllerNationId)
+    : null;
+  const branchTimeline = () => {
+    const name = `Before ${directive.trim().slice(0, 45) || 'next decision'} — ${world.date}`;
+    void operate('/api/timelines/branch', { name }).then((result) => {
+      if (result) {
+        setNotice('Timeline branched. The original decision point is saved.');
+        setWorkspaceTab('Branches');
+      }
+    });
+  };
+  const advanceTurn = () => {
+    void operate('/api/play', { text: '', days, quality });
   };
   return (
-    <main className="workstation">
+    <main className={`workstation${jumping ? ' is-jumping' : ''}`}>
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark">{branding.mark}</span>
@@ -263,30 +371,30 @@ export function App() {
           </div>
         </div>
         <div className="scenario">
-          <span className="eyebrow">
-            {world.scenario.synthetic ? 'SYNTHETIC SCENARIO' : 'SCENARIO'}
-          </span>
+          <span className="eyebrow">CURRENT WORLD</span>
           <strong>{world.scenario.name.split(' · ')[0]}</strong>
         </div>
         <div className="date">
           <time>{world.date}</time>
           <span>TURN {world.revision.toString().padStart(3, '0')}</span>
         </div>
-        <div className="player">
+        <label className="player">
+          <small>{world.observerMode ? 'TAKE CONTROL' : 'PLAYING AS'}</small>
           <span className="status-dot" />
           <select
-            aria-label="Controlled country"
+            aria-label={world.observerMode ? 'Take control as' : 'Playing as'}
             value={player.id}
-            disabled={busy}
-            onChange={(e) =>
-              void commit(
-                {
-                  type: 'SWITCH_NATION',
-                  nationId: NationId.parse(e.target.value),
-                },
-                'Choose controlled country',
-              )
-            }
+            disabled={isBusy}
+            onChange={(e) => {
+              const nationId = NationId.parse(e.target.value);
+              const commands = [
+                { type: 'SWITCH_NATION' as const, nationId },
+                ...(world.observerMode
+                  ? [{ type: 'SET_OBSERVER_MODE' as const, enabled: false }]
+                  : []),
+              ];
+              void commit(commands, 'Take control of a government');
+            }}
           >
             {world.nations.map((n) => (
               <option key={n.id} value={n.id}>
@@ -294,10 +402,10 @@ export function App() {
               </option>
             ))}
           </select>
-        </div>
-        <nav aria-label="World controls">
+        </label>
+        <nav className="world-controls" aria-label="World controls">
           <button
-            disabled={busy}
+            disabled={isBusy}
             onClick={() =>
               void commit(
                 { type: 'SET_OBSERVER_MODE', enabled: !world.observerMode },
@@ -305,64 +413,24 @@ export function App() {
               )
             }
           >
-            {world.observerMode ? 'Resume control' : 'Observe world'}
+            {world.observerMode ? 'Leave observer mode' : 'Observe'}
           </button>
-          <button onClick={() => setLaunch(true)}>Menu</button>
-          <button
-            onClick={() => {
-              const name = `Before ${directive.trim().slice(0, 45) || 'next decision'} — ${world.date}`;
-              void operate('/api/timelines/branch', { name }).then((r) => {
-                if (r)
-                  setNotice(
-                    'Timeline branched. The original decision point is saved.',
-                  );
-              });
-            }}
-            disabled={busy}
-          >
+          <button onClick={branchTimeline} disabled={isBusy}>
             Branch timeline
           </button>
-          {developerMode && (
-            <button disabled={busy} onClick={advance}>
-              + 7 days
-            </button>
-          )}
-          <button
-            disabled={busy}
-            onClick={() =>
-              void operate('/api/play', { text: '', days, quality })
-            }
-          >
-            Advance world
+          <button className="primary" disabled={isBusy} onClick={advanceTurn}>
+            Advance turn
           </button>
-          <button onClick={() => void exportFile()}>Export save</button>
-          <button
-            disabled={busy}
-            onClick={() => {
-              if (window.mandateDesktop)
-                void window.mandateDesktop
-                  .importSave()
-                  .then((result) => {
-                    if (result) void refresh();
-                  })
-                  .catch((e) => setNotice(String(e)));
-              else file.current?.click();
-            }}
-          >
-            Import
-          </button>
-          <button onClick={() => void refresh()} disabled={busy}>
-            Refresh
-          </button>
+          <button onClick={() => setLaunch(true)}>Menu</button>
+          <button onClick={() => setOperations(true)}>Settings</button>
           {developerMode && (
             <button onClick={() => setDebug(true)}>Debug</button>
           )}
-          <button onClick={() => setOperations(true)}>World & settings</button>
         </nav>
       </header>
       <div className="subbar">
-        <div>
-          <span className="eyebrow">ATLAS VIEW</span>
+        <div className="map-modes">
+          <span className="eyebrow">MAP</span>
           <button
             aria-pressed={mode === 'ownership'}
             onClick={() => setMode('ownership')}
@@ -373,16 +441,16 @@ export function App() {
             aria-pressed={mode === 'control'}
             onClick={() => setMode('control')}
           >
-            Military control
+            Control
           </button>
           <select
-            aria-label="Additional map modes"
+            aria-label="More map modes"
             value={['ownership', 'control'].includes(mode) ? '' : mode}
             onChange={(e) => {
               if (e.target.value) setMode(e.target.value as MapMode);
             }}
           >
-            <option value="">More map modes</option>
+            <option value="">More layers</option>
             {mapModes.slice(2).map((m) => (
               <option key={m.value} value={m.value}>
                 {m.label}
@@ -390,20 +458,20 @@ export function App() {
             ))}
           </select>
         </div>
-        <label className="country-picker">
-          Inspect nation
-          <select
-            aria-label="Inspect nation"
-            value={nation.id}
-            onChange={(e) => selectNation(NationId.parse(e.target.value))}
-          >
-            {world.nations.map((n) => (
-              <option key={n.id} value={n.id}>
-                {n.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="map-selection" aria-live="polite">
+          <strong>{selectedRegion?.name ?? nation.name}</strong>
+          {selectedRegion && (
+            <span>
+              {regionOwner?.name ?? 'Unknown owner'}
+              {regionController && regionController.id !== regionOwner?.id
+                ? ` · controlled by ${regionController.name}`
+                : ''}
+              {selectedRegion.claims.length
+                ? ` · ${selectedRegion.claims.length} claim${selectedRegion.claims.length === 1 ? '' : 's'}`
+                : ''}
+            </span>
+          )}
+        </div>
         <button
           aria-pressed={followed.includes(nation.id)}
           onClick={() => {
@@ -419,10 +487,36 @@ export function App() {
         >
           {followed.includes(nation.id) ? 'Following' : 'Follow country'}
         </button>
-        <span className="live-status">
-          {provider === 'fake' ? 'DETERMINISTIC DEMO' : provider.toUpperCase()}{' '}
-          <span className="status-dot" />
-        </span>
+        <div className="jump-controls" aria-label="Timeline controls">
+          <label htmlFor="jump-length">Jump forward</label>
+          <select
+            id="jump-length"
+            aria-label="Jump forward length"
+            value={jumpPreset}
+            disabled={isBusy}
+            onChange={(e) => setJumpPreset(e.target.value)}
+          >
+            <option value="1">1 month</option>
+            <option value="3">3 months</option>
+            <option value="6">6 months</option>
+            <option value="12">1 year</option>
+            <option value="custom">Custom</option>
+          </select>
+          {jumpPreset === 'custom' && (
+            <input
+              aria-label="Custom jump months"
+              type="number"
+              min={1}
+              max={60}
+              value={customJumpMonths}
+              disabled={isBusy}
+              onChange={(e) => setCustomJumpMonths(Number(e.target.value))}
+            />
+          )}
+          <button disabled={isBusy} onClick={() => void jumpForward()}>
+            Jump
+          </button>
+        </div>
       </div>
       {(error || notice) && !debug && saveText === null && (
         <div
@@ -441,32 +535,26 @@ export function App() {
         </div>
       )}
       <div className="workspace">
-        <Inspector
-          busy={busy}
-          operate={operate}
-          nation={nation}
-          world={world}
-          regionId={regionId}
-          onSelect={selectNation}
-          onDiplomacy={() => setWorkspaceTab('Diplomacy')}
-          {...(references.find((r) => r.nationId === nation.id)
-            ? { reference: references.find((r) => r.nationId === nation.id)! }
-            : {})}
-        />
         <MapView
           key={world.scenario.geographyVersion}
           world={world}
           selected={nation.id}
+          focusedRegion={regionId}
+          focusCoordinates={
+            references.find((r) => r.nationId === nation.id)?.capitals[0]
+              ?.coordinates
+          }
           mode={mode}
           onSelect={(id, region) => {
             setSelected(id);
             setRegionId(region);
+            setWorkspaceTab('Country');
           }}
           onReady={ready}
         />
         <aside className="context-workspace">
           <div className="context-tabs">
-            {['Events', 'Diplomacy', 'Conflicts', 'Overview', 'Branches'].map(
+            {['History', 'Country', 'Diplomacy', 'Conflicts', 'Branches'].map(
               (tab) => (
                 <button
                   key={tab}
@@ -478,7 +566,7 @@ export function App() {
               ),
             )}
           </div>
-          {workspaceTab === 'Events' && (
+          {workspaceTab === 'History' && (
             <Timeline
               world={world}
               selected={nation.id}
@@ -492,19 +580,38 @@ export function App() {
             <Diplomacy
               world={world}
               selected={nation.id}
-              busy={busy}
+              busy={isBusy}
               operate={operate}
             />
           )}
-          {workspaceTab === 'Overview' && (
-            <WorldDepth
+          {workspaceTab === 'Country' && (
+            <Inspector
               world={world}
+              nation={nation}
+              regionId={regionId}
               onSelect={selectNation}
-              busy={busy}
+              onDiplomacy={() => setWorkspaceTab('Diplomacy')}
+              onTakeControl={() =>
+                void commit(
+                  [
+                    { type: 'SWITCH_NATION', nationId: nation.id },
+                    { type: 'SET_OBSERVER_MODE', enabled: false },
+                  ],
+                  'Take control from observer mode',
+                )
+              }
+              busy={isBusy}
               operate={operate}
+              {...(references.find((r) => r.nationId === nation.id)
+                ? {
+                    reference: references.find(
+                      (r) => r.nationId === nation.id,
+                    )!,
+                  }
+                : {})}
             />
           )}
-          {workspaceTab === 'Branches' && <BranchComparison />}
+          {workspaceTab === 'Branches' && <BranchComparison world={world} />}
           {workspaceTab === 'Conflicts' && <Conflicts world={world} />}
         </aside>
       </div>
@@ -513,87 +620,100 @@ export function App() {
           className="directive-form"
           onSubmit={(e) => {
             e.preventDefault();
-            void operate('/api/play', { text: directive, days, quality }).then(
-              (result) => {
-                if (result) {
-                  setDirective('');
-                  setWorkspaceTab('Events');
-                }
+            void operate('/api/play', {
+              text: directive,
+              days,
+              quality,
+              grounding: {
+                selectedNationId: nation.id,
+                ...(regionId ? { selectedRegionId: regionId } : {}),
               },
-            );
+            }).then((result) => {
+              if (result) {
+                setDirective('');
+                setWorkspaceTab('History');
+              }
+            });
           }}
         >
           <div className="directive-heading">
             <label htmlFor="directive" className="eyebrow">
-              {world.observerMode ? 'OBSERVER / ' : 'DIRECTIVE / '}
-              {player.name.toUpperCase()}
+              {world.observerMode
+                ? 'OBSERVER'
+                : `${player.name.toUpperCase()} · YOUR NEXT ORDER`}
             </label>
-            <small>
-              {provider === 'fake'
-                ? 'Player orders drive policy; foreign responses use demo rules. A configured model adds broader interpretation.'
-                : 'Your government acts on your orders. Other governments decide their response; outcomes follow simulation rules.'}
+            <small className="action-grounding">
+              {selectedRegion
+                ? `Focus: ${selectedRegion.name} · ${regionOwner?.name ?? 'owner unknown'}${regionController && regionController.id !== regionOwner?.id ? ` · controlled by ${regionController.name}` : ''}`
+                : `Focus: ${nation.name}. Click a country or region to ground your order.`}
             </small>
           </div>
           <div className="directive-input">
             <textarea
               id="directive"
+              aria-label={`${player.name} action composer`}
               rows={2}
               value={directive}
               onChange={(e) => setDirective(e.target.value)}
-              disabled={busy}
-              placeholder="Begin a quiet diplomatic initiative with Finland and Norway. Increase military readiness…"
+              disabled={isBusy || world.observerMode}
+              placeholder={`What should ${player.name} do? Give an order, make a demand, start a project, or talk to another government…`}
             />
             <div className="directive-actions">
-              <div>
+              <button
+                className="primary"
+                disabled={isBusy || world.observerMode || !directive.trim()}
+              >
+                Issue order
+              </button>
+            </div>
+          </div>
+          <details className="order-options">
+            <summary>Turn pace and model quality</summary>
+            <div className="order-options-fields">
+              <label>
+                Time per order
+                <select
+                  aria-label="Turn duration"
+                  value={days}
+                  disabled={isBusy}
+                  onChange={(e) => setDays(Number(e.target.value))}
+                >
+                  {[
+                    [7, '1 week'],
+                    [30, '1 month'],
+                    [90, '3 months'],
+                    [180, '6 months'],
+                    [365, '1 year'],
+                  ].map(([n, label]) => (
+                    <option key={n} value={n}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                World attention
                 <select
                   aria-label="Turn quality"
                   value={quality}
+                  disabled={isBusy}
                   onChange={(e) => setQuality(e.target.value)}
                 >
                   <option value="fast">Fast</option>
                   <option value="balanced">Balanced</option>
                   <option value="deep">Deep</option>
                 </select>
-                <select
-                  aria-label="Turn duration"
-                  value={days}
-                  onChange={(e) => setDays(Number(e.target.value))}
-                >
-                  {[7, 30, 90, 365].map((n) => (
-                    <option key={n} value={n}>
-                      {n} days
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                className="primary"
-                disabled={busy || world.observerMode || !directive.trim()}
-              >
-                Issue directive
-              </button>
+              </label>
             </div>
-          </div>
-          {!busy && !world.observerMode && (
+          </details>
+          {!isBusy && !world.observerMode && (
             <div className="action-suggestions">
               {[
-                'Review our current priorities and continue existing policy.',
-                ...world.goals
-                  .filter(
-                    (g) => g.nationId === player.id && g.status === 'active',
-                  )
-                  .slice(0, 2)
-                  .map((g) => g.title),
-                ...world.negotiations
-                  .filter(
-                    (n) =>
-                      n.status === 'open' && n.recipientNationId === player.id,
-                  )
-                  .slice(0, 1)
-                  .map(
-                    (n) =>
-                      `Review the counteroffer from ${world.nations.find((a) => a.id === n.proposerNationId)?.name}`,
-                  ),
+                `Offer ${nation.name === player.name ? 'Finland' : nation.name} a security agreement`,
+                selectedRegion
+                  ? `Demand ${selectedRegion.name}`
+                  : `Start a major public project in ${player.name}`,
+                'Set a new course for our government',
               ].map((text) => (
                 <button
                   type="button"
@@ -609,30 +729,34 @@ export function App() {
             <div className="observer-controls">
               <button
                 type="button"
+                disabled={isBusy}
                 onClick={() => setObserverPlaying((v) => !v)}
               >
-                {observerPlaying ? 'Pause' : 'Play history'}
+                {observerPlaying ? 'Pause' : 'Play'}
+              </button>
+              <button type="button" disabled={isBusy} onClick={advanceTurn}>
+                Step
               </button>
               <select
                 aria-label="Observer speed"
                 value={observerSpeed}
                 onChange={(e) => setObserverSpeed(Number(e.target.value))}
               >
-                <option value={10000}>Reflect · 10s between turns</option>
+                <option value={10000}>Slow · 10s between turns</option>
                 <option value={3000}>Normal · 3s between turns</option>
-                <option value={0}>Fast · when inference finishes</option>
+                <option value={0}>Fast · as soon as ready</option>
               </select>
               <small>
-                Advance world steps once. Select a controlled country to enter
-                this history.
+                The world continues on its own. Choose any government above to
+                take control without restarting this timeline.
               </small>
             </div>
           )}
-          {busy && (
+          {isBusy && (
             <div className="turn-progress" role="status">
               <span className="status-dot" />
               {progress?.running
-                ? `${progress.actor ? progress.actor + ' is considering its options' : progress.stage.replaceAll('-', ' ')} · ${Math.floor((Date.now() - Date.parse(progress.startedAt ?? new Date().toISOString())) / 1000)}s elapsed`
+                ? `${progress.actor ? progress.actor + ' is considering its next move' : progress.stage.replaceAll('-', ' ')} · ${Math.floor((Date.now() - Date.parse(progress.startedAt ?? new Date().toISOString())) / 1000)}s`
                 : 'Applying commands…'}
               <button
                 type="button"
@@ -640,7 +764,7 @@ export function App() {
                   void api('/api/play/cancel', { method: 'POST', body: '{}' })
                 }
               >
-                Cancel before commit
+                {jumping ? 'Stop jump here' : 'Cancel turn'}
               </button>
             </div>
           )}
@@ -658,7 +782,8 @@ export function App() {
         <Modal>
           <Launch
             world={world}
-            busy={busy}
+            hash={state.hash}
+            busy={isBusy}
             operate={operate}
             firstRun={firstRun}
             onClose={() => {
@@ -676,11 +801,13 @@ export function App() {
         <Modal>
           <Operations
             world={world}
-            busy={busy}
+            busy={isBusy}
             operate={operate}
             close={() => setOperations(false)}
             developerMode={developerMode}
             onDeveloperMode={setDeveloperMode}
+            onImportSave={importFile}
+            onExportSave={() => void exportFile()}
           />
         </Modal>
       )}
@@ -710,7 +837,7 @@ export function App() {
             world={world}
             selected={nation.id}
             regionId={activeRegion}
-            busy={busy}
+            busy={isBusy}
             validationError={error}
             close={() => setDebug(false)}
             commit={commit}
@@ -738,11 +865,11 @@ export function App() {
               </p>
             )}
             <div>
-              <button disabled={busy} onClick={() => setSaveText(null)}>
+              <button disabled={isBusy} onClick={() => setSaveText(null)}>
                 Cancel
               </button>
               <button
-                disabled={busy}
+                disabled={isBusy}
                 className="primary"
                 onClick={() => {
                   try {

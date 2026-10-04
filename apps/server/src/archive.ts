@@ -14,10 +14,17 @@ export function openArchive(directory?: string) {
     directory ? join(directory, 'archive.sqlite') : ':memory:',
   );
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
-    CREATE TABLE IF NOT EXISTS snapshots(id TEXT PRIMARY KEY,name TEXT NOT NULL,created_at TEXT NOT NULL,save_id TEXT NOT NULL,revision INTEGER NOT NULL,simulation_date TEXT NOT NULL,kind TEXT NOT NULL,save_json TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS snapshots(id TEXT PRIMARY KEY,name TEXT NOT NULL,created_at TEXT NOT NULL,save_id TEXT NOT NULL,revision INTEGER NOT NULL,simulation_date TEXT NOT NULL,kind TEXT NOT NULL,parent_save_id TEXT,parent_revision INTEGER,save_json TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value_json TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS presentation(turn_id TEXT PRIMARY KEY,value_json TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS failures(id TEXT PRIMARY KEY,created_at TEXT NOT NULL,value_json TEXT NOT NULL);`);
+  const snapshotColumns = db
+    .prepare('PRAGMA table_info(snapshots)')
+    .all() as Array<{ name: string }>;
+  if (!snapshotColumns.some((column) => column.name === 'parent_save_id'))
+    db.exec('ALTER TABLE snapshots ADD COLUMN parent_save_id TEXT');
+  if (!snapshotColumns.some((column) => column.name === 'parent_revision'))
+    db.exec('ALTER TABLE snapshots ADD COLUMN parent_revision INTEGER');
   return {
     checkpoint(
       store: WorldStore,
@@ -29,7 +36,9 @@ export function openArchive(directory?: string) {
       const audits = store
         .loadAudits()
         .map((a) => ({ turnId: a.turnId, value: a.trace }));
-      db.prepare('INSERT INTO snapshots VALUES(?,?,?,?,?,?,?,?)').run(
+      db.prepare(
+        'INSERT INTO snapshots (id,name,created_at,save_id,revision,simulation_date,kind,parent_save_id,parent_revision,save_json) VALUES(?,?,?,?,?,?,?,?,?,?)',
+      ).run(
         id,
         name,
         new Date().toISOString(),
@@ -37,6 +46,8 @@ export function openArchive(directory?: string) {
         save.world.revision,
         save.world.date,
         kind,
+        save.world.ancestry?.parentSaveId ?? null,
+        save.world.ancestry?.parentRevision ?? null,
         deflateSync(Buffer.from(JSON.stringify({ save, audits })), {
           level: 1,
         }),
@@ -64,7 +75,7 @@ export function openArchive(directory?: string) {
     list() {
       return db
         .prepare(
-          'SELECT id,name,created_at AS createdAt,save_id AS saveId,revision,simulation_date AS date,kind FROM snapshots ORDER BY created_at DESC',
+          'SELECT id,name,created_at AS createdAt,save_id AS saveId,revision,simulation_date AS date,kind,parent_save_id AS parentSaveId,parent_revision AS parentRevision FROM snapshots ORDER BY created_at DESC',
         )
         .all();
     },

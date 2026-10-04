@@ -64,38 +64,50 @@ export function politicalFeatures(
   mode: MapMode,
   selected: NationId,
 ) {
+  const nationById = new Map(
+    world.nations.map((nation) => [nation.id, nation]),
+  );
+  const relationByNation = new Map<string, number>();
+  for (const relation of world.relations) {
+    if (relation.nationA === world.playerNationId)
+      relationByNation.set(relation.nationB, relation.score);
+    if (relation.nationB === world.playerNationId)
+      relationByNation.set(relation.nationA, relation.score);
+  }
+  const sharedOrganizationMembers = new Set(
+    world.organizations
+      .filter((organization) =>
+        organization.members.includes(world.playerNationId),
+      )
+      .flatMap((organization) => organization.members),
+  );
+  const attackers = new Set(
+    world.conflicts
+      .filter((conflict) => conflict.status === 'active')
+      .flatMap((conflict) => conflict.attackers),
+  );
+  const defenders = new Set(
+    world.conflicts
+      .filter((conflict) => conflict.status === 'active')
+      .flatMap((conflict) => conflict.defenders),
+  );
   return world.regions.map((region) => {
     const nationId =
       mode === 'control' ? region.controllerNationId : region.ownerNationId;
-    const nation = world.nations.find((n) => n.id === nationId)!;
+    const nation = nationById.get(nationId)!;
     let color = nation.color;
     if (mode === 'relations') {
-      const relation = world.relations.find(
-        (r) =>
-          [r.nationA, r.nationB].includes(nationId) &&
-          [r.nationA, r.nationB].includes(world.playerNationId),
-      );
       color =
         nationId === world.playerNationId
           ? '#304b45'
-          : scale(((relation?.score ?? 0) + 100) / 2);
+          : scale(((relationByNation.get(nationId) ?? 0) + 100) / 2);
     }
     if (mode === 'alliances')
-      color = world.organizations.some(
-        (o) =>
-          o.members.includes(nationId) &&
-          o.members.includes(world.playerNationId),
-      )
-        ? '#6c927c'
-        : '#c3c5b9';
+      color = sharedOrganizationMembers.has(nationId) ? '#6c927c' : '#c3c5b9';
     if (mode === 'conflicts')
-      color = world.conflicts.some(
-        (c) => c.status === 'active' && c.attackers.includes(nationId),
-      )
+      color = attackers.has(nationId)
         ? '#b77761'
-        : world.conflicts.some(
-              (c) => c.status === 'active' && c.defenders.includes(nationId),
-            )
+        : defenders.has(nationId)
           ? '#baa874'
           : '#c3c5b9';
     if (mode === 'claims') color = region.claims.length ? '#baa874' : '#c3c5b9';
@@ -111,6 +123,7 @@ export function politicalFeatures(
       occupied: region.ownerNationId !== region.controllerNationId,
       owner: region.ownerNationId,
       controller: region.controllerNationId,
+      disputed: region.claims.length > 0,
     };
   });
 }

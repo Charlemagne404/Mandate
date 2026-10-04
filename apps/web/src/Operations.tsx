@@ -17,6 +17,11 @@ interface Scenario {
   name: string;
   description: string;
   nations: number;
+  regions: number;
+  startDate: string;
+  tags: string[];
+  recommendedCountries: string[];
+  majorSituation: string;
 }
 interface Settings {
   kind: 'fake' | 'ollama' | 'openai-compatible';
@@ -38,6 +43,8 @@ export function Operations({
   close,
   developerMode,
   onDeveloperMode,
+  onImportSave,
+  onExportSave,
 }: {
   world: WorldState;
   busy: boolean;
@@ -45,6 +52,8 @@ export function Operations({
   close: () => void;
   developerMode: boolean;
   onDeveloperMode: (enabled: boolean) => void;
+  onImportSave: () => void;
+  onExportSave: () => void;
 }) {
   const [tab, setTab] = useState('Timelines');
   const [saves, setSaves] = useState<Snapshot[]>([]);
@@ -106,6 +115,10 @@ export function Operations({
           Close
         </button>
       </header>
+      <div className="save-file-actions">
+        <button onClick={onExportSave}>Export current save</button>
+        <button onClick={onImportSave}>Import a save</button>
+      </div>
       <label>
         <input
           type="checkbox"
@@ -269,9 +282,19 @@ export function Operations({
           </p>
           {scenarios.map((s) => (
             <article className="scenario-card" key={s.filename}>
+              <small>
+                {s.startDate} · {s.nations} governments · {s.regions} regions
+              </small>
               <h3>{s.name}</h3>
               <p>{s.description}</p>
-              <small>{s.nations} simulated polities</small>
+              <p>
+                <strong>Situation:</strong> {s.majorSituation}
+              </p>
+              <small>
+                Recommended:{' '}
+                {s.recommendedCountries.join(', ') || 'Any government'} ·{' '}
+                {s.tags.join(' · ')}
+              </small>
               <button
                 disabled={busy}
                 onClick={() =>

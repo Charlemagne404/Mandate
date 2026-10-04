@@ -24,8 +24,9 @@ test('fresh player starts a Nordic campaign with a chosen country and can branch
   await expect(page.locator('.country-situation')).toContainText(
     'Starting priorities',
   );
-  await page.getByRole('button', { name: 'Continue with Finland' }).click();
-  await page.getByRole('button', { name: 'Start campaign' }).click();
+  await page
+    .getByRole('button', { name: 'Start playing as Finland', exact: true })
+    .click();
   await expect(
     page.getByRole('heading', { name: 'Your first cabinet briefing' }),
   ).toBeVisible();
@@ -34,7 +35,7 @@ test('fresh player starts a Nordic campaign with a chosen country and can branch
     fullPage: true,
   });
   await page.getByRole('button', { name: 'Enter the world' }).click();
-  await expect(page.getByLabel('Controlled country')).toHaveValue('nation:fin');
+  await expect(page.getByLabel('Playing as')).toHaveValue('nation:fin');
   await page
     .getByRole('button', { name: 'Branch timeline', exact: true })
     .click();
@@ -54,7 +55,7 @@ test('fresh player starts a Nordic campaign with a chosen country and can branch
     page.getByRole('button', { name: 'Continue', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(page.getByLabel('Controlled country')).toHaveValue('nation:fin');
+  await expect(page.getByLabel('Playing as')).toHaveValue('nation:fin');
 });
 
 test('unavailable model has recoverable setup and does not commit a turn', async ({
@@ -72,19 +73,26 @@ test('unavailable model has recoverable setup and does not commit a turn', async
       retries: 0,
     },
   });
+  const current = await (await page.request.get('/api/world')).json();
+  await page.request.post('/api/scenarios/load', {
+    data: {
+      expectedRevision: current.world.revision,
+      expectedHash: current.hash,
+      filename: 'northern-sandbox.json',
+      nationId: 'nation:swe',
+    },
+  });
   await page.goto('/');
   const before = await (await page.request.get('/api/world')).json();
-  await page.getByLabel(/DIRECTIVE/).fill('Invest in energy');
   await page
-    .getByRole('button', { name: 'Issue directive', exact: true })
-    .click();
+    .getByLabel('Sweden action composer', { exact: true })
+    .fill('Invest in energy');
+  await page.getByRole('button', { name: 'Issue order', exact: true }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   expect((await (await page.request.get('/api/world')).json()).hash).toBe(
     before.hash,
   );
-  await page
-    .getByRole('button', { name: 'World & settings', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Models', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Save & test model' }),
@@ -110,20 +118,18 @@ test('normal event reasons do not reveal a former country private directive afte
   });
   await page.goto('/');
   await page
-    .getByLabel(/DIRECTIVE/)
+    .getByLabel('Finland action composer', { exact: true })
     .fill(
       'Quietly invest in nuclear energy. Publicly open voluntary security consultations with Sweden.',
     );
-  await page
-    .getByRole('button', { name: 'Issue directive', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Issue order', exact: true }).click();
   await expect
     .poll(
       async () =>
         (await (await page.request.get('/api/world')).json()).world.revision,
     )
     .toBeGreaterThan(0);
-  await page.getByLabel('Controlled country').selectOption('nation:swe');
+  await page.getByLabel('Playing as').selectOption('nation:swe');
   await expect
     .poll(
       async () =>
@@ -131,12 +137,15 @@ test('normal event reasons do not reveal a former country private directive afte
           .playerNationId,
     )
     .toBe('nation:swe');
-  const event = page.locator('.timeline .event').filter({
-    has: page.getByRole('heading', {
-      name: 'Finland: talk in Nordic security access dispute',
-      exact: true,
-    }),
-  });
+  const event = page
+    .locator('.timeline .event')
+    .filter({
+      has: page.getByRole('heading', {
+        name: 'Finland orders talk in a crisis',
+        exact: true,
+      }),
+    })
+    .first();
   await expect(event).toBeVisible();
   await event.getByText('Why did this happen?', { exact: true }).click();
   await expect(page.locator('.timeline')).not.toContainText('nuclear');

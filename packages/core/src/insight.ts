@@ -307,6 +307,23 @@ export function compareWorlds(
       },
     );
   }
+  const nationIds = new Set([
+    ...a.nations.map((nation) => nation.id),
+    ...b.nations.map((nation) => nation.id),
+  ]);
+  for (const id of nationIds) {
+    const before = a.nations.find((nation) => nation.id === id);
+    const after = b.nations.find((nation) => nation.id === id);
+    if (before && after) continue;
+    const polity = after ?? before!;
+    push(
+      'polities',
+      id,
+      polity.name,
+      before ? { status: 'present', government: before.government } : null,
+      after ? { status: 'present', government: after.government } : null,
+    );
+  }
   const visible = (v: {
     id: string;
     visibility?: string | undefined;

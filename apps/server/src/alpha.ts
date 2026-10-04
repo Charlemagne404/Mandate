@@ -1,5 +1,6 @@
+import { ActionGrounding } from '@mandate/schemas';
 import { installLocalModel } from './model-install.js';
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -22,6 +23,7 @@ import {
   advisorQuestions,
   compareWorlds,
   parseSave,
+  assertWorld,
 } from '@mandate/core';
 import { canonicalHash } from '@mandate/persistence';
 import type { WorldStore } from '@mandate/persistence';
@@ -35,6 +37,9 @@ import {
   SimulationDate,
   InitiativeId,
   Commitment,
+  SaveId,
+  ScenarioFile,
+  ScenarioId,
   WorldCommand,
 } from '@mandate/schemas';
 import { openArchive } from './archive.js';
@@ -45,6 +50,7 @@ const expected = z.strictObject({
 });
 const playInput = expected.extend({
   text: z.string().trim().max(4000).default(''),
+  grounding: ActionGrounding.optional(),
   days: z.number().int().min(1).max(365).default(7),
   quality: z.enum(['fast', 'balanced', 'deep']).default('balanced'),
 });
@@ -95,6 +101,7 @@ export function createAlphaServices(
     days: number,
     quality: 'fast' | 'balanced' | 'deep',
     signal: AbortSignal,
+    grounding?: z.infer<typeof ActionGrounding>,
   ) => {
     signal = AbortSignal.any([signal, AbortSignal.timeout(config.maxTurnMs)]);
     const before = store.load();
@@ -122,6 +129,7 @@ export function createAlphaServices(
         actorNationId: before.playerNationId,
         source: text ? 'player' : 'system',
         text: text || 'Advance the world without a player action',
+        ...(grounding ? { grounding } : {}),
       },
       days,
       quality,
@@ -342,6 +350,7 @@ export function createAlphaServices(
             input.days,
             input.quality,
             controller.signal,
+            input.grounding,
           );
           progress.completed = 1;
           return response();
@@ -510,14 +519,16 @@ export function createAlphaServices(
             ? c.conference.proposer
             : c.type === 'IMPOSE_SANCTION'
               ? c.sanction.issuer
-              : [
-                    'CRISIS_ACTION',
-                    'RESPOND_CONFERENCE',
-                    'LIFT_SANCTION',
-                    'THEATER_ACTION',
-                  ].includes(c.type) && 'nationId' in c
-                ? c.nationId
-                : null;
+              : c.type === 'CREATE_POLITY'
+                ? c.parentNationId
+                : [
+                      'CRISIS_ACTION',
+                      'RESPOND_CONFERENCE',
+                      'LIFT_SANCTION',
+                      'THEATER_ACTION',
+                    ].includes(c.type) && 'nationId' in c
+                  ? c.nationId
+                  : null;
         if (actor !== w.playerNationId || w.observerMode)
           throw new WorldError(
             'DOMAIN',
@@ -528,9 +539,12 @@ export function createAlphaServices(
           expectedRevision: input.expectedRevision,
           expectedHash: input.expectedHash,
           action: {
-            source: 'player',
+            source: c.type === 'CREATE_POLITY' ? 'debug' : 'player',
             actorNationId: w.playerNationId,
-            text: 'Government strategic action: ' + c.type,
+            text:
+              c.type === 'CREATE_POLITY'
+                ? `Scenario editor creates ${c.polity.name}`
+                : 'Government strategic action: ' + c.type,
           },
           commands: [
             {
@@ -542,6 +556,15 @@ export function createAlphaServices(
           ],
         });
         return response();
+      });
+      app.get('/api/semantic-debug', () => {
+        const w = store.load();
+        const turn = w.turns.at(-1);
+        const audit = turn ? store.loadAudit(turn.id) : null;
+        return {
+          audit,
+          committedCommands: w.commands.filter((c) => c.turnId === turn?.id),
+        };
       });
       app.get('/api/turn-report', () => {
         const w = store.load(),
@@ -557,6 +580,7 @@ export function createAlphaServices(
                 move: string;
               }[];
               intent?: {
+                actionGraph?: import('@mandate/schemas').SemanticGraph;
                 majorIntentClauses?: {
                   id: string;
                   kind: string;
@@ -567,6 +591,7 @@ export function createAlphaServices(
                 }[];
               } | null;
               playerExecution?: {
+                semanticAudit?: import('@mandate/schemas').SemanticAudit[];
                 orders: string[];
                 desiredOutcomes: {
                   kind: string;
@@ -601,6 +626,29 @@ export function createAlphaServices(
             ) ?? [],
           playerExecution: trace?.playerExecution
             ? {
+                understood:
+                  trace.intent?.actionGraph?.actions.map((a) => {
+                    const names = (ids: string[]) =>
+                      ids
+                        .map(
+                          (id) =>
+                            w.nations.find((n) => n.id === id)?.name ?? id,
+                        )
+                        .join(' + ');
+                    const targets = names(a.targets);
+                    const sources = names(a.sources);
+                    const participants = names(a.participants);
+                    const implementation =
+                      a.action === 'acquire-forces'
+                        ? `attempt to acquire ${a.assets.join(' / ') || 'forces'} from ${sources || 'an unresolved owner'}`
+                        : a.action === 'annex'
+                          ? `adopt annexation of ${targets} as an objective`
+                          : a.action === 'request-participation'
+                            ? `ask ${participants} to help against ${targets}`
+                            : `${a.action.replaceAll('-', ' ')}${targets ? ` → ${targets}` : ''}${sources ? ` using forces owned by ${sources}` : ''}`;
+                    return `${a.clauseId + 1}. ${names([a.actor])}: ${implementation}${a.instruments.some((i) => i.startsWith('result:')) ? '; requires forces requested by an earlier action' : ''}${a.conditions.length ? `; only when ${a.conditions.map((c) => `${c.negated ? 'not ' : ''}${c.text}`).join(' and ')}` : ''}`;
+                  }) ?? [],
+                semanticAudit: trace.playerExecution.semanticAudit ?? [],
                 orders: trace.playerExecution.orders,
                 desiredOutcomes: trace.playerExecution.desiredOutcomes,
                 constraints: trace.playerExecution.constraints,
@@ -643,13 +691,32 @@ export function createAlphaServices(
           .extend({
             recipientNationId: NationId,
             message: z.string().trim().min(1).max(4000),
-            minimumInvestment: z.number().int().min(1).max(1000),
-            dueDate: SimulationDate,
+            minimumInvestment: z.number().int().min(1).max(1000).optional(),
+            dueDate: SimulationDate.optional(),
             visibility: z.enum(['public', 'private']).default('public'),
           })
           .parse(request.body);
         const w = check(input),
           id = NegotiationId.parse(`negotiation:${randomUUID()}`);
+        const expiresDate =
+          input.dueDate ??
+          new Date(Date.parse(`${w.date}T00:00:00Z`) + 180 * 86400000)
+            .toISOString()
+            .slice(0, 10);
+        const kind =
+          /\b(defen[cs]e|military|security|guarantee|alliance|armed forces|basing)\b/i.test(
+            input.message,
+          )
+            ? 'defense'
+            : /\b(trade|tariff|market access|energy supply|economic)\b/i.test(
+                  input.message,
+                )
+              ? 'trade'
+              : /\b(non.?aggression|neutrality|mutual restraint)\b/i.test(
+                    input.message,
+                  )
+                ? 'nonaggression'
+                : 'consultation';
         archive.checkpoint(store, 'Before structured aid proposal', 'undo');
         store.commit({
           expectedRevision: input.expectedRevision,
@@ -662,36 +729,45 @@ export function createAlphaServices(
           commands: [
             {
               id: CommandId.parse(`command:${randomUUID()}`),
-              reason:
-                'Player intentionally proposes a measurable funded aid pledge; recipient consent remains pending',
+              reason: input.minimumInvestment
+                ? 'Player proposes a funded aid pledge; recipient consent remains pending'
+                : 'Player sends written terms to the selected government; recipient consent remains pending',
               command: {
                 type: 'OPEN_NEGOTIATION',
                 negotiation: {
                   id,
                   proposerNationId: w.playerNationId,
                   recipientNationId: input.recipientNationId,
-                  topic: 'Funded aid pledge',
-                  kind: 'consultation',
+                  topic: input.minimumInvestment
+                    ? 'Funded aid pledge'
+                    : 'Direct diplomatic proposal',
+                  kind,
                   terms: input.message,
                   visibility: input.visibility,
+                  conflictId: null,
                   createdDate: w.date,
-                  expiresDate: input.dueDate,
-                  obligations: [
-                    {
-                      issuer: w.playerNationId,
-                      recipients: [input.recipientNationId],
-                      type: 'aid',
-                      terms: input.message,
-                      strength: 'binding',
-                      dueDate: input.dueDate,
-                      expiry: null,
-                      condition: {
-                        kind: 'project',
-                        initiativeKind: 'aid',
-                        minimumInvestment: input.minimumInvestment,
-                      },
-                    },
-                  ],
+                  expiresDate,
+                  obligations: input.minimumInvestment
+                    ? [
+                        {
+                          issuer: w.playerNationId,
+                          recipients: [input.recipientNationId],
+                          type: 'aid',
+                          terms: input.message,
+                          strength: 'binding',
+                          dueDate: expiresDate,
+                          expiry: null,
+                          condition: {
+                            kind: 'project',
+                            initiativeKind: 'aid',
+                            minimumInvestment: input.minimumInvestment,
+                          },
+                        },
+                      ]
+                    : [],
+                  status: 'open',
+                  responses: [],
+                  treatyId: null,
                 },
               },
             },
@@ -868,14 +944,103 @@ export function createAlphaServices(
                 const world = loadScenario(
                   join(options.scenariosDirectory!, filename),
                 );
+                const activeCrisis = world.crises.find(
+                  (crisis) => crisis.status !== 'resolved',
+                );
+                const activeConflict = world.conflicts.find(
+                  (conflict) => conflict.status === 'active',
+                );
+                const recommendations =
+                  filename === 'nordic-strategy.json' ||
+                  filename === 'northern-sandbox.json' ||
+                  filename === 'global-regional.json'
+                    ? ['nation:swe', 'nation:fin', 'nation:nor']
+                    : ['nation:usa', 'nation:chn', 'nation:ind'];
                 return {
                   filename,
                   ...world.scenario,
                   nations: world.nations.length,
+                  regions: world.regions.length,
+                  tags: [
+                    world.nations.length > 100
+                      ? 'World theater'
+                      : 'Focused theater',
+                    world.regions.length > 1000
+                      ? 'Regional map'
+                      : 'Country map',
+                    world.scenario.synthetic
+                      ? 'Fictional politics'
+                      : 'Historic start',
+                  ],
+                  recommendedCountries: recommendations
+                    .map(
+                      (id) =>
+                        world.nations.find((nation) => nation.id === id)?.name,
+                    )
+                    .filter((name): name is string => Boolean(name)),
+                  majorSituation:
+                    activeCrisis?.title ??
+                    (activeConflict
+                      ? `${activeConflict.name}: ${activeConflict.attackers.map((id) => world.nations.find((nation) => nation.id === id)?.name ?? id).join(', ')} and ${activeConflict.defenders.map((id) => world.nations.find((nation) => nation.id === id)?.name ?? id).join(', ')} are at war.`
+                      : 'No major crisis is underway. Set the course of history yourself.'),
                 };
               })
           : [],
       );
+      app.post('/api/scenarios/save', (request) => {
+        unlocked();
+        const input = expected
+          .extend({
+            filename: z
+              .string()
+              .regex(/^custom-[a-z0-9][a-z0-9_-]{0,54}\.json$/),
+            sourceFilename: z
+              .string()
+              .regex(/^[a-zA-Z0-9_-]+\.json$/)
+              .optional(),
+            name: z.string().trim().min(1).max(160),
+            description: z.string().trim().min(1).max(4000),
+          })
+          .parse(request.body);
+        const current = check(input);
+        if (!options.scenariosDirectory)
+          throw new WorldError('DOMAIN', 'Scenario directory is unavailable');
+        if (!input.sourceFilename && !existsSync(options.scenariosDirectory))
+          throw new WorldError('DOMAIN', 'Scenario directory is unavailable');
+        const target = join(options.scenariosDirectory, input.filename);
+        if (existsSync(target))
+          throw new WorldError(
+            'DOMAIN',
+            'A scenario with this name already exists',
+          );
+        const source = input.sourceFilename
+          ? loadScenario(join(options.scenariosDirectory, input.sourceFilename))
+          : current;
+        const slug = input.filename.slice('custom-'.length, -'.json'.length);
+        const world = structuredClone(source);
+        world.saveId = SaveId.parse(`save:scenario-${slug}`);
+        world.ancestry = null;
+        world.scenario = {
+          ...world.scenario,
+          id: ScenarioId.parse(`scenario:custom-${slug}`),
+          name: input.name,
+          description: input.description,
+          ...(!input.sourceFilename ? { startDate: world.date } : {}),
+        };
+        const scenario = ScenarioFile.parse({
+          formatVersion: 3,
+          kind: 'scenario',
+          world,
+        });
+        assertWorld(scenario.world);
+        const temporary = `${target}.tmp`;
+        writeFileSync(temporary, JSON.stringify(scenario, null, 2) + '\n', {
+          mode: 0o600,
+          flag: 'wx',
+        });
+        renameSync(temporary, target);
+        return { filename: input.filename, name: input.name };
+      });
       app.post('/api/scenarios/load', (request) => {
         unlocked();
         const input = expected

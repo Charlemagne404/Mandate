@@ -98,6 +98,8 @@ export function factualEvent(
         return `${n(c.nationId)} now controls ${r(c.regionId)}`;
       case 'TRANSFER_OWNERSHIP':
         return `${n(c.nationId)} now owns ${r(c.regionId)}`;
+      case 'CREATE_POLITY':
+        return `${c.polity.name} declares independence from ${n(c.parentNationId)}`;
       case 'ADD_CLAIM':
         return `${n(c.nationId)} claims ${r(c.regionId)}`;
       case 'REMOVE_CLAIM':

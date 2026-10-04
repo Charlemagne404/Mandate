@@ -114,6 +114,117 @@ describe('turn trust boundary', () => {
       Math.max(...result.trace.modelCalls.map((c) => c.contextCharacters)),
     ).toBeLessThanOrEqual(48000);
   });
+  it('keeps a grounded territorial action playable in the 4,595-region world within the prompt budget', async () => {
+    const world = loadScenario(
+      new URL('../../data/scenarios/global-regional.json', import.meta.url)
+        .pathname,
+    );
+    const finland = world.nations.find((nation) => nation.name === 'Finland')!;
+    const region = world.regions.find(
+      (entry) =>
+        entry.ownerNationId === finland.id &&
+        entry.name === 'Northern Ostrobothnia',
+    )!;
+    const result = await createOrchestrator(new FakeProvider()).prepare({
+      world,
+      expectedHash: hash(world),
+      action: {
+        actorNationId: world.playerNationId,
+        source: 'player',
+        text: 'Demand Northern Ostrobothnia from Finland',
+        grounding: {
+          selectedNationId: finland.id,
+          selectedRegionId: region.id,
+        },
+      },
+      runId: 'regional-diplomacy-budget',
+    });
+    expect(result.trace.status).toBe('prepared');
+    expect(
+      result.request.commands.some(
+        (entry) =>
+          entry.command.type === 'ADD_CLAIM' &&
+          entry.command.regionId === region.id,
+      ),
+    ).toBe(true);
+    expect(
+      Math.max(
+        ...result.trace.modelCalls.map((call) => call.contextCharacters),
+      ),
+    ).toBeLessThanOrEqual(48000);
+  });
+  it('keeps broad invasions and unrelated crisis planners within the regional-world prompt budget', async () => {
+    const world = loadScenario(
+      new URL('../../data/scenarios/global-regional.json', import.meta.url)
+        .pathname,
+    );
+    const result = await createOrchestrator(new FakeProvider()).prepare({
+      world,
+      expectedHash: hash(world),
+      action: {
+        actorNationId: world.playerNationId,
+        source: 'player',
+        text: 'Invade Norway.',
+      },
+      runId: 'regional-invasion-context-budget',
+    });
+    expect(result.trace.status).toBe('prepared');
+    expect(
+      result.request.commands.some(
+        (entry) =>
+          entry.command.type === 'START_CONFLICT' &&
+          entry.command.conflict.attackers.includes(world.playerNationId) &&
+          entry.command.conflict.defenders.includes(
+            world.nations.find((nation) => nation.name === 'Norway')!.id,
+          ),
+      ),
+    ).toBe(true);
+    expect(
+      result.request.commands.some(
+        (entry) =>
+          entry.command.type === 'THEATER_ACTION' &&
+          entry.command.posture === 'major-offensive',
+      ),
+    ).toBe(true);
+    expect(
+      Math.max(
+        ...result.trace.modelCalls.map((call) => call.contextCharacters),
+      ),
+    ).toBeLessThanOrEqual(48000);
+  });
+  it('keeps a Brazil policy turn within the budget across planners, resolver and critic', async () => {
+    const world = loadScenario(
+      new URL('../../data/scenarios/global-regional.json', import.meta.url)
+        .pathname,
+    );
+    world.playerNationId = world.nations.find(
+      (nation) => nation.name === 'Brazil',
+    )!.id;
+    const result = await createOrchestrator(new FakeProvider()).prepare({
+      world,
+      expectedHash: hash(world),
+      action: {
+        actorNationId: world.playerNationId,
+        source: 'player',
+        text: 'Invest in nuclear energy for five years.',
+      },
+      runId: 'regional-brazil-context-budget',
+    });
+    expect(result.trace.status).toBe('prepared');
+    expect(
+      result.request.commands.some(
+        (entry) =>
+          entry.command.type === 'START_INITIATIVE' &&
+          entry.command.initiative.nationId === world.playerNationId &&
+          entry.command.initiative.kind === 'energy',
+      ),
+    ).toBe(true);
+    expect(
+      Math.max(
+        ...result.trace.modelCalls.map((call) => call.contextCharacters),
+      ),
+    ).toBeLessThanOrEqual(48000);
+  });
   it('autonomy stops capped industry projects when fiscal potential limits the economy', async () => {
     const world = fixture();
     for (const n of world.nations)

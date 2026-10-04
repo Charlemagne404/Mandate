@@ -1,14 +1,14 @@
+import { semanticCommandIssue } from './semantic.js';
+import { executePlayerTurn } from './player-executor.js';
 import { compactPrepare } from './compact.js';
 import { decisionInputs } from './decision.js';
 import { repetitionIssue, classifyImportance } from './behavior.js';
-import {
-  auditMajorIntentClauses,
-  executePlayerAction,
-} from './player-executor.js';
+import { auditMajorIntentClauses } from './player-executor.js';
 import type { PlayerExecution } from './player-executor.js';
 import { z } from 'zod';
 import {
   ActionId,
+  ActionGrounding,
   CommandId,
   CommitRequest,
   NationId,
@@ -128,6 +128,7 @@ export interface PrepareInput {
     actorNationId: NationId;
     source: 'player' | 'system';
     text: string;
+    grounding?: z.infer<typeof ActionGrounding>;
   };
   days?: number;
   quality?: 'fast' | 'balanced' | 'deep';
@@ -218,10 +219,12 @@ export function createOrchestrator(
         jsonSchema: contractSchema(schema),
         temperature: config.temperature,
         maxTokens:
-          config.workflow === 'compact' ||
-          (config.workflow === 'auto' && config.kind === 'ollama')
-            ? 400
-            : 4000,
+          role === 'formalizer'
+            ? 2200
+            : config.workflow === 'compact' ||
+                (config.workflow === 'auto' && config.kind === 'ollama')
+              ? 400
+              : 4000,
         ...(signal ? { signal } : {}),
       });
       record.rawOutput = result.rawText.slice(0, 100000);
@@ -411,24 +414,43 @@ export function createOrchestrator(
           }
         }
       }
-      trace.playerExecution =
-        input.action.source === 'player'
-          ? executePlayerAction(world, trace.intent, runId)
-          : null;
+      trace.playerExecution = executePlayerTurn(
+        world,
+        input.action.source === 'player' ? trace.intent : null,
+        runId,
+      );
       const playerCommands = trace.playerExecution?.commands ?? [];
       // Aggressive policy effects must be visible to governments planning their
       // response this turn. A newly created diplomatic offer is different: the
       // recipient gets a chance to answer on a later turn, not in the offer's
       // own preparation pass.
       const reactionPreviewCommands = playerCommands.filter(
-        (entry) => entry.command.type !== 'OPEN_NEGOTIATION',
+        (entry) =>
+          entry.command.type !== 'OPEN_NEGOTIATION' &&
+          !(
+            entry.command.type === 'CRISIS_ACTION' &&
+            entry.command.move === 'talk' &&
+            playerCommands.some(
+              (c) =>
+                c.command.type === 'OPEN_NEGOTIATION' &&
+                c.command.negotiation.id ===
+                  (entry.command.type === 'CRISIS_ACTION'
+                    ? entry.command.negotiationId
+                    : undefined),
+            )
+          ),
       );
       const planningWorld = reactionPreviewCommands.length
         ? resolveTurn(
             world,
             {
               expectedRevision: world.revision,
-              action: input.action,
+              action: {
+                ...input.action,
+                ...(trace.intent?.actionGraph
+                  ? { semanticGraph: trace.intent.actionGraph }
+                  : {}),
+              },
               commands: reactionPreviewCommands.map((entry, index) => ({
                 id: CommandId.parse(`command:player-preview-${runId}-${index}`),
                 reason: entry.reason,
@@ -490,24 +512,12 @@ export function createOrchestrator(
           input.fault?.('after-plan');
           return null;
         }
-        const relevant = [
-          ...trace.relevance.directNationIds,
-          ...trace.relevance.secondaryNationIds,
-        ];
+        const relevant = [...trace.relevance.directNationIds];
         const ownNegotiations = planningWorld.negotiations.filter(
           (n) =>
             n.status === 'open' &&
             [n.proposerNationId, n.recipientNationId].includes(nationId),
         );
-        planningWorld.goals
-          .filter(
-            (g) =>
-              g.nationId === nationId &&
-              !['achieved', 'failed', 'abandoned', 'superseded'].includes(
-                g.status,
-              ),
-          )
-          .forEach((g) => relevant.push(...g.targetNationIds));
         planningWorld.commitments
           .filter(
             (c) => c.issuer === nationId || c.recipients.includes(nationId),
@@ -516,18 +526,6 @@ export function createOrchestrator(
         ownNegotiations.forEach((n) =>
           relevant.push(n.proposerNationId, n.recipientNationId),
         );
-        const context = buildContext(planningWorld, nationId, relevant, {
-          recentLimit: quality === 'deep' ? 40 : 18,
-          eventBudget: Math.floor(config.contextBudget / 5),
-          topics: [
-            input.action.source === 'player'
-              ? (scopeIntent(trace.intent!, nationId)?.summary ?? '')
-              : '',
-            ...ownNegotiations.map((n) => n.topic),
-          ],
-          summaries: [summarizeHistory(planningWorld, nationId)],
-        });
-        trace.contexts.push(context);
         let intent = trace.intent ? scopeIntent(trace.intent, nationId) : null;
         if (!intent && ownNegotiations[0]) {
           const n = ownNegotiations[0];
@@ -553,16 +551,87 @@ export function createOrchestrator(
             ],
           };
         }
+        const focusedRegionIds = [
+          ...(input.action.grounding?.selectedRegionId
+            ? [input.action.grounding.selectedRegionId]
+            : []),
+          ...(trace.intent?.actionGraph?.actions.flatMap(
+            (action) => action.territories,
+          ) ?? []),
+        ].filter((id, index, all) => all.indexOf(id) === index);
+        const regionalWorld = planningWorld.regions.length > 1000;
+        let recentLimit = quality === 'deep' ? (regionalWorld ? 16 : 40) : 18;
+        let eventBudget = Math.floor(
+          config.contextBudget / (regionalWorld ? 12 : 5),
+        );
+        let historicalLimit = regionalWorld ? 4 : 8;
+        let regionsPerNation = regionalWorld ? 3 : 16;
+        let priorityRegionLimit = regionalWorld ? 24 : 80;
+        let summariesEnabled = true;
+        const topics = [
+          input.action.source === 'player'
+            ? (scopeIntent(trace.intent!, nationId)?.summary ?? '')
+            : '',
+          ...ownNegotiations.map((n) => n.topic),
+        ];
+        const buildPlanningContext = () =>
+          buildContext(planningWorld, nationId, relevant, {
+            recentLimit,
+            eventBudget,
+            historicalLimit,
+            regionsPerNation,
+            priorityRegionLimit,
+            topics,
+            summaries: summariesEnabled
+              ? [summarizeHistory(planningWorld, nationId)]
+              : [],
+            focusRegionIds: focusedRegionIds,
+          });
+        let context = buildPlanningContext();
+        const buildPlanningPayload = () => ({
+          context,
+          intent,
+          activation,
+          considerations: decisionInputs(context, intent),
+        });
+        let plannerPayload = buildPlanningPayload();
+        const contextTraceIndex = trace.contexts.push(context) - 1;
+        while (JSON.stringify(plannerPayload).length > config.contextBudget) {
+          if (eventBudget > 1000) {
+            eventBudget = Math.floor(eventBudget / 2);
+            recentLimit = Math.max(2, Math.floor(recentLimit / 2));
+            historicalLimit = Math.floor(historicalLimit / 2);
+          } else if (regionsPerNation > 1) {
+            regionsPerNation -= 1;
+          } else if (priorityRegionLimit > focusedRegionIds.length) {
+            priorityRegionLimit = Math.max(
+              focusedRegionIds.length,
+              Math.floor(priorityRegionLimit / 2),
+            );
+          } else if (focusedRegionIds.length > 1) {
+            focusedRegionIds.pop();
+            priorityRegionLimit = Math.max(
+              focusedRegionIds.length,
+              Math.min(priorityRegionLimit, 24),
+            );
+          } else if (summariesEnabled) {
+            summariesEnabled = false;
+          } else if (eventBudget > 0) {
+            eventBudget = 0;
+          } else {
+            throw new Error(
+              `Planner context cannot fit configured budget (${config.contextBudget} characters) after regional compaction`,
+            );
+          }
+          context = buildPlanningContext();
+          plannerPayload = buildPlanningPayload();
+          trace.contexts[contextTraceIndex] = context;
+        }
         try {
           const plan = await call(
             'planner',
             NationPlanGeneration,
-            {
-              context,
-              intent,
-              activation,
-              considerations: decisionInputs(context, intent),
-            },
+            plannerPayload,
             trace,
             contextReferences(context),
             signal,
@@ -647,6 +716,82 @@ export function createOrchestrator(
       const nextDate = new Date(planningWorld.date + 'T00:00:00Z');
       nextDate.setUTCDate(nextDate.getUTCDate() + (input.days ?? 30));
       const plannedIds = trace.plans.map((p) => p.nationId);
+      const directlyGroundedRegionIds = [
+        ...(trace.intent?.actionGraph?.actions.flatMap(
+          (action) => action.territories,
+        ) ?? []),
+        ...(input.action.grounding?.selectedRegionId
+          ? [input.action.grounding.selectedRegionId]
+          : []),
+      ];
+      const activeConflictRegionIds = planningWorld.conflicts
+        .filter(
+          (conflict) =>
+            conflict.status === 'active' &&
+            [...conflict.attackers, ...conflict.defenders].some((id) =>
+              plannedIds.includes(id),
+            ),
+        )
+        .flatMap((conflict) => [
+          ...conflict.theaters.flatMap((theater) => theater.regionIds),
+          ...conflict.campaigns.map((campaign) => campaign.regionId),
+        ]);
+      const sampledRegionIds = trace.contexts.flatMap((context) =>
+        [...context.canonical.regions]
+          .sort(
+            (a, b) =>
+              (b.ownerNationId === context.perspectiveNationId ? 20 : 0) +
+                (b.controllerNationId === context.perspectiveNationId
+                  ? 16
+                  : 0) +
+                (b.ownerNationId !== b.controllerNationId ? 8 : 0) +
+                (b.claims.length ? 4 : 0) -
+                ((a.ownerNationId === context.perspectiveNationId ? 20 : 0) +
+                  (a.controllerNationId === context.perspectiveNationId
+                    ? 16
+                    : 0) +
+                  (a.ownerNationId !== a.controllerNationId ? 8 : 0) +
+                  (a.claims.length ? 4 : 0)) || a.id.localeCompare(b.id),
+          )
+          .slice(0, 4)
+          .map((region) => region.id),
+      );
+      const resolverRegionIds = new Set([
+        ...directlyGroundedRegionIds,
+        ...activeConflictRegionIds.slice(0, 24),
+        ...sampledRegionIds,
+      ]);
+      const terminalGoals = new Set([
+        'achieved',
+        'failed',
+        'abandoned',
+        'superseded',
+      ]);
+      const mostRecentRelevantDate =
+        planningWorld.turns.at(-2)?.date ?? planningWorld.scenario.startDate;
+      const resolutionGoals = plannedIds.flatMap((nationId) => {
+        const goals = planningWorld.goals.filter(
+          (goal) => goal.nationId === nationId,
+        );
+        const active = goals
+          .filter((goal) => !terminalGoals.has(goal.status))
+          .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
+          .slice(0, 3);
+        const recentlyResolved = goals
+          .filter(
+            (goal) =>
+              terminalGoals.has(goal.status) &&
+              goal.updatedDate >= mostRecentRelevantDate,
+          )
+          .sort(
+            (a, b) =>
+              b.updatedDate.localeCompare(a.updatedDate) ||
+              b.priority - a.priority ||
+              a.id.localeCompare(b.id),
+          )
+          .slice(0, 1);
+        return [...active, ...recentlyResolved];
+      });
       const resolutionWorld = {
         ...planningWorld,
         scenario: {
@@ -656,10 +801,8 @@ export function createOrchestrator(
           ),
         },
         nations: planningWorld.nations.filter((n) => plannedIds.includes(n.id)),
-        regions: planningWorld.regions.filter(
-          (r) =>
-            plannedIds.includes(r.ownerNationId) ||
-            plannedIds.includes(r.controllerNationId),
+        regions: planningWorld.regions.filter((r) =>
+          resolverRegionIds.has(r.id),
         ),
         relations: planningWorld.relations.filter(
           (r) =>
@@ -676,16 +819,7 @@ export function createOrchestrator(
         organizations: planningWorld.organizations.filter((o) =>
           o.members.some((id) => plannedIds.includes(id)),
         ),
-        goals: planningWorld.goals.filter(
-          (g) =>
-            plannedIds.includes(g.nationId) &&
-            (!['achieved', 'failed', 'abandoned', 'superseded'].includes(
-              g.status,
-            ) ||
-              g.updatedDate >=
-                (planningWorld.turns.at(-2)?.date ??
-                  planningWorld.scenario.startDate)),
-        ),
+        goals: resolutionGoals,
         initiatives: planningWorld.initiatives.filter(
           (i) => plannedIds.includes(i.nationId) && i.status === 'active',
         ),
@@ -744,7 +878,7 @@ export function createOrchestrator(
             ...resolutionWorld.goals.flatMap((g) => g.targetNationIds),
           ]),
         ],
-        allowedRegionIds: resolutionWorld.regions.map((r) => r.id),
+        allowedRegionIds: [...resolverRegionIds].sort(),
         runId,
         nextDate: nextDate.toISOString().slice(0, 10),
         instruction:
@@ -810,7 +944,12 @@ export function createOrchestrator(
           const request = CommitRequest.parse({
             expectedRevision: world.revision,
             expectedHash: input.expectedHash,
-            action: input.action,
+            action: {
+              ...input.action,
+              ...(trace.intent?.actionGraph
+                ? { semanticGraph: trace.intent.actionGraph }
+                : {}),
+            },
             commands: [
               ...playerCommands,
               ...trace.proposal.commands,
@@ -1007,6 +1146,12 @@ export function validateCapabilities(
       throw new Error('New entity ID does not belong to this proposal');
   };
   for (const { command } of proposal.commands) {
+    const semanticIssue = semanticCommandIssue(
+      world,
+      intent?.actionGraph,
+      command,
+    );
+    if (semanticIssue) throw new Error(semanticIssue);
     if (!(RESOLVER_CAPABILITIES as readonly string[]).includes(command.type))
       throw new Error(`Unauthorized resolver command ${command.type}`);
     validateReferenceIds(command, world);

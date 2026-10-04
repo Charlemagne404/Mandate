@@ -127,6 +127,12 @@ export function commandReferences(c: WorldCommand) {
     case 'ADD_CLAIM':
     case 'REMOVE_CLAIM':
       return { ...empty, nationIds: [c.nationId], regionIds: [c.regionId] };
+    case 'CREATE_POLITY':
+      return {
+        ...empty,
+        nationIds: [c.parentNationId, c.polity.id],
+        regionIds: c.regionIds,
+      };
     case 'CREATE_TREATY':
       return {
         ...empty,

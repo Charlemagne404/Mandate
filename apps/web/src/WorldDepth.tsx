@@ -526,9 +526,18 @@ export function WorldDepth({
   );
 }
 
-export function BranchComparison() {
+export function BranchComparison({ world }: { world: WorldState }) {
   const [snapshots, setSnapshots] = useState<
-    Array<{ id: string; name: string; date: string; revision: number }>
+    Array<{
+      id: string;
+      name: string;
+      date: string;
+      revision: number;
+      saveId: string;
+      kind: string;
+      parentSaveId: string | null;
+      parentRevision: number | null;
+    }>
   >([]);
   const [a, setA] = useState(''),
     [b, setB] = useState('');
@@ -547,10 +556,111 @@ export function BranchComparison() {
       .then(setSnapshots)
       .catch((e) => setError(String(e)));
   }, []);
+  const treeSnapshots = snapshots.filter(
+    (snapshot) => !['autosave', 'undo'].includes(snapshot.kind),
+  );
+  const depth = (snapshot: (typeof snapshots)[number]) => {
+    let level = 0;
+    let current = snapshot;
+    const seen = new Set<string>();
+    while (current.parentSaveId && current.parentRevision !== null) {
+      const key = `${current.parentSaveId}:${current.parentRevision}`;
+      if (seen.has(key)) break;
+      seen.add(key);
+      const parent = snapshots.find(
+        (candidate) =>
+          candidate.saveId === current.parentSaveId &&
+          candidate.revision === current.parentRevision,
+      );
+      if (!parent) break;
+      level++;
+      current = parent;
+    }
+    return level;
+  };
+  const labelFor = (category: string) =>
+    ({
+      territory: 'Borders and control',
+      polities: 'Independent states',
+      conflicts: 'Wars',
+      treaties: 'Treaties',
+      government: 'Governments',
+      'major-events': 'Major events',
+      capacity: 'National capacity',
+      crises: 'Crises',
+      relations: 'Diplomatic relations',
+      initiatives: 'National projects',
+    })[category] ?? category;
+  const summary = (category: string, value: unknown): string => {
+    if (value === null) return 'Not present on this branch';
+    if (category === 'major-events') {
+      const events = value as Array<{ date: string; title: string }>;
+      return events.length
+        ? events
+            .slice(-5)
+            .map((event) => `${event.date} · ${event.title}`)
+            .join(' / ')
+        : 'No major events recorded';
+    }
+    const item = value as Record<string, unknown>;
+    const name = (id: unknown) =>
+      typeof id === 'string' && id.startsWith('nation:')
+        ? (world.nations.find((nation) => nation.id === id)?.name ?? id)
+        : String(id ?? 'unknown');
+    if (category === 'territory')
+      return `${name(item.owner)} owns it · ${name(item.control)} controls it`;
+    if (category === 'polities')
+      return item.status === 'present'
+        ? `Exists · ${JSON.stringify(item.government)}`
+        : 'Absent';
+    if (category === 'government') {
+      const government = item.government as
+        { type?: string; ideology?: string } | undefined;
+      return [
+        item.leader ? `Leader: ${item.leader}` : '',
+        government ? `${government.type} · ${government.ideology}` : '',
+      ]
+        .filter(Boolean)
+        .join(' / ');
+    }
+    if (category === 'conflicts')
+      return `${item.status ?? 'absent'}${item.escalation === undefined ? '' : ` · escalation ${item.escalation}`}${item.settlement ? ` · ${item.settlement}` : ''}`;
+    if (category === 'treaties')
+      return `${item.status ?? 'absent'}${item.terms ? ` · ${item.terms}` : ''}`;
+    return Object.entries(item)
+      .map(
+        ([key, entry]) =>
+          `${key}: ${typeof entry === 'object' ? JSON.stringify(entry) : entry}`,
+      )
+      .join(' · ');
+  };
   return (
     <section className="depth-workspace">
       <h2>Compare timelines</h2>
-      <p>Select saved points on timelines with common ancestry.</p>
+      <p>Branch before a major choice, then compare how history diverged.</p>
+      <div className="timeline-tree" aria-label="Timeline tree">
+        {treeSnapshots.length ? (
+          treeSnapshots.map((snapshot) => (
+            <div
+              className="timeline-tree-row"
+              key={snapshot.id}
+              style={{
+                marginInlineStart: `${Math.min(8, depth(snapshot)) * 14}px`,
+              }}
+            >
+              <span aria-hidden="true">{depth(snapshot) ? '└' : '●'}</span>
+              <strong>{snapshot.name}</strong>
+              <small>
+                {snapshot.date} · turn {snapshot.revision}
+              </small>
+            </div>
+          ))
+        ) : (
+          <p className="muted">
+            Save a point or branch this timeline to begin.
+          </p>
+        )}
+      </div>
       {[
         ['A', a, setA],
         ['B', b, setB],
@@ -583,30 +693,20 @@ export function BranchComparison() {
             .catch((e) => setError(String(e)));
         }}
       >
-        Compare meaning
+        Compare branches
       </button>
       {error && <p role="alert">{error}</p>}
       {changes.map((c) => (
         <article className="crisis-card" key={c.category + c.id}>
           <h3>{c.name}</h3>
-          <small>{c.category}</small>
+          <small>{labelFor(c.category)}</small>
           <p>
-            A:{' '}
-            {Object.entries((c.before ?? { status: 'absent' }) as object)
-              .map(
-                ([k, v]) =>
-                  `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`,
-              )
-              .join(' · ')}
+            <strong>Timeline A · </strong>
+            {summary(c.category, c.before)}
           </p>
           <p>
-            B:{' '}
-            {Object.entries((c.after ?? { status: 'absent' }) as object)
-              .map(
-                ([k, v]) =>
-                  `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`,
-              )
-              .join(' · ')}
+            <strong>Timeline B · </strong>
+            {summary(c.category, c.after)}
           </p>
         </article>
       ))}

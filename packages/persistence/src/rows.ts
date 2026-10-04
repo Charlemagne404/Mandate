@@ -150,6 +150,12 @@ export function readWorld(db: DatabaseSync): World | null {
       actorNationId: r.actor_nation_id,
       source: r.source,
       text: r.text,
+      ...(r.semantic_graph_json == null
+        ? {}
+        : { semanticGraph: json(r.semantic_graph_json) }),
+      ...(r.grounding_json == null
+        ? {}
+        : { grounding: json(r.grounding_json) }),
     })),
     commands: rows('SELECT * FROM commands ORDER BY turn_id,ordinal').map(
       (r) => ({
@@ -427,12 +433,14 @@ export function appendHistory(
       t.actionId,
     );
     insert(
-      'INSERT INTO actions VALUES (?,?,?,?,?)',
+      'INSERT INTO actions VALUES (?,?,?,?,?,?,?)',
       a.id,
       a.turnId,
       a.actorNationId,
       a.source,
       a.text,
+      a.grounding ? JSON.stringify(a.grounding) : null,
+      a.semanticGraph ? JSON.stringify(a.semanticGraph) : null,
     );
     t.commandIds.forEach((id, ordinal) => {
       const c = w.commands.find((c) => c.id === id)!;

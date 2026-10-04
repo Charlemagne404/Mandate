@@ -9,6 +9,22 @@ export function validateCommandDomain(
   w: WorldState,
   command: WorldCommand,
 ): void {
+  if (command.type === 'CREATE_POLITY') {
+    const action = w.actions.at(-1);
+    if (action?.source === 'player') {
+      const matchingOrder = action.semanticGraph?.actions.some(
+        (node) =>
+          node.action === 'form-polity' &&
+          node.actor === command.parentNationId &&
+          JSON.stringify([...node.territories].sort()) ===
+            JSON.stringify([...command.regionIds].sort()),
+      );
+      requireDomain(
+        matchingOrder === true,
+        'A new polity must match the player order and its grounded regions',
+      );
+    }
+  }
   requireDomain(
     !continuityProblems(w).length,
     continuityProblems(w).join('; '),

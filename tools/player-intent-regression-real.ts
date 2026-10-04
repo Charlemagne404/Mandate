@@ -14,6 +14,7 @@ import type { WorldCommand } from '@mandate/schemas';
 import { inferenceOptions } from './inference-options.js';
 
 const playerOrder =
+  process.env.MANDATE_PLAYER_ORDER ??
   'Sweden nukes Finland and sends in its armed forces to take the country';
 const options = await inferenceOptions();
 if (!options.selected)
@@ -33,8 +34,14 @@ if (!health.ok || !health.models.includes(config.model))
     `Configured provider/model is unavailable (${config.kind}/${config.model}): ${health.message}`,
   );
 
-const scenario = loadScenario(resolve('data/scenarios/nordic-strategy.json'));
+const scenario = loadScenario(
+  resolve(
+    process.env.MANDATE_INTENT_SCENARIO ??
+      'data/scenarios/nordic-strategy.json',
+  ),
+);
 const before = WorldState.parse(scenario);
+before.playerNationId = before.nations.find((n) => n.name === 'Sweden')!.id;
 const runId = `sweden-finland-intent-regression-${Date.now()}`;
 const orchestrator = createOrchestrator(provider, config);
 const prepared = await orchestrator.prepare({
@@ -182,6 +189,8 @@ const report = {
     failures: prepared.trace.failures,
   },
   playerOrder,
+  parsedGraph: prepared.trace.intent?.actionGraph,
+  semanticAudit: prepared.trace.playerExecution?.semanticAudit,
   parsedMajorIntents: (prepared.trace.intent?.majorIntentClauses ?? []).map(
     (clause) => ({
       kind: clause.kind,

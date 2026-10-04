@@ -7,6 +7,8 @@ export function TurnSummary({ world }: { world: WorldState }) {
     playerDecision: string | null;
     backgroundFailures: number;
     playerExecution: {
+      understood?: string[];
+      semanticAudit?: import('@mandate/schemas').SemanticAudit[];
       orders: string[];
       majorIntentClauses: {
         id: string;
@@ -176,26 +178,37 @@ export function TurnSummary({ world }: { world: WorldState }) {
     }),
   );
   return (
-    <details className="turn-summary" open>
+    <details className="turn-summary">
       <summary>
-        Turn {turn.revision} · {turn.date}
+        Last turn · {events.length} developments · {turn.date}
       </summary>
       {action?.source === 'player' && (
         <div>
-          <strong>PLAYER ORDER</strong>
+          <strong>YOUR ORDER</strong>
           <p>{action.text}</p>
-          {!!playerExecution?.majorIntentClauses.length && (
+          {!!playerExecution?.understood?.length && (
             <div>
-              <strong>PARSED MAJOR INTENTS</strong>
+              <strong>WHAT MANDATE UNDERSTOOD</strong>
               <ul>
-                {playerExecution.majorIntentClauses.map((clause) => (
-                  <li key={clause.id}>{clause.description}</li>
+                {playerExecution.understood.map((text, i) => (
+                  <li key={i}>{text}</li>
                 ))}
               </ul>
             </div>
           )}
+          {!playerExecution?.understood?.length &&
+            !!playerExecution?.majorIntentClauses.length && (
+              <div>
+                <strong>WHAT MANDATE UNDERSTOOD</strong>
+                <ul>
+                  {playerExecution.majorIntentClauses.map((clause) => (
+                    <li key={clause.id}>{clause.description}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           <div>
-            <strong>COMMITTED ACTIONS</strong>
+            <strong>ATTEMPTS</strong>
             {committedPlayerEvents.length ? (
               <ul>
                 {committedPlayerEvents.slice(0, 8).map((event) => (
@@ -214,13 +227,27 @@ export function TurnSummary({ world }: { world: WorldState }) {
           )}
           {(outcomeDescriptions.length > 0 || outcomeEffects.length > 0) && (
             <div>
-              <strong>WORLD OUTCOME</strong>
+              <strong>WORLD CONSEQUENCES</strong>
               <ul>
                 {outcomeDescriptions.map((item, index) => (
                   <li key={`${index}-${item}`}>{item}</li>
                 ))}
                 {outcomeEffects.slice(0, 8).map((item, index) => (
                   <li key={`effect-${index}`}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!!playerExecution?.semanticAudit?.length && (
+            <div>
+              <strong>ORDER RESULTS</strong>
+              <ul>
+                {playerExecution.semanticAudit.map((entry) => (
+                  <li key={entry.actionId}>
+                    <strong>{entry.status}</strong> · {entry.text}
+                    <br />
+                    {entry.explanation}
+                  </li>
                 ))}
               </ul>
             </div>

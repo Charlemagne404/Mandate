@@ -150,11 +150,69 @@ export function assertWorld(input: unknown): asserts input is World {
       'Invalid goal chronology',
     );
   }
+  for (const action of w.actions) {
+    const graph = action.semanticGraph;
+    if (!graph) continue;
+    check(
+      graph.rawInput === action.text,
+      'Action graph source differs from recorded order',
+    );
+    const ids = new Set(graph.actions.map((a) => a.id));
+    check(ids.size === graph.actions.length, 'Duplicate semantic action IDs');
+    for (const node of graph.actions) {
+      check(
+        node.actor === action.actorNationId,
+        'Action graph swaps acting authority',
+      );
+      check(
+        [
+          ...node.targets,
+          ...node.sources,
+          ...node.participants,
+          ...node.beneficiaries,
+          ...node.conditions.flatMap((c) => c.subjects),
+        ].every((id) => w.nations.some((n) => n.id === id)),
+        'Action graph references unknown nation',
+      );
+      check(
+        node.territories.every((id) => w.regions.some((r) => r.id === id)),
+        'Action graph references unknown territory',
+      );
+      check(
+        node.dependencies.every((d) => ids.has(d.actionId)),
+        'Action graph dependency references missing action',
+      );
+    }
+  }
   for (const n of w.nations) {
     check(
       unique(n.strategy.directives.map((d) => d.id)),
       'Duplicate directive IDs',
     );
+    for (const directive of n.strategy.directives) {
+      const plan = directive.semanticPlan;
+      if (!plan) continue;
+      check(
+        plan.actor === n.id,
+        'Standing plan actor differs from directive owner',
+      );
+      check(
+        [
+          ...plan.targets,
+          ...plan.sources,
+          ...plan.participants,
+          ...plan.beneficiaries,
+          ...plan.conditions.flatMap((c) => c.subjects),
+        ].every((id) => w.nations.some((nation) => nation.id === id)),
+        'Standing plan references unknown nation',
+      );
+      check(
+        plan.territories.every((id) =>
+          w.regions.some((region) => region.id === id),
+        ),
+        'Standing plan references unknown territory',
+      );
+    }
     check(
       n.strategy.directives.every(
         (d) => d.createdDate >= w.scenario.startDate && d.createdDate <= w.date,

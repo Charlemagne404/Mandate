@@ -82,7 +82,8 @@ export function resolveTurn(
     validateCommandDomain(w, envelope.command);
     const event = factualEvent(w, envelope, context.turnId);
     for (const n of w.nations) {
-      const previous = previousStats.find((v) => v.id === n.id)!.stats;
+      const previous = previousStats.find((v) => v.id === n.id)?.stats;
+      if (!previous) continue;
       for (const key of Object.keys(n.stats) as (keyof typeof n.stats)[])
         if (n.stats[key] !== previous[key])
           event.effects.push({

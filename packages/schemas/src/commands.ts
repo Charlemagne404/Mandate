@@ -1,3 +1,4 @@
+import { ActionGrounding, SemanticGraph } from './semantic.js';
 import {
   Crisis,
   CrisisId,
@@ -26,6 +27,7 @@ import {
   PeaceTerm,
   Initiative,
   Negotiation,
+  Nation,
   Organization,
   EventFields,
   Goal,
@@ -167,6 +169,11 @@ export const WorldCommand = z.discriminatedUnion('type', [
   }),
   command('TRANSFER_CONTROL', { regionId: RegionId, nationId: NationId }),
   command('TRANSFER_OWNERSHIP', { regionId: RegionId, nationId: NationId }),
+  command('CREATE_POLITY', {
+    parentNationId: NationId,
+    polity: Nation,
+    regionIds: z.array(RegionId).min(1).max(1000),
+  }),
   command('ADD_CLAIM', { regionId: RegionId, nationId: NationId }),
   command('REMOVE_CLAIM', { regionId: RegionId, nationId: NationId }),
   command('CREATE_TREATY', { treaty: Treaty }),
@@ -203,6 +210,8 @@ export const CommandEnvelope = z.strictObject({
 export const TurnRequest = z.strictObject({
   expectedRevision: z.number().int().min(0),
   action: z.strictObject({
+    semanticGraph: SemanticGraph.optional(),
+    grounding: ActionGrounding.optional(),
     actorNationId: NationId,
     source: z.enum(['debug', 'player', 'system']),
     text: Text,

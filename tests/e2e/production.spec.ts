@@ -103,13 +103,16 @@ test('production bundle survives actual server termination/restart and renders w
     });
     await page.goto('http://127.0.0.1:3126/');
     await expect(page.locator('[data-map-ready=true]')).toBeVisible();
-    await page
-      .getByRole('button', { name: 'Select Finland on map', exact: true })
-      .click();
+    await page.getByLabel('Playing as').selectOption('nation:fin');
+    const map = page.locator('.map-canvas');
+    const bounds = await map.boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.waitForTimeout(700);
+    await map.click({
+      position: { x: bounds!.width / 2, y: bounds!.height / 2 },
+    });
     await expect(page.getByTestId('controller')).toHaveText('Russia');
-    await page
-      .getByRole('button', { name: 'Military control', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'Control', exact: true }).click();
     await page.screenshot({
       path: info.outputPath('production-offline.png'),
       fullPage: true,
