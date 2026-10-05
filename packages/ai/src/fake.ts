@@ -538,6 +538,7 @@ export class FakeProvider implements LlmProvider {
                 ? {
                     counterTerms: move.terms,
                     counterObligations: move.obligations,
+                    counterInfluenceTerms: move.influenceTerms,
                     counterPeaceTerms: move.peaceTerms,
                   }
                 : {}),

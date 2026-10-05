@@ -63,6 +63,7 @@ export function readWorld(db: DatabaseSync): World | null {
         'SELECT nation_id FROM claims WHERE region_id = ? ORDER BY nation_id',
         r.id!,
       ),
+      recognizedClaims: json(r.recognized_claims_json),
     })),
     relations: rows('SELECT * FROM relations ORDER BY nation_a,nation_b').map(
       (r) => ({
@@ -72,19 +73,23 @@ export function readWorld(db: DatabaseSync): World | null {
         ...(json(r.dimensions_json) as object),
       }),
     ),
-    treaties: rows('SELECT * FROM treaties ORDER BY id').map((r) => ({
-      id: r.id,
-      name: r.name,
-      kind: r.kind,
-      status: r.status,
-      terms: r.terms,
-      visibility: r.visibility,
-      conflictId: r.conflict_id,
-      parties: ids(
-        'SELECT nation_id FROM treaty_parties WHERE treaty_id = ? ORDER BY nation_id',
-        r.id!,
-      ),
-    })),
+    treaties: rows('SELECT * FROM treaties ORDER BY id').map((r) => {
+      const state = json(r.state_json) as Record<string, unknown>;
+      if (Object.keys(state).length) return state;
+      return {
+        id: r.id,
+        name: r.name,
+        kind: r.kind,
+        status: r.status,
+        terms: r.terms,
+        visibility: r.visibility,
+        conflictId: r.conflict_id,
+        parties: ids(
+          'SELECT nation_id FROM treaty_parties WHERE treaty_id = ? ORDER BY nation_id',
+          r.id!,
+        ),
+      };
+    }),
     conflicts: rows('SELECT * FROM conflicts ORDER BY id').map((r) => ({
       id: r.id,
       name: r.name,
@@ -143,6 +148,12 @@ export function readWorld(db: DatabaseSync): World | null {
         'SELECT id FROM events WHERE turn_id = ? ORDER BY ordinal',
         r.id!,
       ).map((v) => v.id),
+      ...(r.event_metrics_json == null
+        ? {}
+        : { eventMetrics: json(r.event_metrics_json) }),
+      ...(r.suppressed_command_ids_json == null
+        ? {}
+        : { suppressedCommandIds: json(r.suppressed_command_ids_json) }),
     })),
     actions: rows('SELECT * FROM actions ORDER BY id').map((r) => ({
       id: r.id,
@@ -186,6 +197,13 @@ export function readWorld(db: DatabaseSync): World | null {
       topics: json(r.topics_json),
       visibility: r.visibility,
       status: r.status,
+      ...(r.novelty == null ? {} : { novelty: r.novelty }),
+      ...(r.semantic_signature == null
+        ? {}
+        : { semanticSignature: r.semantic_signature }),
+      ...(r.provenance_json == null
+        ? {}
+        : { provenance: json(r.provenance_json) }),
       sourceCommandIds: rows(
         'SELECT command_id FROM event_sources WHERE event_id = ? ORDER BY command_id',
         r.id!,
@@ -272,12 +290,13 @@ export function writeEntities(db: DatabaseSync, w: World): void {
     );
   for (const r of w.regions) {
     insert(
-      'INSERT INTO regions VALUES (?,?,?,?,?)',
+      'INSERT INTO regions (id,name,geometry_id,owner_nation_id,controller_nation_id,recognized_claims_json) VALUES (?,?,?,?,?,?)',
       r.id,
       r.name,
       r.geometryId,
       r.ownerNationId,
       r.controllerNationId,
+      JSON.stringify(r.recognizedClaims),
     );
     for (const id of r.claims)
       insert('INSERT INTO claims VALUES (?,?)', r.id, id);
@@ -299,7 +318,7 @@ export function writeEntities(db: DatabaseSync, w: World): void {
     );
   for (const t of w.treaties) {
     insert(
-      'INSERT INTO treaties VALUES (?,?,?,?,?,?,?)',
+      'INSERT INTO treaties VALUES (?,?,?,?,?,?,?,?)',
       t.id,
       t.name,
       t.kind,
@@ -307,6 +326,7 @@ export function writeEntities(db: DatabaseSync, w: World): void {
       t.terms,
       t.visibility,
       t.conflictId,
+      JSON.stringify(t),
     );
     for (const id of t.parties)
       insert('INSERT INTO treaty_parties VALUES (?,?)', t.id, id);
@@ -424,13 +444,15 @@ export function appendHistory(
   for (const t of w.turns.filter((t) => t.revision > afterRevision)) {
     const a = w.actions.find((a) => a.id === t.actionId)!;
     insert(
-      'INSERT INTO turns VALUES (?,?,?,?,?,?)',
+      'INSERT INTO turns (id,revision,previous_date,simulation_date,recorded_at,action_id,event_metrics_json,suppressed_command_ids_json) VALUES (?,?,?,?,?,?,?,?)',
       t.id,
       t.revision,
       t.previousDate,
       t.date,
       t.recordedAt,
       t.actionId,
+      t.eventMetrics ? JSON.stringify(t.eventMetrics) : null,
+      t.suppressedCommandIds ? JSON.stringify(t.suppressedCommandIds) : null,
     );
     insert(
       'INSERT INTO actions VALUES (?,?,?,?,?,?,?)',
@@ -461,7 +483,7 @@ export function appendHistory(
     t.eventIds.forEach((id, ordinal) => {
       const e = w.events.find((e) => e.id === id)!;
       insert(
-        'INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO events (id,turn_id,ordinal,simulation_date,type,title,nation_ids_json,region_ids_json,treaty_ids_json,conflict_ids_json,importance,topics_json,visibility,status,effects_json,novelty,semantic_signature,provenance_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         e.id,
         e.turnId,
         ordinal,
@@ -477,6 +499,9 @@ export function appendHistory(
         e.visibility,
         e.status,
         JSON.stringify(e.effects),
+        e.novelty ?? null,
+        e.semanticSignature ?? null,
+        e.provenance ? JSON.stringify(e.provenance) : null,
       );
       for (const commandId of e.sourceCommandIds)
         insert('INSERT INTO event_sources VALUES (?,?)', e.id, commandId);

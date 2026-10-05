@@ -17,6 +17,11 @@ export const ModelCallId = id('modelcall', 'ModelCallId');
 export const ScenarioId = id('scenario', 'ScenarioId');
 export const SaveId = id('save', 'SaveId');
 export const OrganizationId = id('organization', 'OrganizationId');
+export const OrganizationCommitmentId = id(
+  'orgcommitment',
+  'OrganizationCommitmentId',
+);
+export const OrganizationProgramId = id('orgprogram', 'OrganizationProgramId');
 export const GoalId = id('goal', 'GoalId');
 export type NationId = z.infer<typeof NationId>;
 export type RegionId = z.infer<typeof RegionId>;
@@ -35,3 +40,5 @@ export const NegotiationId = id('negotiation', 'NegotiationId');
 export type InitiativeId = z.infer<typeof InitiativeId>;
 export type NegotiationId = z.infer<typeof NegotiationId>;
 export type OrganizationId = z.infer<typeof OrganizationId>;
+export type OrganizationCommitmentId = z.infer<typeof OrganizationCommitmentId>;
+export type OrganizationProgramId = z.infer<typeof OrganizationProgramId>;

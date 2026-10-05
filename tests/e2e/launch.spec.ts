@@ -149,7 +149,10 @@ test('normal event reasons do not reveal a former country private directive afte
   await expect(event).toBeVisible();
   await event.getByText('Why did this happen?', { exact: true }).click();
   await expect(page.locator('.timeline')).not.toContainText('nuclear');
-  await expect(event).toContainText('Independent government decision');
+  await expect(event).toContainText('CURRENT PLAYER ORDER');
+  await expect(event).toContainText(
+    'Publicly open voluntary security consultations with Sweden.',
+  );
   await expect(
     page.getByText('Retrieved decision facts', { exact: true }),
   ).toHaveCount(0);

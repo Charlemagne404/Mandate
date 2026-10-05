@@ -93,6 +93,83 @@ export function validateObligations(w: WorldState, n: Negotiation) {
     );
   }
 }
+
+export function validateInfluenceTerms(w: WorldState, n: Negotiation) {
+  requireDomain(
+    new Set(n.influenceTerms.map((term) => JSON.stringify(term))).size ===
+      n.influenceTerms.length,
+    'Duplicate structured influence terms',
+  );
+  const participants = [n.proposerNationId, n.recipientNationId];
+  for (const term of n.influenceTerms) {
+    requireDomain(
+      term.patronNationId !== term.subjectNationId &&
+        participants.includes(term.patronNationId) &&
+        participants.includes(term.subjectNationId),
+      'Influence terms must bind the two negotiating governments',
+    );
+    const fixedPayment = [
+      'subsidy',
+      'infrastructure-investment',
+      'debt-repayment',
+    ].includes(term.kind);
+    const oneTimePayment = ['loan', 'debt-relief'].includes(term.kind);
+    requireDomain(
+      fixedPayment
+        ? term.amount > 0 && term.ratePercent === 0
+        : oneTimePayment
+          ? term.amount > 0 && term.ratePercent === 0
+          : term.kind === 'tribute'
+            ? (term.amount > 0 || term.ratePercent > 0) &&
+              !(term.amount > 0 && term.ratePercent > 0)
+            : term.amount === 0 && term.ratePercent === 0,
+      `Invalid payment fields for ${term.kind}`,
+    );
+    requireDomain(
+      term.status === 'active',
+      'New influence offers must begin with active terms',
+    );
+    requireDomain(
+      term.paidAmount === 0 &&
+        term.paymentsMade === 0 &&
+        term.arrears === 0 &&
+        term.lastPaymentDate === null,
+      'New influence offers cannot carry payment history',
+    );
+    if (term.kind === 'debt-repayment')
+      requireDomain(
+        (w.nations.find((nation) => nation.id === term.subjectNationId)?.stats
+          .debt ?? 0) > 0 ||
+          n.influenceTerms.some(
+            (candidate) =>
+              candidate.kind === 'loan' &&
+              candidate.subjectNationId === term.subjectNationId,
+          ),
+        'Debt repayment requires modeled sovereign debt or a loan in this offer',
+      );
+  }
+}
+
+export function validateInfluencePressure(w: WorldState, n: Negotiation) {
+  const pressure = n.conditionalPressure;
+  if (!pressure) return;
+  requireDomain(
+    pressure.patronNationId === n.proposerNationId &&
+      pressure.subjectNationId === n.recipientNationId,
+    'Conditional pressure must be issued by the negotiating patron to its recipient',
+  );
+  requireDomain(
+    pressure.createdDate === w.date &&
+      pressure.status === 'pending' &&
+      pressure.triggeredDate === null,
+    'New conditional pressure must be pending and begin now',
+  );
+  requireDomain(
+    n.kind !== 'peace' && n.kind !== 'ceasefire',
+    'Conditional influence pressure cannot attach to a settlement offer',
+  );
+}
+
 export function updateCommitments(w: WorldState, date: string) {
   const allocated = new Map<string, number>();
   for (const c of w.commitments)

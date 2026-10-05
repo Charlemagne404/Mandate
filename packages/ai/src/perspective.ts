@@ -257,14 +257,43 @@ export function isTerritorialPolicyOrder(text: string, world?: WorldState) {
             nation.name.toLocaleLowerCase() === region.name.toLocaleLowerCase(),
         ),
     );
+  const escapeRegExp = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const mentionedNations = world
+    ? [
+        ...new Set(nationMentions(world, text).map((mention) => mention.id)),
+      ].flatMap((id) => world.nations.filter((nation) => nation.id === id))
+    : [];
+  const explicitStateIntegration = mentionedNations.some((subject) =>
+    mentionedNations.some(
+      (destination) =>
+        destination.id !== subject.id &&
+        new RegExp(
+          `\\bmake\\s+(?:the\\s+)?${escapeRegExp(subject.name)}\\s+(?:join|part of|into)\\s+(?:the\\s+)?${escapeRegExp(destination.name)}\\b`,
+          'i',
+        ).test(text),
+    ),
+  );
+  const explicitRegionCession =
+    !!world &&
+    regionMentions(world, text).some((region) =>
+      mentionedNations.some((recipient) =>
+        new RegExp(
+          `\\bgive\\s+(?:the\\s+)?${escapeRegExp(region.name)}\\s+to\\s+(?:the\\s+)?${escapeRegExp(recipient.name)}\\b`,
+          'i',
+        ).test(text),
+      ),
+    );
   return (
     /\b(?:annex|invade|conquer|claim|seize|occupy|incorporate|unify|cede|transfer|take over|take)\s+(?:the\s+)?[\p{L}\p{N}]/iu.test(
       text,
     ) ||
     (/\bdemand\b/i.test(text) && namesMappedRegion) ||
-    /\b(?:union with|territorial objective|take .* territory|claim territory|seize territory|make\s+.+\s+(?:join|part of|into)|give\s+.+\s+to)\b/i.test(
+    /\b(?:union with|territorial objective|take .* territory|claim territory|seize territory)\b/i.test(
       text,
     ) ||
+    explicitStateIntegration ||
+    explicitRegionCession ||
     /\b[\p{L}][\p{L}\s’'-]+\s+is\s+(?:now\s+)?ours\b/iu.test(text) ||
     (/\bcopenhagen\b/i.test(text) &&
       /\b(?:demand|claim|take|annex|seize|control|transfer)\b/i.test(text))
@@ -278,7 +307,7 @@ function fallbackClauseKind(
   if (isConstraintOnly(text) || isInformationOnly(text)) return 'wait';
   if (isTerritorialPolicyOrder(text, world)) return 'territory';
   if (
-    /treaty|alliance|recogniz|diplom|threaten|demand|withdraw|surrender|ceasefire|peace|negotiate|offer|propose|consult|trade/i.test(
+    /treaty|alliance|organization|organisation|economic union|trade bloc|defensive pact|customs union|invite|recogniz|diplom|threaten|demand|withdraw|surrender|ceasefire|peace|negotiate|offer|propose|consult|trade/i.test(
       text,
     )
   )
@@ -550,7 +579,9 @@ export function canonicalizeFormalizerIntent(
         ...new Set(
           actionGraph.actions
             .filter((a) => intention.sourceClauseIds.includes(a.clauseId))
-            .flatMap((a) => a.targets),
+            .flatMap((a) =>
+              a.action === 'invite-organization' ? a.participants : a.targets,
+            ),
         ),
       ],
       visibility:
@@ -569,10 +600,12 @@ export function canonicalizeFormalizerIntent(
     const matching = intentions.find((i) => i.sourceClauseIds.includes(index));
     const node = actionGraph.actions[index]!;
     const refs = {
-      explicitNationIds:
-        node.action === 'request-participation'
-          ? node.participants
-          : node.targets,
+      explicitNationIds: [
+        'request-participation',
+        'invite-organization',
+      ].includes(node.action)
+        ? node.participants
+        : node.targets,
       explicitRegionIds: node.territories,
     };
     const constraint = constraintKind(clause);
@@ -585,10 +618,12 @@ export function canonicalizeFormalizerIntent(
       });
     }
     if (!constraintOnly && !isInformationOnly(clause)) {
-      const classifiedKind =
-        node.action === 'request-participation'
-          ? 'diplomacy'
-          : fallbackClauseKind(clause, world);
+      const classifiedKind = [
+        'request-participation',
+        'invite-organization',
+      ].includes(node.action)
+        ? 'diplomacy'
+        : fallbackClauseKind(clause, world);
       const kind =
         classifiedKind === 'other'
           ? (matching?.kind ?? 'other')
@@ -633,7 +668,11 @@ export function canonicalizeFormalizerIntent(
     summary: action.text.slice(0, 2000),
     actionGraph,
     targetNationIds: [
-      ...new Set(actionGraph.actions.flatMap((a) => a.targets)),
+      ...new Set(
+        actionGraph.actions.flatMap((a) =>
+          a.action === 'invite-organization' ? a.participants : a.targets,
+        ),
+      ),
     ],
     targetRegionIds: [
       ...new Set(actionGraph.actions.flatMap((a) => a.territories)),

@@ -5,6 +5,7 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
+    "@mandate/core": "workspace:*",
     "@mandate/schemas": "workspace:*",
     "maplibre-gl": "6.11.2"
   }

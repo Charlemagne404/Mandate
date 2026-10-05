@@ -69,7 +69,7 @@ const after = resolveTurn(before, request, {
 const actor = before.playerNationId;
 const finland = before.nations.find((nation) => nation.name === 'Finland')!.id;
 const actorOf = (command: WorldCommand): string | null => {
-  if ('nationId' in command) return command.nationId;
+  if ('nationId' in command) return command.nationId ?? null;
   switch (command.type) {
     case 'STRATEGIC_ATTACK':
       return command.attackerNationId;

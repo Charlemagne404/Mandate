@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { resolveTurn } from '@mandate/core';
-import { NationId, Negotiation, Sanction } from '@mandate/schemas';
+import {
+  Conflict,
+  NationId,
+  Negotiation,
+  Relation,
+  Sanction,
+} from '@mandate/schemas';
+import { loadScenario } from '@mandate/scenarios';
 import { canonicalHash } from '@mandate/persistence';
 import {
   createOrchestrator,
@@ -136,6 +143,48 @@ describe('compact gameplay authority and budgets', () => {
     expect(result.trace.failures).toHaveLength(2);
     expect(result.request.commands).toHaveLength(1);
   });
+  it('commits a valid player invasion when the defender planner is unavailable', async () => {
+    class DefenderOutageProvider extends CompactProvider {
+      override async generateStructured(r: GenerationRequest) {
+        if (
+          r.role === 'planner' &&
+          r.prompt.includes('"own":{"id":"nation:fin"')
+        )
+          throw new Error('Defender model timed out');
+        return super.generateStructured(r);
+      }
+    }
+    const w = fixture();
+    const result = await prepare(
+      w,
+      new DefenderOutageProvider(),
+      'Invade Finland.',
+    );
+    expect(result.trace.failures.join(' ')).toContain(
+      'Defender model timed out',
+    );
+    expect(
+      result.request.commands.some(
+        (entry) => entry.command.type === 'START_CONFLICT',
+      ),
+    ).toBe(true);
+    const after = resolveTurn(
+      w,
+      {
+        expectedRevision: result.request.expectedRevision,
+        action: result.request.action,
+        commands: result.request.commands,
+      },
+      context(1),
+    );
+    expect(
+      after.conflicts.some(
+        (entry) =>
+          entry.attackers.includes(w.playerNationId) &&
+          entry.defenders.includes(NationId.parse('nation:fin')),
+      ),
+    ).toBe(true);
+  });
   it('a recipient decides independently and acceptance creates exactly the supplied binding agreement', async () => {
     const w = fixture();
     w.negotiations.push(
@@ -166,6 +215,55 @@ describe('compact gameplay authority and budgets', () => {
     expect(after.treaties).toHaveLength(1);
     expect(result.trace.moves[0]?.move).toBe('accept');
   });
+  it('commits a player counteroffer before the foreign government can respond on a later turn', async () => {
+    const w = fixture();
+    const finland = NationId.parse('nation:fin');
+    w.conflicts.push(
+      Conflict.parse({
+        id: 'conflict:player-peace-counter',
+        name: 'Sweden–Finland War',
+        attackers: [w.playerNationId],
+        defenders: [finland],
+        status: 'active',
+        escalation: 60,
+      }),
+    );
+    w.regions.find(
+      (region) => region.id === 'region:ne-fin',
+    )!.controllerNationId = w.playerNationId;
+    w.negotiations.push(
+      Negotiation.parse({
+        id: 'negotiation:incoming-peace',
+        proposerNationId: finland,
+        recipientNationId: w.playerNationId,
+        kind: 'peace',
+        conflictId: 'conflict:player-peace-counter',
+        topic: 'Peace proposal',
+        terms: 'End hostilities and preserve the frontier',
+        peaceTerms: [],
+        createdDate: w.date,
+        expiresDate: '2025-06-01',
+      }),
+    );
+    const result = await prepare(
+      w,
+      new CompactProvider(),
+      'Seek peace with Finland.',
+    );
+
+    expect(result.trace.status).toBe('prepared');
+    expect(
+      result.request.commands.some(
+        (entry) =>
+          entry.command.type === 'RESPOND_NEGOTIATION' &&
+          entry.command.move === 'counter',
+      ),
+    ).toBe(true);
+    expect(result.trace.moves).toEqual([]);
+    expect(result.trace.plans.some((plan) => plan.nationId === finland)).toBe(
+      false,
+    );
+  });
   it('a failed important diplomatic response aborts instead of fabricating consent', async () => {
     const w = fixture();
     w.negotiations.push(
@@ -195,8 +293,138 @@ describe('compact gameplay authority and budgets', () => {
       'war-check',
       null,
     );
-    expect(options.some((c) => c.id.endsWith('-peace'))).toBe(true);
+    expect(options.some((c) => c.id.endsWith('-peace-status-quo'))).toBe(true);
     expect(options.some((c) => c.family === 'project')).toBe(false);
+  });
+  it('active wars receive operational choices instead of autonomous project defaults', () => {
+    let w = fixture();
+    w = resolveTurn(w, request(w, [conflict]), context(1));
+    const options = compactCandidates(
+      w,
+      NationId.parse('nation:fin'),
+      'active-war-check',
+      null,
+    );
+    expect(options.some((candidate) => candidate.family === 'project')).toBe(
+      false,
+    );
+    expect(options.some((candidate) => candidate.family === 'war')).toBe(true);
+  });
+  it('gives the seeded war parties the first observer planning slot', async () => {
+    const w = loadScenario(
+      new URL('../../data/scenarios/global-regional.json', import.meta.url)
+        .pathname,
+    );
+    w.observerMode = true;
+    const result = await createOrchestrator(new CompactProvider(), {
+      ...config,
+      maxBackgroundPlanners: 1,
+    }).prepare({
+      world: w,
+      expectedHash: canonicalHash(w),
+      runId: 'observer-active-war-priority',
+      action: {
+        actorNationId: w.playerNationId,
+        source: 'system',
+        text: 'Autonomous observer turn',
+      },
+      days: 30,
+    });
+
+    expect(
+      result.trace.activations.some((activation) =>
+        ['nation:ven', 'nation:bra'].includes(activation.nationId),
+      ),
+    ).toBe(true);
+  });
+  it('rotates observer WAIT decisions across countries without canonical actions', async () => {
+    let w = fixture();
+    w.observerMode = true;
+    w.conflicts = [];
+    w.crises = [];
+    const provider = new CompactProvider();
+    const orchestrator = createOrchestrator(provider, {
+      ...config,
+      maxBackgroundPlanners: 1,
+    });
+    const activated: string[] = [];
+
+    for (let turn = 0; turn < 6; turn++) {
+      const result = await orchestrator.prepare({
+        world: w,
+        expectedHash: canonicalHash(w),
+        runId: `observer-wait-rotation-${turn}`,
+        action: {
+          actorNationId: w.playerNationId,
+          source: 'system',
+          text: 'Autonomous observer turn',
+        },
+        days: 30,
+      });
+      activated.push(
+        ...result.trace.activations
+          .filter((activation) => activation.background)
+          .map((activation) => activation.nationId),
+      );
+      w = resolveTurn(
+        w,
+        {
+          expectedRevision: result.request.expectedRevision,
+          action: result.request.action,
+          commands: result.request.commands,
+        },
+        context(w.revision + 1),
+      );
+    }
+
+    expect(new Set(activated).size).toBeGreaterThan(1);
+  });
+  it('keeps global observer rotation ahead of persistent nonurgent priorities', async () => {
+    let w = loadScenario(
+      new URL('../../data/scenarios/global-regional.json', import.meta.url)
+        .pathname,
+    );
+    w.observerMode = true;
+    w.conflicts = [];
+    w.crises = [];
+    w.sanctions = [];
+    w.negotiations = [];
+    w.organizations = [];
+    const strategicIds = new Set<string>(w.scenario.strategicActors ?? []);
+    const orchestrator = createOrchestrator(new CompactProvider(), {
+      ...config,
+      maxBackgroundPlanners: 1,
+    });
+    const activated: string[] = [];
+
+    for (let turn = 0; turn < 12; turn++) {
+      const result = await orchestrator.prepare({
+        world: w,
+        expectedHash: canonicalHash(w),
+        runId: `global-observer-rotation-${turn}`,
+        action: {
+          actorNationId: w.playerNationId,
+          source: 'system',
+          text: 'Autonomous observer turn',
+        },
+        days: 30,
+      });
+      activated.push(
+        ...result.trace.activations.map((activation) => activation.nationId),
+      );
+      w = resolveTurn(
+        w,
+        {
+          expectedRevision: result.request.expectedRevision,
+          action: result.request.action,
+          commands: result.request.commands,
+        },
+        context(w.revision + 1),
+      );
+    }
+
+    expect(new Set(activated).size).toBeGreaterThanOrEqual(10);
+    expect(activated.some((id) => strategicIds.has(id))).toBe(true);
   });
   it('does not disclose a private player internal directive to foreign government choices', async () => {
     const prompts: string[] = [];
@@ -368,6 +596,51 @@ describe('compact gameplay authority and budgets', () => {
         null,
       ).some((c) => c.family === 'project'),
     ).toBe(false);
+  });
+  it('allows an autonomous regional government to found a voluntary economic organization', () => {
+    const w = fixture();
+    const sweden = NationId.parse('nation:swe');
+    const finland = NationId.parse('nation:fin');
+    const norway = NationId.parse('nation:nor');
+    w.scenario.neighborhoods = [
+      { nationId: sweden, neighbors: [finland, norway] },
+    ];
+    w.nations.find((nation) => nation.id === sweden)!.stats.economy = 50;
+    w.relations = [
+      Relation.parse({ nationA: finland, nationB: sweden, score: 40 }),
+      Relation.parse({ nationA: norway, nationB: sweden, score: 35 }),
+    ];
+    const candidate = compactCandidates(
+      w,
+      NationId.parse('nation:swe'),
+      'autonomous-organization',
+      null,
+    ).find((entry) => entry.family === 'organization');
+    expect(candidate?.commands.map((command) => command.type)).toEqual([
+      'CREATE_ORGANIZATION',
+      'INVITE_TO_ORGANIZATION',
+      'INVITE_TO_ORGANIZATION',
+    ]);
+    expect(candidate?.commands[0]).toMatchObject({
+      type: 'CREATE_ORGANIZATION',
+      organization: {
+        kind: 'economic-union',
+        founders: ['nation:swe'],
+        members: ['nation:swe'],
+      },
+    });
+    expect(candidate?.commands.slice(1)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'INVITE_TO_ORGANIZATION',
+          nationId: finland,
+        }),
+        expect.objectContaining({
+          type: 'INVITE_TO_ORGANIZATION',
+          nationId: norway,
+        }),
+      ]),
+    );
   });
   it('observer autonomy prioritizes a severely sanctioned state and cannot choose unrelated routine rearmament', async () => {
     const w = fixture();

@@ -12,6 +12,10 @@ import type {
 import { assertWorld } from '@mandate/core';
 import { NationId, RegionId, ScenarioFile } from '@mandate/schemas';
 import type { WorldState } from '@mandate/schemas';
+import {
+  format as formatJson,
+  resolveConfig as resolvePrettierConfig,
+} from 'prettier';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const revision = 'ca96624a56bd078437bca8184e78163e5039ad19';
@@ -24,6 +28,10 @@ const outputGeography = resolve(root, 'data/geography/world-admin1.geojson.gz');
 const outputScenario = resolve(root, 'data/scenarios/global-regional.json');
 const registryPath = resolve(root, 'data/geography/admin1-registry.json');
 const manifestPath = resolve(root, 'data/geography/admin1-manifest.json');
+async function formattedJson(filename: string, value: unknown) {
+  const config = await resolvePrettierConfig(filename);
+  return formatJson(JSON.stringify(value), { ...config, parser: 'json' });
+}
 
 interface Admin1Properties {
   adm1_code: string;
@@ -251,6 +259,7 @@ for (const feature of sorted) {
     ownerNationId: NationId.parse(owner),
     controllerNationId: NationId.parse(assignment?.controller ?? owner),
     claims: [],
+    recognizedClaims: [],
   });
 }
 
@@ -279,6 +288,59 @@ for (const feature of fallbackFeatures) {
   regions.push(sourceRegion);
 }
 
+function boundaryPoints(geometry: Polygon | MultiPolygon) {
+  const polygons =
+    geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+  const points = new Set<string>();
+  for (const polygon of polygons)
+    for (const ring of polygon)
+      for (const position of ring) {
+        const longitude = position[0];
+        const latitude = position[1];
+        if (
+          typeof longitude !== 'number' ||
+          typeof latitude !== 'number' ||
+          !Number.isFinite(longitude) ||
+          !Number.isFinite(latitude)
+        )
+          continue;
+        const normalizedLongitude =
+          Math.abs(Math.abs(longitude) - 180) < 0.00001 ? 180 : longitude;
+        points.add(
+          `${Math.round(normalizedLongitude * 100000)},${Math.round(latitude * 100000)}`,
+        );
+      }
+  return points;
+}
+
+// Build a stable land-front graph from the pinned Natural Earth shapes.
+// Requiring two shared vertices excludes corner-only contacts.
+const sharedVertices = new Map<string, Set<string>>();
+for (const feature of geographyFeatures)
+  for (const point of boundaryPoints(feature.geometry)) {
+    const ids = sharedVertices.get(point) ?? new Set<string>();
+    ids.add(String(feature.id));
+    sharedVertices.set(point, ids);
+  }
+const sharedBoundaryCounts = new Map<string, number>();
+for (const ids of sharedVertices.values()) {
+  const uniqueIds = [...ids].sort();
+  for (let left = 0; left < uniqueIds.length; left++)
+    for (let right = left + 1; right < uniqueIds.length; right++) {
+      const key = `${uniqueIds[left]}\u0000${uniqueIds[right]}`;
+      sharedBoundaryCounts.set(key, (sharedBoundaryCounts.get(key) ?? 0) + 1);
+    }
+}
+const adjacency = new Map<string, Set<string>>(
+  regions.map((region) => [region.id, new Set<string>()]),
+);
+for (const [key, pointCount] of sharedBoundaryCounts) {
+  if (pointCount < 2) continue;
+  const [left, right] = key.split('\u0000') as [string, string];
+  adjacency.get(left)?.add(right);
+  adjacency.get(right)?.add(left);
+}
+
 const regionalWorld: WorldState = {
   ...sourceWorld,
   saveId: 'save:global-regional' as WorldState['saveId'],
@@ -295,6 +357,12 @@ const regionalWorld: WorldState = {
           seed: 'global-regional-continuity-v1',
         }
       : undefined,
+    regionAdjacency: regions.map((region) => ({
+      regionId: region.id,
+      neighbors: [...(adjacency.get(region.id) ?? [])]
+        .map((id) => RegionId.parse(id))
+        .sort(),
+    })),
   },
   regions: regions.sort((a, b) => a.id.localeCompare(b.id)),
 };
@@ -312,11 +380,11 @@ const collection: FeatureCollection<
 const geographyBytes = Buffer.from(JSON.stringify(collection) + '\n');
 const compressedGeography = gzipSync(geographyBytes, { level: 9 });
 const scenarioBytes = Buffer.from(
-  JSON.stringify(
-    { formatVersion: 3, kind: 'scenario', world: regionalWorld },
-    null,
-    2,
-  ) + '\n',
+  await formattedJson(outputScenario, {
+    formatVersion: 3,
+    kind: 'scenario',
+    world: regionalWorld,
+  }),
 );
 const manifest = {
   version: 'natural-earth-admin1-v1',
@@ -345,10 +413,10 @@ function replaceAtomically(filename: string, contents: Buffer | string) {
   renameSync(temporary, filename);
 }
 
-replaceAtomically(registryPath, JSON.stringify(registry, null, 2) + '\n');
+replaceAtomically(registryPath, await formattedJson(registryPath, registry));
 replaceAtomically(outputGeography, compressedGeography);
 replaceAtomically(outputScenario, scenarioBytes);
-replaceAtomically(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+replaceAtomically(manifestPath, await formattedJson(manifestPath, manifest));
 console.log(
   `Generated ${regions.length} regions for ${regionalWorld.nations.length} polities (${geographyBytes.length.toLocaleString()} B GeoJSON; ${compressedGeography.length.toLocaleString()} B gzip; ${fallbackFeatures.length} country-scale fallbacks).`,
 );

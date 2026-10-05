@@ -57,6 +57,18 @@ export function factualEvent(
         return `${n(c.negotiation.proposerNationId)} proposes ${c.negotiation.topic} to ${n(c.negotiation.recipientNationId)}`;
       case 'RESPOND_NEGOTIATION': {
         const offer = w.negotiations.find((v) => v.id === c.negotiationId)!;
+        if (offer.conditionalPressure?.status === 'triggered')
+          return `${n(offer.conditionalPressure.patronNationId)} carries out threatened ${offer.conditionalPressure.channel.replaceAll('-', ' ')} pressure on ${n(offer.conditionalPressure.subjectNationId)} after the offer is rejected`;
+        const carriedOut = w.negotiations.find(
+          (entry) =>
+            entry.conditionalPressure?.status === 'triggered' &&
+            entry.conditionalPressure.subjectNationId === c.nationId &&
+            entry.conditionalPressure.triggeredDate === w.date &&
+            entry.conditionalPressure.condition === 'accepts-rival-security' &&
+            entry.conditionalPressure.patronNationId !== offer.proposerNationId,
+        )?.conditionalPressure;
+        if (carriedOut)
+          return `${n(c.nationId)} accepts a rival security agreement; ${n(carriedOut.patronNationId)} carries out threatened ${carriedOut.channel.replaceAll('-', ' ')} pressure`;
         return c.move === 'accept' && offer.kind === 'peace'
           ? offer.peaceTerms.length
             ? `${n(c.nationId)} accepts peace with ${offer.peaceTerms.length} validated territorial terms`
@@ -65,10 +77,60 @@ export function factualEvent(
             ? `${n(c.nationId)} accepts ceasefire; offensive operations halted`
             : `${n(c.nationId)}: ${c.move} diplomatic proposal`;
       }
+      case 'ISSUE_PATRON_DIRECTIVE': {
+        const treaty = w.treaties.find((entry) => entry.id === c.treatyId)!;
+        const directive = treaty.directives.find(
+          (entry) => entry.id === c.directiveId,
+        )!;
+        return `${n(c.patronNationId)} issues ${c.kind.replaceAll('-', ' ')} directive to ${n(c.subjectNationId)}: ${directive.status}`;
+      }
+      case 'ENFORCE_TREATY_BREACH':
+        return `Patron enforcement: ${c.action.replaceAll('-', ' ')}`;
       case 'CREATE_ORGANIZATION':
-        return `Organization created: ${c.organization.name}`;
+        return `${n(c.organization.founders[0] ?? w.playerNationId)} establishes ${c.organization.name}`;
       case 'SET_ORGANIZATION_MEMBERSHIP':
+        {
+          const carriedOut = w.negotiations.find(
+            (entry) =>
+              entry.conditionalPressure?.status === 'triggered' &&
+              entry.conditionalPressure.subjectNationId === c.nationId &&
+              entry.conditionalPressure.triggeredDate === w.date &&
+              entry.conditionalPressure.condition === 'joins-rival-alliance',
+          )?.conditionalPressure;
+          if (c.member && carriedOut)
+            return `${n(c.nationId)} joins ${w.organizations.find((organization) => organization.id === c.organizationId)!.name}; ${n(carriedOut.patronNationId)} carries out threatened ${carriedOut.channel.replaceAll('-', ' ')} pressure`;
+        }
         return `${n(c.nationId)} ${c.member ? 'joins' : 'leaves'} ${w.organizations.find((v) => v.id === c.organizationId)!.name}`;
+      case 'INVITE_TO_ORGANIZATION': {
+        const organization = w.organizations.find(
+          (v) => v.id === c.organizationId,
+        )!;
+        return `${n(c.inviterNationId)} invites ${n(c.nationId)} to ${organization.acronym ?? organization.name}`;
+      }
+      case 'RESPOND_ORGANIZATION_INVITATION': {
+        const organization = w.organizations.find(
+          (v) => v.id === c.organizationId,
+        )!;
+        const action =
+          c.move === 'accept'
+            ? 'accepts'
+            : c.move === 'reject'
+              ? 'declines'
+              : c.move === 'counter'
+                ? 'seeks changes to'
+                : 'delays a decision on';
+        return `${n(c.nationId)} ${action} ${organization.acronym ?? organization.name} invitation`;
+      }
+      case 'UPDATE_ORGANIZATION':
+        return `${n(c.issuerNationId)} amends ${w.organizations.find((v) => v.id === c.organizationId)!.name}'s charter`;
+      case 'ADD_ORGANIZATION_COMMITMENT':
+        return `${n(c.commitment.issuer)} offers terms to ${w.organizations.find((v) => v.id === c.organizationId)!.name} members`;
+      case 'START_ORGANIZATION_PROGRAM':
+        return `${n(c.program.issuerNationId)} proposes ${c.program.title} for ${w.organizations.find((v) => v.id === c.organizationId)!.acronym ?? w.organizations.find((v) => v.id === c.organizationId)!.name}`;
+      case 'REMOVE_ORGANIZATION_MEMBER':
+        return `${n(c.issuerNationId)} removes ${n(c.nationId)} from ${w.organizations.find((v) => v.id === c.organizationId)!.name}`;
+      case 'DISSOLVE_ORGANIZATION':
+        return `${n(c.issuerNationId)} dissolves ${w.organizations.find((v) => v.id === c.organizationId)!.name}`;
       case 'APPLY_DOMESTIC_PRESSURE':
         return `${n(c.nationId)} faces domestic pressure: ${c.cause}`;
       case 'MOBILIZE_FORCE':
@@ -110,6 +172,14 @@ export function factualEvent(
         return `Treaty terms updated: ${w.treaties.find((t) => t.id === c.treatyId)!.name}`;
       case 'END_TREATY': {
         const treaty = w.treaties.find((t) => t.id === c.treatyId)!;
+        if (
+          c.nationId &&
+          treaty.kind === 'influence' &&
+          treaty.influenceTerms.some(
+            (term) => term.subjectNationId === c.nationId,
+          )
+        )
+          return `${n(c.nationId)} ended ${treaty.name} to reclaim foreign-policy autonomy`;
         return treaty.kind === 'ceasefire' &&
           w.conflicts.find((v) => v.id === treaty.conflictId)?.status ===
             'active'
@@ -163,6 +233,18 @@ export function factualEvent(
       const negotiation = w.negotiations.find((v) => v.id === c.negotiationId)!;
       return [negotiation.proposerNationId, negotiation.recipientNationId];
     }
+    if (c.type === 'CREATE_ORGANIZATION') return c.organization.members;
+    if (c.type === 'INVITE_TO_ORGANIZATION')
+      return [c.inviterNationId, c.nationId];
+    if (c.type === 'RESPOND_ORGANIZATION_INVITATION') return [c.nationId];
+    if (c.type === 'UPDATE_ORGANIZATION' || c.type === 'DISSOLVE_ORGANIZATION')
+      return [c.issuerNationId];
+    if (c.type === 'ADD_ORGANIZATION_COMMITMENT')
+      return [c.commitment.issuer, ...c.commitment.recipientNationIds];
+    if (c.type === 'START_ORGANIZATION_PROGRAM')
+      return [c.program.issuerNationId, ...c.program.participantNationIds];
+    if (c.type === 'REMOVE_ORGANIZATION_MEMBER')
+      return [c.issuerNationId, c.nationId];
     if (c.type === 'CANCEL_INITIATIVE') {
       const initiative = w.initiatives.find((v) => v.id === c.initiativeId)!;
       return [
@@ -187,6 +269,63 @@ export function factualEvent(
     }
     return refs.nationIds as Event['nationIds'];
   };
+  const importance = (() => {
+    switch (c.type) {
+      case 'STRATEGIC_ATTACK':
+        return 100;
+      case 'THEATER_ACTION':
+        return c.posture === 'major-offensive' ? 90 : 48;
+      case 'START_CONFLICT':
+        return 82;
+      case 'END_CONFLICT':
+        return 82;
+      case 'OPEN_CRISIS':
+        return 78;
+      case 'IMPOSE_SANCTION':
+      case 'MOBILIZE_FORCE':
+        return 70;
+      case 'OPEN_CONFERENCE':
+        return 62;
+      case 'CREATE_ORGANIZATION':
+        return 74;
+      case 'START_ORGANIZATION_PROGRAM':
+        return c.program.dimension === 'political-coordination' ? 68 : 62;
+      case 'SET_ORGANIZATION_MEMBERSHIP':
+        return 70;
+      case 'RESPOND_ORGANIZATION_INVITATION':
+        return c.move === 'accept' ? 68 : 42;
+      case 'OPEN_NEGOTIATION':
+        return ['peace', 'ceasefire'].includes(c.negotiation.kind) ? 74 : 38;
+      case 'RESPOND_NEGOTIATION': {
+        const negotiation = w.negotiations.find(
+          (entry) => entry.id === c.negotiationId,
+        )!;
+        if (c.move !== 'accept') return 36;
+        return negotiation.kind === 'peace'
+          ? 92
+          : negotiation.kind === 'ceasefire'
+            ? 72
+            : 58;
+      }
+      case 'ISSUE_PATRON_DIRECTIVE':
+        return c.patronNationId === w.playerNationId ||
+          c.subjectNationId === w.playerNationId
+          ? 74
+          : 55;
+      case 'TRANSFER_OWNERSHIP':
+        return 78;
+      case 'TRANSFER_CONTROL':
+        return 64;
+      case 'UPDATE_GOVERNMENT':
+        return 72;
+      case 'CREATE_EVENT':
+        return c.event.importance;
+      case 'ADVANCE_DATE':
+        return 5;
+      default:
+        return 30;
+    }
+  })();
   const defaults = {
     id: EventId.parse(`event:${envelope.id.slice('command:'.length)}`),
     type: c.type,
@@ -199,36 +338,23 @@ export function factualEvent(
       w.negotiations.find((v) => v.id === c.negotiationId)!.conflictId
         ? [w.negotiations.find((v) => v.id === c.negotiationId)!.conflictId!]
         : (refs.conflictIds as Event['conflictIds']),
-    importance: [
-      'OPEN_CRISIS',
-      'IMPOSE_SANCTION',
-      'OPEN_CONFERENCE',
-      'MOBILIZE_FORCE',
-      'STRATEGIC_ATTACK',
-    ].includes(c.type)
-      ? c.type === 'STRATEGIC_ATTACK'
-        ? 100
-        : 70
-      : c.type === 'THEATER_ACTION' && c.posture === 'major-offensive'
-        ? 90
-        : c.type === 'START_CONFLICT'
-          ? 80
-          : c.type === 'END_CONFLICT'
-            ? 75
-            : c.type === 'RESPOND_NEGOTIATION' &&
-                c.move === 'accept' &&
-                w.negotiations.find((v) => v.id === c.negotiationId)!.kind ===
-                  'peace'
-              ? 75
-              : c.type === 'RESPOND_NEGOTIATION' &&
-                  c.move === 'accept' &&
-                  w.negotiations.find((v) => v.id === c.negotiationId)!.kind ===
-                    'ceasefire'
-                ? 65
-                : c.type === 'TRANSFER_CONTROL'
-                  ? 60
-                  : 30,
-    topics: [c.type.toLowerCase()],
+    importance,
+    topics:
+      c.type === 'START_ORGANIZATION_PROGRAM'
+        ? [
+            c.type.toLowerCase(),
+            `organization:${c.organizationId}`,
+            `program:${c.program.id}`,
+          ]
+        : c.type === 'ADD_ORGANIZATION_COMMITMENT'
+          ? [
+              c.type.toLowerCase(),
+              `organization:${c.organizationId}`,
+              `commitment:${c.commitment.id}`,
+            ]
+          : c.type === 'START_INITIATIVE'
+            ? [c.type.toLowerCase(), `initiative:${c.initiative.id}`]
+            : [c.type.toLowerCase()],
     visibility:
       c.type === 'DISCLOSE_INFORMATION'
         ? 'private'
@@ -271,6 +397,20 @@ export function factualEvent(
   };
   return {
     ...(c.type === 'CREATE_EVENT' ? c.event : defaults),
+    novelty:
+      c.type === 'ADVANCE_DATE'
+        ? 'consequence'
+        : c.type === 'CREATE_EVENT'
+          ? (c.event.novelty ??
+            (c.event.importance >= 85 ? 'major-development' : 'new-action'))
+          : importance >= 85
+            ? 'major-development'
+            : 'new-action',
+    ...(c.type === 'START_ORGANIZATION_PROGRAM'
+      ? {
+          semanticSignature: `organization-program:${c.organizationId}:${c.program.dimension}:${c.program.issuerNationId}:${[...c.program.participantNationIds].sort().join(',')}`,
+        }
+      : {}),
     effects: [],
     date: w.date,
     turnId,

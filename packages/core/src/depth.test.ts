@@ -431,6 +431,11 @@ describe('strategic depth contracts', () => {
       terms: 'Trade',
       visibility: 'public',
       conflictId: null,
+      influenceTerms: [],
+      breaches: [],
+      enforcements: [],
+      directives: [],
+      ratificationGovernments: [],
     });
     const earned = step(a, [{ type: 'ADVANCE_DATE', date: '2025-01-31' }]),
       baseline = step(b, [{ type: 'ADVANCE_DATE', date: '2025-01-31' }]);

@@ -85,6 +85,8 @@ export function visibleTo(
     recipients?: NationId[];
     participants?: NationId[];
     members?: NationId[];
+    invitedStates?: NationId[];
+    pendingApplications?: Array<{ nationId: NationId }>;
   },
   perspective: NationId,
 ): boolean {
@@ -98,6 +100,10 @@ export function visibleTo(
     entry.parties?.includes(perspective) === true ||
     entry.participants?.includes(perspective) === true ||
     entry.members?.includes(perspective) === true ||
+    entry.invitedStates?.includes(perspective) === true ||
+    entry.pendingApplications?.some(
+      (application) => application.nationId === perspective,
+    ) === true ||
     entry.issuer === perspective ||
     entry.recipients?.includes(perspective) === true
   );
@@ -430,7 +436,10 @@ export function buildContext(
       tenures: world.tenures.filter((t) => t.nationId === perspective),
       organizations: world.organizations.filter(
         (o) =>
-          knownTo(o, 'organization') && o.members.some((id) => ids.has(id)),
+          knownTo(o, 'organization') &&
+          (o.members.some((id) => ids.has(id)) ||
+            o.invitedStates.some((id) => ids.has(id)) ||
+            o.pendingApplications.some((entry) => ids.has(entry.nationId))),
       ),
       commitments: world.commitments.filter(
         (c) =>

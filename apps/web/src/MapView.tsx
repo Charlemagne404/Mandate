@@ -7,6 +7,7 @@ import type { WorldState } from '@mandate/schemas';
 import { politicalFeatures } from '@mandate/map';
 import type { MapMode } from '@mandate/map';
 import { mapModes } from '@mandate/map';
+import { influenceProfile } from '@mandate/core';
 
 type Geography = FeatureCollection<
   Polygon | MultiPolygon,
@@ -295,6 +296,7 @@ export function MapView({
         map.on('zoomend', () => updateLabels.current());
         updateLabels.current();
         map.on('mousemove', 'political-fill', (event) => {
+          const state = current.current;
           const id = event.features?.[0]?.id;
           const region = current.current.world.regions.find(
             (r) => r.geometryId === id,
@@ -302,7 +304,23 @@ export function MapView({
           map.getCanvas().style.cursor = region ? 'pointer' : 'grab';
           setHover(
             region
-              ? `${region.name} · Owner: ${region.ownerNationId.slice(7).toUpperCase()} · Control: ${region.controllerNationId.slice(7).toUpperCase()}`
+              ? state.mode === 'influence'
+                ? (() => {
+                    const patron =
+                      state.world.nations.find(
+                        (nation) => nation.id === state.selected,
+                      )?.name ?? state.selected;
+                    const subject = state.world.nations.find(
+                      (nation) => nation.id === region.ownerNationId,
+                    );
+                    const profile = influenceProfile(
+                      state.world,
+                      state.selected,
+                      region.ownerNationId,
+                    );
+                    return `${region.name} · ${subject?.name ?? region.ownerNationId} · ${profile.tier} · ${profile.leverage}/100 modeled leverage · foreign-policy autonomy ${profile.autonomyLevels.foreignPolicy.toLowerCase()} · ${profile.defectionRisk.toLowerCase()} defection risk under ${patron}`;
+                  })()
+                : `${region.name} · Owner: ${region.ownerNationId.slice(7).toUpperCase()} · Control: ${region.controllerNationId.slice(7).toUpperCase()}`
               : 'Outside development scenario',
           );
         });

@@ -1,5 +1,9 @@
-import { resolveCapitalOwnerIds } from '@mandate/scenarios';
+import {
+  resolveCapitalOwnerIds,
+  resolveOrganizationGeographicSet,
+} from '@mandate/scenarios';
 import { SemanticGraph } from '@mandate/schemas';
+import { isInfluenceProposal } from './influence-intent.js';
 import type {
   NationId,
   RegionId,
@@ -17,7 +21,7 @@ type Input = {
   grounding?: z.infer<typeof ActionGrounding> | undefined;
 };
 const verb =
-  "(?:do not|don't|never|avoid|mobiliz\\w*|demand\\w*|offer\\w*|ask|tell|sanction\\w*|cancel\\w*|keep|guarantee\\w*|invad\\w*|annex\\w*|attack\\w*|nuk\\w*|bomb\\w*|take|steal\\w*|seize\\w*|give|cede|transfer\\w*|launch|start|send\\w*|deploy\\w*|make|use\\w*|negotia\\w*|threaten\\w*|declare|increase|raise|invest|reinforce|expand|reform|begin|improve|reduce|build|spend|cut|move|commit|withdraw|recogniz\\w*)";
+  "(?:do not|don't|never|avoid|mobiliz\\w*|demand\\w*|offer\\w*|ask|tell|sanction\\w*|cancel\\w*|keep|guarantee\\w*|invad\\w*|annex\\w*|attack\\w*|nuk\\w*|bomb\\w*|take|steal\\w*|seize\\w*|give|cede|transfer\\w*|launch\\w*|start\\w*|send\\w*|deploy\\w*|make|use\\w*|negotia\\w*|threaten\\w*|declare|increase|raise|invest|reinforce|expand|reform|begin\\w*|improve|reduce|build\\w*|deepen\\w*|integrat\\w*|coordinate\\w*|propos\\w*|spend|cut|move|commit|withdraw|recogniz\\w*|invit\\w*|dissolv\\w*|disband\\w*|join|quit|expel|found\\w*|creat\\w*)";
 export function semanticClauses(text: string): string[] {
   const clauses = text
     .replace(
@@ -41,7 +45,7 @@ export function semanticClauses(text: string): string[] {
     )
     .split(
       new RegExp(
-        `(?:[.!?;]\\s+|\\n+|,?\\s+(?:and|but|then|while|simultaneously|otherwise)\\s+(?=(?:(?:it|they|we)\\s+)?(?:if\\b|${verb}))|,\\s+(?=${verb})|\\s+to\\s+(?=(?:take|seize|occupy|annex|conquer)\\b))`,
+        `(?:[.!?;]\\s+|\\n+|,?\\s+(?:and|but|then|while|simultaneously|otherwise)\\s+(?=(?:(?:it|they|we)\\s+)?(?:(?:also|further|additionally)\\s+)?(?:if\\b|${verb}))|,\\s+(?=${verb})|\\s+to\\s+(?=(?:take|seize|occupy|annex|conquer)\\b))`,
         'i',
       ),
     )
@@ -64,11 +68,10 @@ export function nationMentions(world: WorldState, text: string): Mention[] {
   const aliases: Record<string, string[]> = {
     'United States of America': [
       'United States',
-      'America',
       'USA',
       'U.S.',
       'US',
-      'American',
+      'America',
     ],
     'United Kingdom': ['Britain', 'UK', 'British'],
     Finland: ['Finnish', 'Finlnad', 'Finand'],
@@ -88,6 +91,11 @@ export function nationMentions(world: WorldState, text: string): Mention[] {
       );
       for (const m of text.matchAll(re)) {
         if (name === 'US' && m[0] !== 'US') continue;
+        if (
+          name === 'America' &&
+          /\b(?:central|north|south|latin)\s+$/i.test(text.slice(0, m.index))
+        )
+          continue;
         found.push({ id: n.id, start: m.index!, end: m.index! + m[0].length });
       }
     }
@@ -152,8 +160,87 @@ export function regionMentions(world: WorldState, text: string) {
     ).values(),
   ];
 }
-function classify(text: string): SemanticAction['action'] {
+function classify(
+  text: string,
+  organizations: WorldState['organizations'] = [],
+): SemanticAction['action'] {
   text = text.replace(/^please\s+/i, '');
+  if (
+    /\b(?:creat\w*|form\w*|establish\w*|found\w*)\b[^.!?;]{0,180}\b(?:economic|trade|military|defen[cs]e|customs|political|regional|international)?\s*(?:union|bloc|alliance|pact|federation|organization|organisation)\b/i.test(
+      text,
+    )
+  )
+    return 'create-organization';
+  if (/\b(?:invit\w*|invitation|invitees)\b/i.test(text))
+    return 'invite-organization';
+  if (/\b(?:dissolve|disband)\b/i.test(text)) return 'dissolve-organization';
+  if (
+    /\b(?:leave|quit|withdraw from|kick|expel|remove)\b/i.test(text) &&
+    (/\b(?:organization|organisation|union|bloc|alliance|pact|member)\b/i.test(
+      text,
+    ) ||
+      organizations.some((organization) =>
+        [organization.acronym, organization.name, organization.id].some(
+          (reference) =>
+            !!reference &&
+            new RegExp(
+              `(?<![\\p{L}\\p{N}])${escaped(reference)}(?![\\p{L}\\p{N}])`,
+              'iu',
+            ).test(text),
+        ),
+      ) ||
+      (organizations.filter((organization) => organization.status === 'active')
+        .length === 1 &&
+        /\b(?:kick|expel|remove)\b/i.test(text)))
+  )
+    return 'organization-membership';
+  if (
+    /\b(?:focus(?:es)? on|purpose is|aims? to|objective is|turn .+ into)\b/i.test(
+      text,
+    ) &&
+    /\b(?:economic|trade|integration|customs|union|organization|organisation|alliance|bloc|pact|federation)\b/i.test(
+      text,
+    )
+  )
+    return 'organization-purpose';
+  if (
+    isInfluenceProposal(text) &&
+    /\b(?:security guarantee|foreign[- ]policy|rival alliances?|debt relief|market access|puppet|protectorate|client state|subject state|patron)\b/i.test(
+      text,
+    )
+  )
+    return 'offer';
+  if (
+    /\b(?:subsid\w*|financial aid|economic support|support any country|support member|coordinate sanctions|sanctions coordination)\b/i.test(
+      text,
+    ) &&
+    /\b(?:join|member|organization|organisation|union|bloc)\w*\b/i.test(text)
+  )
+    return 'organization-commitment';
+  const organizationReferenced = organizations.some((organization) =>
+    [organization.acronym, organization.name, organization.id].some(
+      (reference) =>
+        !!reference &&
+        new RegExp(
+          `(?<![\\p{L}\\p{N}])${escaped(reference)}(?![\\p{L}\\p{N}])`,
+          'iu',
+        ).test(text),
+    ),
+  );
+  const unambiguousOrganization =
+    organizations.filter((organization) => organization.status === 'active')
+      .length === 1;
+  if (
+    /\b(?:integrat\w*|free trade|tariff coordination|customs union|common standards|infrastructure|connect(?:ing)? (?:the )?(?:countries|members)|political (?:coordination|collaboration)|coordinate foreign policy|coordinate diplomatic positions|unified (?:regional |central american )?front|common development fund|coordinate sanctions)\b/i.test(
+      text,
+    ) &&
+    (organizationReferenced ||
+      unambiguousOrganization ||
+      /\b(?:regional|cross[- ]border|central american|between (?:the )?countries|between (?:the )?members|connect(?:ing)? (?:the )?(?:countries|members))\b/i.test(
+        text,
+      ))
+  )
+    return 'organization-program';
   if (
     /\b(?:create|form|declare|establish|found|make)\b[^.!?;]{0,100}\b(?:independent|independence|breakaway|new state|polity|federation|union)\b|\bsecede\b/i.test(
       text,
@@ -288,7 +375,15 @@ export function buildSemanticGraph(
     const conditionMentions = conditional
       ? unique(nationMentions(world, conditional[2]!).map((m) => m.id))
       : [];
-    let kind = classify(text);
+    let kind = classify(text, world.organizations);
+    const conditionalPressureText =
+      /\b(?:threaten|warn|cut|withdraw|suspend|cancel)\b/i.test(raw) &&
+      /\b(?:if|unless)\b/i.test(raw);
+    if (
+      classify(raw, world.organizations) === 'organization-commitment' &&
+      !conditionalPressureText
+    )
+      kind = 'organization-commitment';
     const mentions = nationMentions(world, text).filter(
       (m) => m.id !== input.actorNationId,
     );
@@ -303,23 +398,21 @@ export function buildSemanticGraph(
         ),
     );
     let targets = unique([...mentions.map((m) => m.id), ...capitals]);
-    if (/\bnordic\b/i.test(text) && /federat|union/i.test(text)) {
-      targets = unique([
-        ...targets,
-        ...world.nations
-          .filter((n) =>
-            ['Denmark', 'Finland', 'Iceland', 'Norway', 'Sweden'].includes(
-              n.name,
-            ),
-          )
-          .map((n) => n.id)
-          .filter((id) => id !== input.actorNationId),
-      ]);
-    }
     const sources: NationId[] = [];
     const participants: NationId[] = [];
     const beneficiaries: NationId[] = [];
     let territories = unique(regions.map((r) => r.id));
+    if (
+      [
+        'create-organization',
+        'invite-organization',
+        'organization-purpose',
+        'organization-commitment',
+        'organization-program',
+        'dissolve-organization',
+      ].includes(kind)
+    )
+      territories = [];
     if (
       kind !== 'transfer' &&
       /\b(?:annex|invad\w*|conquer\w*|claim\w*|seize\w*|occupy|take|demand\w*|territorial objective)\b/i.test(
@@ -344,6 +437,44 @@ export function buildSemanticGraph(
         ),
       ].map((m) => m[0].toLowerCase()),
     );
+    if (kind === 'invite-organization') {
+      const geographicSet =
+        resolveOrganizationGeographicSet(world, input.actorNationId, text) ??
+        (/\bregion\b/i.test(text)
+          ? resolveOrganizationGeographicSet(
+              world,
+              input.actorNationId,
+              input.text,
+            )
+          : null);
+      if (geographicSet) {
+        participants.push(...geographicSet.nationIds);
+        graph.references.push({
+          actionId: id,
+          expression: /\bregion\b/i.test(text)
+            ? 'the region'
+            : geographicSet.expression,
+          role: 'target',
+          origin: 'geography',
+          antecedentId: `geography:${geographicSet.groupId}`,
+          nationIds: geographicSet.nationIds,
+          regionIds: [],
+        });
+      }
+      participants.push(...mentions.map((mention) => mention.id));
+      participants.splice(
+        0,
+        participants.length,
+        ...unique(participants).filter(
+          (nationId) => nationId !== input.actorNationId,
+        ),
+      );
+      if (!participants.length)
+        issues.push(
+          'Invitation recipients are neither named nor resolved from scenario geography',
+        );
+      targets = [];
+    }
     if (kind === 'acquire-forces') {
       sources.push(...targets);
       targets = [];
@@ -364,7 +495,18 @@ export function buildSemanticGraph(
       beneficiaries.push(...targets);
       sources.push(input.actorNationId);
     }
-    if (territories.length && !targets.length && kind !== 'transfer')
+    if (
+      territories.length &&
+      !targets.length &&
+      kind !== 'transfer' &&
+      ![
+        'create-organization',
+        'invite-organization',
+        'organization-purpose',
+        'organization-commitment',
+        'dissolve-organization',
+      ].includes(kind)
+    )
       targets = unique(
         regions
           .map((r) => r.ownerNationId)
@@ -542,7 +684,12 @@ export function buildSemanticGraph(
     }
     if (conditional) {
       const conditionText = conditional[2]!;
-      const pronounSubject = /\b(?:they|them|their)\b/i.test(conditionText);
+      const pronounSubject =
+        /\b(?:they|them|their)\b/i.test(conditionText) ||
+        (/\bit\b/i.test(conditionText) &&
+          /\b(?:accept|reject|refuse|sign|agree|join|approve)\w*\b/i.test(
+            conditionText,
+          ));
       let subjects = pronounSubject
         ? lastTargets.length
           ? lastTargets
@@ -556,6 +703,12 @@ export function buildSemanticGraph(
             .map((m) => m.id)
             .filter((id) => id !== input.actorNationId),
         );
+      if (
+        !targets.length &&
+        subjects.length &&
+        (!pronounSubject || lastTargets.length > 0)
+      )
+        targets = [subjects[0]!];
       const c = {
         text: conditionText,
         predicate: conditionPredicate(conditionText),
@@ -563,12 +716,13 @@ export function buildSemanticGraph(
         negated: /unless/i.test(conditional[1]!),
         actionId: graph.actions.at(-1)?.id ?? null,
       };
-      if (/they|them|their/i.test(conditionText)) {
+      const pronoun = conditionText.match(/\b(?:they|them|their|it)\b/i)?.[0];
+      if (pronounSubject) {
         if (!subjects.length) issues.push('Unresolved condition subject');
         else
           graph.references.push({
             actionId: id,
-            expression: conditionText.match(/they|them|their/i)![0],
+            expression: pronoun ?? conditionText,
             role: 'condition',
             origin: lastTargets.length ? 'text' : 'conversation',
             antecedentId: lastSet || priorAction?.id || 'negotiation',
@@ -667,7 +821,16 @@ export function buildSemanticGraph(
       territories,
       assets,
       organizations: world.organizations
-        .filter((o) => text.toLowerCase().includes(o.name.toLowerCase()))
+        .filter((organization) =>
+          [organization.name, organization.acronym, organization.id].some(
+            (reference) =>
+              !!reference &&
+              new RegExp(
+                `(?<![\\p{L}\\p{N}])${escaped(reference)}(?![\\p{L}\\p{N}])`,
+                'iu',
+              ).test(text),
+          ),
+        )
         .map((o) => o.id),
       instruments,
       conditions,
@@ -704,14 +867,14 @@ export function buildSemanticGraph(
     }
     graph.actions.push(node);
     if (kind === 'acquire-forces') acquired = node;
-    if (targets.length || territories.length) {
+    if (targets.length || territories.length || participants.length) {
       lastTargets = targets;
       lastRegions = territories;
       lastSet = `set:${id}`;
       graph.targetSets.push({
         id: lastSet,
         actionId: id,
-        nationIds: targets,
+        nationIds: targets.length ? targets : participants,
         regionIds: territories,
       });
     }
@@ -737,10 +900,19 @@ export function validateSemanticGraph(
     if (
       expected &&
       (JSON.stringify(a.targets) !== JSON.stringify(expected.targets) ||
-        JSON.stringify(a.sources) !== JSON.stringify(expected.sources))
+        JSON.stringify(a.sources) !== JSON.stringify(expected.sources) ||
+        JSON.stringify(a.participants) !==
+          JSON.stringify(expected.participants) ||
+        JSON.stringify(a.beneficiaries) !==
+          JSON.stringify(expected.beneficiaries) ||
+        JSON.stringify(a.territories) !== JSON.stringify(expected.territories))
     )
       errors.push(`${a.id}: semantic roles differ from grounded source text`);
   }
+  if (JSON.stringify(graph.references) !== JSON.stringify(canonical.references))
+    errors.push(
+      'Semantic references differ from grounded text, map or geography',
+    );
   const sourceOnly = new Set(
     graph.actions
       .flatMap((a) => a.sources)

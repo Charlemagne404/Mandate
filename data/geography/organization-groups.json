@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "id": "central-america",
+      "name": "Central America",
+      "aliases": [
+        "Central America",
+        "Central American",
+        "Central American countries"
+      ],
+      "isoA3": ["BLZ", "CRI", "SLV", "GTM", "HND", "NIC", "PAN"]
+    },
+    {
+      "id": "nordic-countries",
+      "name": "the Nordic countries",
+      "aliases": [
+        "Nordic countries",
+        "Nordic states",
+        "Nordic",
+        "the Nordics",
+        "Nordics"
+      ],
+      "isoA3": ["DNK", "FIN", "ISL", "NOR", "SWE"],
+      "names": ["Norway"]
+    },
+    {
+      "id": "baltic-states",
+      "name": "the Baltic states",
+      "aliases": [
+        "Baltic states",
+        "Baltic countries",
+        "Baltic",
+        "the Baltics",
+        "Baltics"
+      ],
+      "isoA3": ["EST", "LVA", "LTU"]
+    },
+    {
+      "id": "south-america",
+      "name": "South America",
+      "aliases": [
+        "South America",
+        "South American",
+        "South American countries"
+      ],
+      "continent": "South America",
+      "sourceType": "Sovereign country"
+    },
+    {
+      "id": "west-africa",
+      "name": "West Africa",
+      "aliases": [
+        "West Africa",
+        "Western Africa",
+        "West African",
+        "West African countries"
+      ],
+      "subregion": "Western Africa",
+      "sourceType": "Sovereign country"
+    },
+    {
+      "id": "balkans",
+      "name": "the Balkans",
+      "aliases": ["the Balkans", "Balkans", "Balkan", "Balkan countries"],
+      "isoA3": [
+        "ALB",
+        "BIH",
+        "BGR",
+        "HRV",
+        "GRC",
+        "XKX",
+        "MNE",
+        "MKD",
+        "ROU",
+        "SRB",
+        "SVN"
+      ]
+    }
+  ]
+}

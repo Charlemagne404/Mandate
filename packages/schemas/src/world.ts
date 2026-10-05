@@ -9,6 +9,8 @@ import {
   InitiativeId,
   NegotiationId,
   OrganizationId,
+  OrganizationCommitmentId,
+  OrganizationProgramId,
   NationId,
   RegionId,
   SaveId,
@@ -34,6 +36,7 @@ export const StatName = z.enum([
   'stability',
   'legitimacy',
   'treasury',
+  'debt',
   'industrial',
   'fiscal',
   'readiness',
@@ -50,6 +53,7 @@ export const Stats = z.strictObject({
   stability: z.number().int().min(0).max(100),
   legitimacy: z.number().int().min(0).max(100),
   treasury: z.number().int().min(0).max(1_000_000_000),
+  debt: z.number().int().min(0).max(1_000_000_000).default(0),
   industrial: z.number().int().min(0).max(100).default(50),
   fiscal: z.number().int().min(0).max(100).default(50),
   readiness: z.number().int().min(0).max(100).default(50),
@@ -111,6 +115,7 @@ export const Region = z.strictObject({
   ownerNationId: NationId,
   controllerNationId: NationId,
   claims: z.array(NationId).max(500),
+  recognizedClaims: z.array(NationId).max(500).default([]),
 });
 export const Relation = z.strictObject({
   nationA: NationId,
@@ -134,15 +139,162 @@ export const Relation = z.strictObject({
     .max(40)
     .default([]),
 });
+export const InfluenceTermKind = z.enum([
+  'join-defensive-wars',
+  'join-patron-wars',
+  'war-declaration-approval',
+  'no-war-against-patron',
+  'military-access',
+  'host-bases',
+  'military-planning',
+  'foreign-policy-consultation',
+  'foreign-policy-alignment',
+  'no-rival-alliance',
+  'support-diplomatic-initiatives',
+  'foreign-policy-veto',
+  'economic-policy-approval',
+  'tribute',
+  'preferential-trade',
+  'market-access-concession',
+  'energy-supply',
+  'exclusive-market-access',
+  'customs-alignment',
+  'common-economic-rules',
+  'mandatory-procurement',
+  'debt-repayment',
+  'loan',
+  'debt-relief',
+  'subsidy',
+  'infrastructure-investment',
+  'security-guarantee',
+  'government-security-arrangement',
+]);
+export type InfluenceTermKind = z.infer<typeof InfluenceTermKind>;
+export const InfluenceTerm = z.strictObject({
+  kind: InfluenceTermKind,
+  patronNationId: NationId,
+  subjectNationId: NationId,
+  status: z
+    .enum(['active', 'suspended', 'withdrawn', 'breached'])
+    .default('active'),
+  amount: z.number().int().min(0).max(1_000_000_000).default(0),
+  ratePercent: z.number().int().min(0).max(100).default(0),
+  paidAmount: z.number().int().min(0).max(1_000_000_000).default(0),
+  paymentsMade: z.number().int().min(0).max(100_000).default(0),
+  arrears: z.number().int().min(0).max(100_000).default(0),
+  revenueRemainder: z.number().int().min(0).max(1_000_000_000).default(0),
+  lastPaymentDate: SimulationDate.nullable().default(null),
+});
+export type InfluenceTerm = z.infer<typeof InfluenceTerm>;
+export const InfluencePressure = z.strictObject({
+  patronNationId: NationId,
+  subjectNationId: NationId,
+  condition: z.enum([
+    'rejection',
+    'joins-rival-alliance',
+    'accepts-rival-security',
+  ]),
+  channel: z.enum([
+    'aid',
+    'infrastructure',
+    'energy',
+    'market-access',
+    'security-guarantee',
+    'organization-support',
+  ]),
+  action: z.enum(['suspend', 'withdraw', 'reduce']),
+  severity: z.number().int().min(1).max(100).default(25),
+  status: z.enum(['pending', 'triggered', 'satisfied']).default('pending'),
+  createdDate: SimulationDate,
+  triggeredDate: SimulationDate.nullable().default(null),
+});
+export type InfluencePressure = z.infer<typeof InfluencePressure>;
+export const TreatyBreach = z.strictObject({
+  id: z.string().regex(/^breach:[a-z0-9._-]+$/),
+  date: SimulationDate,
+  violatingNationId: NationId,
+  injuredNationId: NationId,
+  reason: Text,
+  status: z.enum(['open', 'enforced', 'resolved']).default('open'),
+});
+export type TreatyBreach = z.infer<typeof TreatyBreach>;
+export const RatificationGovernment = z.strictObject({
+  nationId: NationId,
+  government: Government,
+});
+export type RatificationGovernment = z.infer<typeof RatificationGovernment>;
+export const TreatyEnforcementAction = z.enum([
+  'diplomatic-demand',
+  'suspend-subsidy',
+  'cancel-market-access',
+  'demand-arrears',
+  'political-pressure',
+  'withdraw-guarantee',
+  'sanction',
+  'renegotiate',
+  'terminate',
+]);
+export const TreatyEnforcement = z.strictObject({
+  id: z.string().regex(/^enforcement:[a-z0-9._-]+$/),
+  date: SimulationDate,
+  breachId: z.string().regex(/^breach:[a-z0-9._-]+$/),
+  patronNationId: NationId,
+  subjectNationId: NationId,
+  action: TreatyEnforcementAction,
+  amount: z.number().int().min(0).max(1_000_000_000).default(0),
+  result: Text,
+});
+export type TreatyEnforcement = z.infer<typeof TreatyEnforcement>;
+export const PatronDirectiveKind = z.enum([
+  'join-conflict',
+  'grant-military-access',
+  'leave-organization',
+  'end-rival-treaty',
+  'support-diplomatic-initiative',
+  'coordinate-foreign-policy',
+]);
+export const PatronDirective = z.strictObject({
+  id: z.string().regex(/^directive:[a-z0-9._-]+$/),
+  patronNationId: NationId,
+  subjectNationId: NationId,
+  kind: PatronDirectiveKind,
+  conflictId: ConflictId.nullable().default(null),
+  organizationId: OrganizationId.nullable().default(null),
+  targetTreatyId: TreatyId.nullable().default(null),
+  policyText: Text.nullable().default(null),
+  issuedDate: SimulationDate,
+  status: z.enum([
+    'complied',
+    'consultation-only',
+    'refused',
+    'unauthorized',
+    'failed',
+  ]),
+  reason: Text,
+});
+export type PatronDirective = z.infer<typeof PatronDirective>;
 export const Treaty = z.strictObject({
   id: TreatyId,
   name: Name,
-  kind: z.enum(['defense', 'trade', 'nonaggression', 'ceasefire', 'peace']),
+  ratifiedDate: SimulationDate.optional(),
+  kind: z.enum([
+    'defense',
+    'trade',
+    'nonaggression',
+    'influence',
+    'ceasefire',
+    'peace',
+  ]),
   conflictId: ConflictId.nullable().default(null),
   parties: z.array(NationId).min(2).max(500),
   status: z.enum(['active', 'ended']),
   terms: Text,
   visibility: z.enum(['public', 'private']).default('public'),
+  influenceTerms: z.array(InfluenceTerm).max(32).default([]),
+  directives: z.array(PatronDirective).max(200).default([]),
+  breaches: z.array(TreatyBreach).max(200).default([]),
+  enforcements: z.array(TreatyEnforcement).max(200).default([]),
+  ratificationGovernments: z.array(RatificationGovernment).max(500).default([]),
 });
 export const Conflict = z.strictObject({
   id: ConflictId,
@@ -175,7 +327,27 @@ export const Conflict = z.strictObject({
         logistics: z.number().int().min(0).max(100).default(50),
         supplyPressure: z.number().int().min(0).max(100).default(0),
         initiative: z.number().int().min(0).max(100).default(50),
+        momentum: z.number().int().min(-100).max(100).default(0),
+        exhaustion: z.number().int().min(0).max(100).default(0),
         progress: z.number().int().min(0).max(100).default(0),
+        recentOutcomes: z
+          .array(
+            z.strictObject({
+              date: SimulationDate,
+              outcome: z.enum([
+                'major-advance',
+                'limited-advance',
+                'stalemate',
+                'failed-offensive',
+                'counterattack',
+                'strategic-withdrawal',
+              ]),
+              regionId: RegionId.nullable(),
+              note: Text,
+            }),
+          )
+          .max(12)
+          .default([]),
       }),
     )
     .max(100)
@@ -237,6 +409,17 @@ export const Goal = z.strictObject({
         baseline: z.number().int().min(1).max(100),
         target: z.number().int().min(0).max(99),
       }),
+      z.strictObject({
+        kind: z.literal('influence'),
+        subjectNationIds: z.array(NationId).min(1).max(500),
+        tier: z.enum([
+          'DEPENDENT PARTNER',
+          'CLIENT STATE',
+          'PROTECTORATE',
+          'SUBJECT STATE',
+          'PUPPET STATE',
+        ]),
+      }),
     ])
     .default({ kind: 'capacity' }),
   pressure: z.number().int().min(0).max(100).default(0),
@@ -277,6 +460,29 @@ export const EventFields = z.strictObject({
   treatyIds: z.array(TreatyId).max(500),
   conflictIds: z.array(ConflictId).max(500),
   importance: z.number().int().min(0).max(100),
+  novelty: z
+    .enum([
+      'maintenance',
+      'progress',
+      'milestone',
+      'new-action',
+      'consequence',
+      'major-development',
+    ])
+    .optional(),
+  semanticSignature: z.string().trim().min(1).max(500).optional(),
+  provenance: z
+    .strictObject({
+      kind: z.enum([
+        'current-player-order',
+        'originating-decision',
+        'automatic-effect',
+        'independent-action',
+      ]),
+      originatingActionId: ActionId.nullable(),
+      triggeringActionId: ActionId.nullable(),
+    })
+    .optional(),
   topics: z.array(Name).max(20),
   visibility: z.enum(['public', 'private']),
   status: z.enum(['resolved', 'unresolved']),
@@ -314,7 +520,17 @@ export const Turn = z.strictObject({
   recordedAt: z.iso.datetime(),
   actionId: ActionId,
   commandIds: z.array(CommandId).min(1).max(100),
-  eventIds: z.array(EventId).min(1).max(100),
+  eventIds: z.array(EventId).max(100),
+  suppressedCommandIds: z.array(CommandId).max(100).optional(),
+  eventMetrics: z
+    .strictObject({
+      candidateCount: z.number().int().min(0),
+      surfacedCount: z.number().int().min(0),
+      duplicateSuppressed: z.number().int().min(0),
+      maintenanceSuppressed: z.number().int().min(0),
+      progressSuppressed: z.number().int().min(0),
+    })
+    .optional(),
 });
 export const ScenarioMetadata = z.strictObject({
   id: ScenarioId,
@@ -344,6 +560,15 @@ export const ScenarioMetadata = z.strictObject({
     )
     .max(500)
     .optional(),
+  regionAdjacency: z
+    .array(
+      z.strictObject({
+        regionId: RegionId,
+        neighbors: z.array(RegionId).max(500),
+      }),
+    )
+    .max(20000)
+    .default([]),
   strategicActors: z.array(NationId).max(20).optional(),
 });
 export type Nation = z.infer<typeof Nation>;
@@ -435,7 +660,7 @@ export const Commitment = CommitmentTerms.extend({
 });
 export type Commitment = z.infer<typeof Commitment>;
 export const PeaceTerm = z.strictObject({
-  kind: z.enum(['withdrawal', 'territorial-transfer']),
+  kind: z.enum(['withdrawal', 'territorial-transfer', 'recognize-claim']),
   regionId: RegionId,
   fromNationId: NationId,
   toNationId: NationId,
@@ -448,6 +673,7 @@ export const NegotiationResponse = z.strictObject({
   offeredTerms: Text.optional(),
   peaceTerms: z.array(PeaceTerm).max(8).optional(),
   obligations: z.array(CommitmentTerms).max(8).optional(),
+  influenceTerms: z.array(InfluenceTerm).max(32).optional(),
 });
 export const Negotiation = z.strictObject({
   id: NegotiationId,
@@ -456,6 +682,7 @@ export const Negotiation = z.strictObject({
   topic: Name,
   kind: z.enum([
     'consultation',
+    'influence',
     'defense',
     'trade',
     'nonaggression',
@@ -469,6 +696,8 @@ export const Negotiation = z.strictObject({
     .enum(['open', 'accepted', 'rejected', 'withdrawn', 'expired'])
     .default('open'),
   obligations: z.array(CommitmentTerms).max(8).default([]),
+  influenceTerms: z.array(InfluenceTerm).max(32).default([]),
+  conditionalPressure: InfluencePressure.nullable().default(null),
   initialTerms: Text.optional(),
   peaceTerms: z.array(PeaceTerm).max(8).default([]),
   createdDate: SimulationDate,
@@ -476,14 +705,184 @@ export const Negotiation = z.strictObject({
   responses: z.array(NegotiationResponse).max(100).default([]),
   treatyId: TreatyId.nullable().default(null),
 });
+export const OrganizationKind = z.enum([
+  // Legacy categories remain readable in version-3 saves.
+  'alliance',
+  'economic',
+  'institution',
+  'regional',
+  'economic-union',
+  'trade-bloc',
+  'military-alliance',
+  'defensive-pact',
+  'political-organization',
+  'regional-organization',
+  'customs-union',
+  'international-organization',
+]);
+export type OrganizationKind = z.infer<typeof OrganizationKind>;
+export const OrganizationInvitation = z.strictObject({
+  nationId: NationId,
+  invitedDate: SimulationDate,
+  updatedDate: SimulationDate,
+  status: z.enum(['pending', 'accepted', 'rejected', 'withdrawn']),
+  lastMove: z.enum(['accept', 'reject', 'delay', 'counter']).nullable(),
+  message: Text.nullable(),
+  counterTerms: Text.nullable(),
+});
+export const OrganizationApplication = z.strictObject({
+  nationId: NationId,
+  appliedDate: SimulationDate,
+  updatedDate: SimulationDate,
+  status: z.enum(['pending', 'accepted', 'rejected', 'withdrawn']),
+  terms: Text,
+});
+export const OrganizationCommitment = z.strictObject({
+  id: OrganizationCommitmentId,
+  issuer: NationId,
+  kind: z.enum([
+    'economic-support',
+    'financial-aid',
+    'trade-cooperation',
+    'security-cooperation',
+    'sanctions-coordination',
+    'other',
+  ]),
+  terms: Text,
+  appliesTo: z.enum(['all-members', 'new-members', 'specific-members']),
+  recipientNationIds: z.array(NationId).max(500).default([]),
+  costPerMember: z.number().int().min(0).max(1_000_000).default(0),
+  frequencyDays: z.number().int().min(1).max(365).default(30),
+  status: z.enum(['active', 'breached', 'withdrawn']).default('active'),
+  createdDate: SimulationDate,
+  lastPaymentDate: SimulationDate.nullable().default(null),
+  nextPaymentDate: SimulationDate.nullable().default(null),
+  lastPaymentAmount: z.number().int().min(0).max(1_000_000_000).default(0),
+  totalPaid: z.number().int().min(0).max(1_000_000_000).default(0),
+  paymentsMade: z.number().int().min(0).max(100_000).default(0),
+  reportedPaymentMilestones: z
+    .array(z.number().int().positive())
+    .max(100)
+    .default([]),
+  originatingActionId: ActionId.nullable().default(null),
+});
+export const OrganizationDimension = z.enum([
+  'economic-integration',
+  'regional-infrastructure',
+  'customs-cooperation',
+  'common-standards',
+  'political-coordination',
+  'joint-diplomacy',
+  'development-funding',
+  'sanctions-coordination',
+]);
+export const OrganizationDevelopment = z.strictObject({
+  dimension: OrganizationDimension,
+  level: z.number().int().min(0).max(5).default(0),
+  progress: z.number().int().min(0).max(99).default(0),
+  updatedDate: SimulationDate,
+});
+export const OrganizationProgramResponse = z.strictObject({
+  nationId: NationId,
+  move: z.enum(['pending', 'accept', 'reject', 'counter', 'delay']),
+  decidedDate: SimulationDate.nullable().default(null),
+  message: Text.nullable().default(null),
+  counterTerms: Text.nullable().default(null),
+});
+export const OrganizationProgram = z.strictObject({
+  id: OrganizationProgramId,
+  dimension: OrganizationDimension,
+  title: Name,
+  terms: Text,
+  issuerNationId: NationId,
+  participantNationIds: z.array(NationId).max(500).default([]),
+  responses: z.array(OrganizationProgramResponse).max(500).default([]),
+  status: z
+    .enum([
+      'proposed',
+      'active',
+      'rejected',
+      'suspended',
+      'completed',
+      'cancelled',
+    ])
+    .default('proposed'),
+  stage: z
+    .enum(['consultation', 'planning', 'construction', 'operational'])
+    .default('consultation'),
+  progress: z.number().int().min(0).max(100).default(0),
+  monthlyCost: z.number().int().min(0).max(1_000_000).default(0),
+  totalInvested: z.number().int().min(0).max(1_000_000_000).default(0),
+  paymentCount: z.number().int().min(0).max(100_000).default(0),
+  lastPaymentDate: SimulationDate.nullable().default(null),
+  createdDate: SimulationDate,
+  updatedDate: SimulationDate,
+  completedDate: SimulationDate.nullable().default(null),
+  reportedMilestones: z.array(z.number().int().positive()).max(10).default([]),
+  originatingActionId: ActionId.nullable().default(null),
+});
+export const OrganizationHistoryEntry = z.strictObject({
+  id: z.string().trim().min(1).max(160),
+  date: SimulationDate,
+  actorNationId: NationId.nullable(),
+  kind: z.enum([
+    'founded',
+    'invited',
+    'invitation-response',
+    'application',
+    'member-joined',
+    'member-left',
+    'member-removed',
+    'commitment-added',
+    'commitment-payment-started',
+    'commitment-paid',
+    'commitment-payment-milestone',
+    'commitment-breached',
+    'integration-progress',
+    'program-proposed',
+    'program-response',
+    'development-milestone',
+    'program-approved',
+    'program-rejected',
+    'program-milestone',
+    'program-suspended',
+    'program-resumed',
+    'amended',
+    'dissolved',
+  ]),
+  description: Text,
+  originatingActionId: ActionId.nullable().optional(),
+  organizationCommitmentId: OrganizationCommitmentId.optional(),
+  organizationProgramId: OrganizationProgramId.optional(),
+  paymentMilestone: z.number().int().positive().optional(),
+  programMilestone: z.number().int().positive().max(100).optional(),
+  developmentDimension: OrganizationDimension.optional(),
+  developmentLevel: z.number().int().positive().max(5).optional(),
+});
 export const Organization = z.strictObject({
   id: OrganizationId,
   name: Name,
-  kind: z.enum(['alliance', 'economic', 'institution', 'regional']),
-  members: z.array(NationId).min(1).max(500),
+  acronym: Name.nullable().default(null),
+  kind: OrganizationKind,
+  foundingDate: SimulationDate.nullable().default(null),
+  founders: z.array(NationId).max(500).default([]),
+  members: z.array(NationId).max(500),
+  invitedStates: z.array(NationId).max(500).default([]),
+  invitations: z.array(OrganizationInvitation).max(500).default([]),
+  pendingApplications: z.array(OrganizationApplication).max(500).default([]),
+  purpose: Text.default('No stated purpose.'),
   charter: Text,
-  visibility: z.enum(['public', 'private']).optional(),
+  commitments: z.array(OrganizationCommitment).max(100).default([]),
+  development: z.array(OrganizationDevelopment).max(8).default([]),
+  programs: z.array(OrganizationProgram).max(500).default([]),
+  geographicScope: z.string().trim().max(160).nullable().default(null),
+  history: z.array(OrganizationHistoryEntry).max(200).default([]),
+  status: z.enum(['active', 'dissolved']).default('active'),
+  dissolvedDate: SimulationDate.nullable().default(null),
+  visibility: z.enum(['public', 'private']).default('public'),
 });
 export type Initiative = z.infer<typeof Initiative>;
 export type Negotiation = z.infer<typeof Negotiation>;
 export type Organization = z.infer<typeof Organization>;
+export type OrganizationProgram = z.infer<typeof OrganizationProgram>;
+export type OrganizationDimension = z.infer<typeof OrganizationDimension>;

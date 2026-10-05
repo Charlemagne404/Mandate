@@ -193,6 +193,9 @@ importers:
 
   packages/map:
     dependencies:
+      '@mandate/core':
+        specifier: workspace:*
+        version: link:../core
       '@mandate/schemas':
         specifier: workspace:*
         version: link:../schemas

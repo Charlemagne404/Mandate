@@ -17,6 +17,6 @@
     "toleranceDegrees": 0.008
   },
   "geographySha256": "f2b1b7cd3fd82fb71b9b47450e5e4ac201f7277e20191b66e5f9dddd8941cae1",
-  "scenarioSha256": "ed731a5b3b8bd4432f02509181f16cb3b58e977a58ec731e4082eee570efc5b6",
+  "scenarioSha256": "111311958410886cb4c6518bb752c0ad39189b54762a5c11612e118cf490b82e",
   "scope": "Natural Earth first-order administrative subdivisions. This adds regional resolution only; governments and all political starting values are synthetic. Country-scale fallback regions remain for polities without source subdivisions. Special administered areas are assigned to existing actors, and the separately coded Spratly Islands feature is omitted because it does not map to one unambiguous scenario polity."
 }

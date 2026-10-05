@@ -40,8 +40,16 @@ export const commandTypes: WorldCommand['type'][] = [
   'CANCEL_INITIATIVE',
   'OPEN_NEGOTIATION',
   'RESPOND_NEGOTIATION',
+  'ISSUE_PATRON_DIRECTIVE',
   'CREATE_ORGANIZATION',
   'SET_ORGANIZATION_MEMBERSHIP',
+  'INVITE_TO_ORGANIZATION',
+  'RESPOND_ORGANIZATION_INVITATION',
+  'UPDATE_ORGANIZATION',
+  'ADD_ORGANIZATION_COMMITMENT',
+  'START_ORGANIZATION_PROGRAM',
+  'REMOVE_ORGANIZATION_MEMBER',
+  'DISSOLVE_ORGANIZATION',
   'CONFLICT_ACTION',
   'APPLY_DOMESTIC_PRESSURE',
 ];
@@ -293,9 +301,22 @@ export function template(
         organization: {
           id: `organization:${id}`,
           name: 'Development council',
+          acronym: 'DC',
           kind: 'regional',
-          members: [selected, target],
+          foundingDate: w.date,
+          founders: [selected],
+          members: [selected],
+          invitedStates: [],
+          invitations: [],
+          pendingApplications: [],
+          purpose: 'Coordinate regional consultation.',
           charter: 'Voluntary consultation on shared regional interests.',
+          commitments: [],
+          geographicScope: null,
+          history: [],
+          status: 'active',
+          dissolvedDate: null,
+          visibility: 'public',
         },
       };
     case 'SET_ORGANIZATION_MEMBERSHIP':
@@ -305,6 +326,109 @@ export function template(
           w.organizations[0]?.id ?? 'organization:select-existing',
         nationId: target,
         member: true,
+      };
+    case 'INVITE_TO_ORGANIZATION':
+      return {
+        type,
+        organizationId:
+          w.organizations[0]?.id ?? 'organization:select-existing',
+        inviterNationId: selected,
+        nationId: target,
+      };
+    case 'RESPOND_ORGANIZATION_INVITATION':
+      return {
+        type,
+        organizationId:
+          w.organizations[0]?.id ?? 'organization:select-existing',
+        nationId: selected,
+        move: 'accept',
+        message: 'The government accepts the invitation.',
+      };
+    case 'UPDATE_ORGANIZATION':
+      return {
+        type,
+        organizationId:
+          w.organizations[0]?.id ?? 'organization:select-existing',
+        issuerNationId: selected,
+        purpose: 'Coordinate a shared policy.',
+      };
+    case 'ADD_ORGANIZATION_COMMITMENT':
+      return {
+        type,
+        organizationId:
+          w.organizations[0]?.id ?? 'organization:select-existing',
+        commitment: {
+          id: `orgcommitment:${id}`,
+          issuer: selected,
+          kind: 'economic-support',
+          terms: 'Offer bounded financial support to participating members.',
+          appliesTo: 'all-members',
+          recipientNationIds: [target],
+          costPerMember: 1,
+          frequencyDays: 30,
+          status: 'active',
+          createdDate: w.date,
+          lastPaymentDate: null,
+        },
+      };
+    case 'START_ORGANIZATION_PROGRAM': {
+      const organization = w.organizations.find((entry) =>
+        entry.members.includes(selected),
+      );
+      const issuerNationId = organization
+        ? selected
+        : (w.organizations.find((entry) => entry.members.length > 0)
+            ?.members[0] ?? selected);
+      const participants =
+        w.organizations
+          .find((entry) => entry.id === organization?.id)
+          ?.members.filter((member) => member !== issuerNationId) ?? [];
+      return {
+        type,
+        organizationId: organization?.id ?? 'organization:select-existing',
+        program: {
+          id: `orgprogram:${id}`,
+          dimension: 'economic-integration',
+          title: 'Regional trade facilitation',
+          terms: 'Study practical steps for reducing cross-border trade costs.',
+          issuerNationId,
+          participantNationIds: participants,
+          responses: participants.map((nationId) => ({
+            nationId,
+            move: 'pending',
+            decidedDate: null,
+            message: null,
+            counterTerms: null,
+          })),
+          status: 'proposed',
+          stage: 'consultation',
+          progress: 0,
+          monthlyCost: 0,
+          totalInvested: 0,
+          paymentCount: 0,
+          lastPaymentDate: null,
+          createdDate: w.date,
+          updatedDate: w.date,
+          completedDate: null,
+          reportedMilestones: [],
+          originatingActionId: null,
+        },
+      };
+    }
+    case 'REMOVE_ORGANIZATION_MEMBER':
+      return {
+        type,
+        organizationId:
+          w.organizations[0]?.id ?? 'organization:select-existing',
+        issuerNationId: selected,
+        nationId: target,
+      };
+    case 'DISSOLVE_ORGANIZATION':
+      return {
+        type,
+        organizationId:
+          w.organizations[0]?.id ?? 'organization:select-existing',
+        issuerNationId: selected,
       };
     case 'CONFLICT_ACTION': {
       const c = w.conflicts.find(
@@ -467,6 +591,57 @@ export function template(
           status: 'resolved',
         },
       };
+    case 'ISSUE_PATRON_DIRECTIVE': {
+      const treaty = w.treaties.find(
+        (entry) =>
+          entry.status === 'active' &&
+          entry.kind === 'influence' &&
+          entry.parties.includes(w.playerNationId),
+      );
+      const subjectNationId = treaty?.parties.find(
+        (id) => id !== w.playerNationId,
+      );
+      if (!treaty || !subjectNationId)
+        throw new Error(
+          'No active influence treaty is available for a directive.',
+        );
+      return {
+        type,
+        treatyId: treaty.id,
+        patronNationId: w.playerNationId,
+        subjectNationId,
+        directiveId: `directive:debug-${id}`,
+        kind: 'coordinate-foreign-policy',
+      };
+    }
+    case 'ENFORCE_TREATY_BREACH': {
+      const treaty = w.treaties.find(
+        (entry) =>
+          entry.status === 'active' &&
+          entry.kind === 'influence' &&
+          entry.parties.includes(w.playerNationId),
+      );
+      const subjectNationId = treaty?.parties.find(
+        (id) => id !== w.playerNationId,
+      );
+      const breach = treaty?.breaches.find(
+        (entry) =>
+          entry.status !== 'resolved' &&
+          entry.injuredNationId === w.playerNationId &&
+          entry.violatingNationId === subjectNationId,
+      );
+      if (!treaty || !subjectNationId || !breach)
+        throw new Error('No enforceable subject treaty breach is available.');
+      return {
+        type,
+        treatyId: treaty.id,
+        breachId: breach.id,
+        patronNationId: w.playerNationId,
+        subjectNationId,
+        enforcementId: `enforcement:debug-${id}`,
+        action: 'diplomatic-demand',
+      };
+    }
     case 'SET_OBSERVER_MODE':
       return { type, enabled: !w.observerMode };
     case 'SWITCH_NATION':

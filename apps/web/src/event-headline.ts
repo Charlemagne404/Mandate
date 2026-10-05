@@ -3,6 +3,12 @@ import type { WorldState } from '@mandate/schemas';
 type WorldEvent = WorldState['events'][number];
 
 export function eventHeadline(world: WorldState, event: WorldEvent): string {
+  if (
+    event.type.startsWith('WAR_') ||
+    event.type === 'TERRITORY_CEDED' ||
+    event.type === 'OCCUPIED_TERRITORY_RETURNED'
+  )
+    return event.title;
   const record = world.commands.find((command) =>
     event.sourceCommandIds.includes(command.id),
   );
@@ -65,6 +71,15 @@ export function eventHeadline(world: WorldState, event: WorldEvent): string {
               : negotiation.proposerNationId,
           )
         : 'the proposal';
+      if (command.move === 'accept' && negotiation?.kind === 'peace') {
+        const conflict = world.conflicts.find(
+          (item) => item.id === negotiation.conflictId,
+        );
+        const terms = negotiation.peaceTerms.length
+          ? ` under ${negotiation.peaceTerms.length} territorial or claim term${negotiation.peaceTerms.length === 1 ? '' : 's'}`
+          : ' along the current control lines';
+        return `${nation(command.nationId)} and ${other} conclude peace${conflict ? ` in ${conflict.name}` : ''}${terms}`;
+      }
       const response =
         command.move === 'accept'
           ? 'accepts'
@@ -105,6 +120,32 @@ export function eventHeadline(world: WorldState, event: WorldEvent): string {
       return `${nation(command.goal.nationId)} sets a goal: ${command.goal.title}`;
     case 'SET_ORGANIZATION_MEMBERSHIP':
       return `${nation(command.nationId)} ${command.member ? 'joins' : 'leaves'} ${world.organizations.find((item) => item.id === command.organizationId)?.name ?? 'an organization'}`;
+    case 'CREATE_ORGANIZATION':
+      return `${nation(command.organization.founders[0] ?? world.playerNationId)} establishes ${command.organization.name}`;
+    case 'INVITE_TO_ORGANIZATION':
+      return `${nation(command.nationId)} receives an invitation to ${world.organizations.find((item) => item.id === command.organizationId)?.acronym ?? world.organizations.find((item) => item.id === command.organizationId)?.name ?? 'an organization'}`;
+    case 'RESPOND_ORGANIZATION_INVITATION': {
+      const organization = world.organizations.find(
+        (item) => item.id === command.organizationId,
+      );
+      const action =
+        command.move === 'accept'
+          ? 'accepts'
+          : command.move === 'reject'
+            ? 'declines'
+            : command.move === 'counter'
+              ? 'seeks changes to'
+              : 'delays a decision on';
+      return `${nation(command.nationId)} ${action} ${organization?.acronym ?? organization?.name ?? 'an organization'} invitation`;
+    }
+    case 'UPDATE_ORGANIZATION':
+      return `${nation(command.issuerNationId)} updates ${world.organizations.find((item) => item.id === command.organizationId)?.name ?? 'an organization'} terms`;
+    case 'ADD_ORGANIZATION_COMMITMENT':
+      return `${nation(command.commitment.issuer)} offers support to ${world.organizations.find((item) => item.id === command.organizationId)?.name ?? 'an organization'} members`;
+    case 'REMOVE_ORGANIZATION_MEMBER':
+      return `${nation(command.issuerNationId)} removes ${nation(command.nationId)} from ${world.organizations.find((item) => item.id === command.organizationId)?.name ?? 'an organization'}`;
+    case 'DISSOLVE_ORGANIZATION':
+      return `${nation(command.issuerNationId)} dissolves ${world.organizations.find((item) => item.id === command.organizationId)?.name ?? 'an organization'}`;
     default:
       return event.title;
   }

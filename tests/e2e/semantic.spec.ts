@@ -88,10 +88,18 @@ test('an invasion headline names the opposing government instead of listing ever
 test('conditional invasion remains deferred in the result and canonical save', async ({
   page,
 }) => {
+  const before = await (await page.request.get('/api/world')).json();
   await page
     .getByLabel('Sweden action composer', { exact: true })
     .fill('Demand Finland surrender. If they refuse, invade.');
   await page.getByRole('button', { name: 'Issue order', exact: true }).click();
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get('/api/world')).json()).world.revision,
+      { timeout: 15_000 },
+    )
+    .toBe(before.world.revision + 1);
   await expect(page.locator('time')).toHaveText('2028-01-31');
   const report = await (await page.request.get('/api/turn-report')).json();
   expect(

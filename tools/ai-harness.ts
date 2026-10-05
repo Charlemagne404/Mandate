@@ -17,7 +17,14 @@ export interface AutoplayMetrics {
   events: number;
   autonomousEvents: number;
   warsStarted: number;
+  warsEnded: number;
   treatiesCreated: number;
+  peaceAgreements: number;
+  organizationsCreated: number;
+  crisesStarted: number;
+  crisesResolved: number;
+  sanctionsCreated: number;
+  actionFamilyDistribution: Record<string, number>;
   diplomaticActions: number;
   territorialChanges: number;
   governmentChanges: number;
@@ -31,6 +38,8 @@ export interface AutoplayMetrics {
   totalModelLatencyMs: number;
   wallTimeMs: number;
   averageTurnMs: number;
+  maxTurnMs: number;
+  turnLatenciesMs: number[];
   activatedActors: number;
   maxPlanningGap: number;
   unresolvedNegotiations: number;
@@ -70,7 +79,14 @@ export async function runAutoplay(options: {
     events: 0,
     autonomousEvents: 0,
     warsStarted: 0,
+    warsEnded: 0,
     treatiesCreated: 0,
+    peaceAgreements: 0,
+    organizationsCreated: 0,
+    crisesStarted: 0,
+    crisesResolved: 0,
+    sanctionsCreated: 0,
+    actionFamilyDistribution: {},
     diplomaticActions: 0,
     territorialChanges: 0,
     governmentChanges: 0,
@@ -84,6 +100,8 @@ export async function runAutoplay(options: {
     totalModelLatencyMs: 0,
     wallTimeMs: 0,
     averageTurnMs: 0,
+    maxTurnMs: 0,
+    turnLatenciesMs: [],
     activatedActors: 0,
     maxPlanningGap: 0,
     unresolvedNegotiations: 0,
@@ -93,6 +111,7 @@ export async function runAutoplay(options: {
   };
   for (let turn = 0; turn < options.turns; turn++) {
     const before = world;
+    const turnStarted = performance.now();
     const prepared = await orchestrator.prepare({
       world,
       expectedHash: options.hash(world),
@@ -138,11 +157,27 @@ export async function runAutoplay(options: {
       ...prepared.trace.modelCalls.map((r) => r.contextCharacters),
     );
     metrics.events += world.events.length - before.events.length;
+    const actionsById = new Map(
+      world.actions.map((action) => [action.id, action]),
+    );
+    const commandsById = new Map(
+      world.commands.map((command) => [command.id, command]),
+    );
     metrics.autonomousEvents += world.events
       .slice(before.events.length)
-      .filter((e) => !e.nationIds.includes(world.playerNationId)).length;
+      .filter((event) =>
+        event.sourceCommandIds.some((id) => {
+          const command = commandsById.get(id);
+          return (
+            command && actionsById.get(command.actionId)?.source === 'system'
+          );
+        }),
+      ).length;
+    const beforeRegionsById = new Map(
+      before.regions.map((region) => [region.id, region]),
+    );
     metrics.territorialChanges += world.regions.filter((r) => {
-      const old = before.regions.find((v) => v.id === r.id)!;
+      const old = beforeRegionsById.get(r.id)!;
       return (
         old.controllerNationId !== r.controllerNationId ||
         old.ownerNationId !== r.ownerNationId
@@ -155,12 +190,68 @@ export async function runAutoplay(options: {
     metrics.diplomaticActions += prepared.request.commands.filter((c) =>
       ['OPEN_NEGOTIATION', 'RESPOND_NEGOTIATION'].includes(c.command.type),
     ).length;
+    const turnMs = performance.now() - turnStarted;
+    metrics.turnLatenciesMs.push(Math.round(turnMs));
+    metrics.maxTurnMs = Math.max(metrics.maxTurnMs, turnMs);
     options.onProgress?.(turn + 1);
   }
   for (const last of planned.values())
     maxGap = Math.max(maxGap, options.turns - last - 1);
   metrics.warsStarted = world.conflicts.length - initial.conflicts.length;
+  metrics.warsEnded = world.conflicts.filter((conflict) => {
+    const old = initial.conflicts.find((entry) => entry.id === conflict.id);
+    return conflict.status === 'ended' && (!old || old.status === 'active');
+  }).length;
   metrics.treatiesCreated = world.treaties.length - initial.treaties.length;
+  metrics.peaceAgreements = world.treaties.filter(
+    (treaty) =>
+      treaty.kind === 'peace' &&
+      !initial.treaties.some((old) => old.id === treaty.id),
+  ).length;
+  metrics.organizationsCreated = world.organizations.filter(
+    (organization) =>
+      !initial.organizations.some((old) => old.id === organization.id),
+  ).length;
+  metrics.crisesStarted = world.crises.filter(
+    (crisis) => !initial.crises.some((old) => old.id === crisis.id),
+  ).length;
+  metrics.crisesResolved = world.crises.filter(
+    (crisis) =>
+      crisis.status === 'resolved' &&
+      initial.crises.find((old) => old.id === crisis.id)?.status !== 'resolved',
+  ).length;
+  metrics.sanctionsCreated = world.sanctions.filter(
+    (sanction) => !initial.sanctions.some((old) => old.id === sanction.id),
+  ).length;
+  const systemActions = new Set(
+    world.actions
+      .slice(initial.actions.length)
+      .filter((action) => action.source === 'system')
+      .map((action) => action.id),
+  );
+  const familyFor = (type: string) =>
+    type.includes('INITIATIVE')
+      ? 'project'
+      : /CONFLICT|THEATER|MOBILIZE|STRATEGIC_ATTACK/.test(type)
+        ? 'war'
+        : /NEGOTIATION|TREATY|RELATION/.test(type)
+          ? 'diplomacy'
+          : /ORGANIZATION|CONFERENCE/.test(type)
+            ? 'organization'
+            : /CRISIS/.test(type)
+              ? 'crisis'
+              : /SANCTION/.test(type)
+                ? 'sanctions'
+                : /ECONOMIC_LINK|TRANSFER|CLAIM/.test(type)
+                  ? 'economy'
+                  : 'domestic';
+  for (const record of world.commands.slice(initial.commands.length)) {
+    if (!systemActions.has(record.actionId)) continue;
+    if (record.command.type === 'ADVANCE_DATE') continue;
+    const family = familyFor(record.command.type);
+    metrics.actionFamilyDistribution[family] =
+      (metrics.actionFamilyDistribution[family] ?? 0) + 1;
+  }
   metrics.initiativesStarted =
     world.initiatives.length - initial.initiatives.length;
   metrics.goalsPreserved = initial.goals.filter((g) =>

@@ -1,11 +1,12 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 import { geographyValidatorByVersion, loadScenario } from '@mandate/scenarios';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const regionSets = Object.fromEntries(
-  [
+const regionSets = Object.fromEntries([
+  ...[
     ['natural-earth-110m-v1', 'world.geojson'],
     ['natural-earth-50m-v1', 'world-global.geojson'],
   ].map(([version, name]) => {
@@ -14,7 +15,21 @@ const regionSets = Object.fromEntries(
     ) as { features: { id: string }[] };
     return [version, new Set(geography.features.map((f) => f.id))];
   }),
-);
+  [
+    'natural-earth-admin1-v1',
+    new Set(
+      (
+        JSON.parse(
+          gunzipSync(
+            readFileSync(
+              resolve(root, 'data/geography/world-admin1.geojson.gz'),
+            ),
+          ).toString('utf8'),
+        ) as { features: { id: string }[] }
+      ).features.map((feature) => feature.id),
+    ),
+  ],
+]);
 const validate = geographyValidatorByVersion(regionSets);
 for (const name of readdirSync(resolve(root, 'data/scenarios'))
   .filter((name) => name.endsWith('.json'))

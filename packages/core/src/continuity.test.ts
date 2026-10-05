@@ -3,6 +3,7 @@ import {
   Crisis,
   Conference,
   EconomicLink,
+  Organization,
   Sanction,
   GovernmentTenure,
   Goal,
@@ -565,6 +566,47 @@ describe('semantic alternate history and scoped briefing', () => {
       'Unknown secret',
     );
   });
+  it('compares dynamic organization membership and terms across branches', () => {
+    const a = fixture();
+    const b = structuredClone(a);
+    b.organizations.push(
+      Organization.parse({
+        id: 'organization:nordic-economic-cooperation',
+        name: 'Nordic Economic Cooperation',
+        acronym: 'NEC',
+        kind: 'economic-union',
+        foundingDate: b.date,
+        founders: [swe],
+        members: [swe, fin],
+        invitedStates: [rus],
+        invitations: [
+          {
+            nationId: rus,
+            invitedDate: b.date,
+            updatedDate: b.date,
+            status: 'pending',
+            lastMove: null,
+            message: null,
+            counterTerms: null,
+          },
+        ],
+        purpose: 'Gradual economic integration.',
+        charter: 'Voluntary economic cooperation.',
+      }),
+    );
+    expect(compareWorlds(a, b, swe)).toContainEqual(
+      expect.objectContaining({
+        category: 'organizations',
+        id: 'organization:nordic-economic-cooperation',
+        name: 'NEC · Nordic Economic Cooperation',
+        before: null,
+        after: expect.objectContaining({
+          members: [swe, fin],
+          purpose: 'Gradual economic integration.',
+        }),
+      }),
+    );
+  });
 });
 
 describe('continuity import and advisor boundaries', () => {
@@ -595,9 +637,11 @@ describe('continuity import and advisor boundaries', () => {
       expiresDate: '2026-01-01',
       status: 'rejected',
       obligations: [],
+      influenceTerms: [],
       peaceTerms: [],
       conflictId: null,
       treatyId: null,
+      conditionalPressure: null,
       responses: [
         {
           nationId: rus,

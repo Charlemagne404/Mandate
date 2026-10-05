@@ -186,6 +186,72 @@ describe('turn trust boundary', () => {
           entry.command.posture === 'major-offensive',
       ),
     ).toBe(true);
+    const norway = world.nations.find((nation) => nation.name === 'Norway')!;
+    const invasion = result.request.commands.find(
+      (entry) =>
+        entry.command.type === 'START_CONFLICT' &&
+        entry.command.conflict.defenders.includes(norway.id),
+    );
+    const theater = result.request.commands.find(
+      (entry) =>
+        entry.command.type === 'THEATER_ACTION' &&
+        entry.command.posture === 'major-offensive',
+    );
+    const borderRegions = new Set(
+      world.scenario.regionAdjacency
+        .filter(
+          (entry) =>
+            world.regions.find((region) => region.id === entry.regionId)
+              ?.ownerNationId === norway.id &&
+            entry.neighbors.some((neighborId) =>
+              world.regions.some(
+                (region) =>
+                  region.id === neighborId &&
+                  region.controllerNationId === world.playerNationId,
+              ),
+            ),
+        )
+        .map((entry) => entry.regionId),
+    );
+    expect(
+      result.request.commands.some(
+        (entry) => entry.command.type === 'ADD_CLAIM',
+      ),
+    ).toBe(false);
+    expect(
+      result.request.commands.some(
+        (entry) =>
+          entry.command.type === 'CREATE_STRATEGIC_GOAL' &&
+          /^Annex /i.test(entry.command.goal.title),
+      ),
+    ).toBe(false);
+    expect(invasion?.command.type).toBe('START_CONFLICT');
+    expect(theater?.command.type).toBe('THEATER_ACTION');
+    if (theater?.command.type === 'THEATER_ACTION')
+      expect(
+        theater.command.regionIds.every((id) => borderRegions.has(id)),
+      ).toBe(true);
+    const warCrisis = result.request.commands.find(
+      (entry) =>
+        entry.command.type === 'OPEN_CRISIS' &&
+        entry.command.crisis.conflictId ===
+          (invasion?.command.type === 'START_CONFLICT'
+            ? invasion.command.conflict.id
+            : null),
+    );
+    expect(warCrisis?.command.type).toBe('OPEN_CRISIS');
+    if (warCrisis?.command.type === 'OPEN_CRISIS')
+      expect(warCrisis.command.crisis.demands).toEqual([
+        expect.objectContaining({
+          condition: {
+            kind: 'conflict-ended',
+            conflictId:
+              invasion?.command.type === 'START_CONFLICT'
+                ? invasion.command.conflict.id
+                : '',
+          },
+        }),
+      ]);
     expect(
       Math.max(
         ...result.trace.modelCalls.map((call) => call.contextCharacters),
@@ -224,6 +290,62 @@ describe('turn trust boundary', () => {
         ...result.trace.modelCalls.map((call) => call.contextCharacters),
       ),
     ).toBeLessThanOrEqual(48000);
+  });
+  it('keeps the exact CAEU order within the regional resolver budget and grounds every invitee', async () => {
+    const world = loadScenario(
+      new URL('../../data/scenarios/global-regional.json', import.meta.url)
+        .pathname,
+    );
+    const nicaragua = world.nations.find(
+      (nation) => nation.name === 'Nicaragua',
+    )!;
+    world.playerNationId = nicaragua.id;
+    const text =
+      'Nicaragua forms the CAEU (Central american economic union) and invites all countries in central america. The economic union focuses on increased economic integration between the central american countries. Nicaragua is prepared to subsidize and support any country that joins economically.';
+    const result = await createOrchestrator(new FakeProvider()).prepare({
+      world,
+      expectedHash: hash(world),
+      action: {
+        actorNationId: nicaragua.id,
+        source: 'player',
+        text,
+      },
+      runId: 'regional-nicaragua-caeu-budget',
+    });
+    const commands = result.request.commands.map((entry) => entry.command);
+    const graph = result.trace.intent?.actionGraph;
+    expect(result.trace.status).toBe('prepared');
+    expect(
+      Math.max(
+        ...result.trace.modelCalls.map((call) => call.contextCharacters),
+      ),
+    ).toBeLessThanOrEqual(48000);
+    expect(graph).toBeDefined();
+    expect(
+      graph!.actions.flatMap((action) => [
+        ...action.targets,
+        ...action.sources,
+        ...action.participants,
+        ...action.beneficiaries,
+      ]),
+    ).not.toContain('nation:usa');
+    expect(
+      commands.some((command) => command.type === 'CREATE_ORGANIZATION'),
+    ).toBe(true);
+    expect(
+      commands.filter((command) => command.type === 'INVITE_TO_ORGANIZATION'),
+    ).toHaveLength(6);
+    expect(
+      commands.some(
+        (command) => command.type === 'ADD_ORGANIZATION_COMMITMENT',
+      ),
+    ).toBe(true);
+    expect(result.trace.playerExecution?.semanticAudit).toHaveLength(4);
+    expect(
+      result.trace.playerExecution?.semanticAudit?.every(
+        (entry) => entry.status === 'EXECUTED',
+      ),
+    ).toBe(true);
   });
   it('autonomy stops capped industry projects when fiscal potential limits the economy', async () => {
     const world = fixture();
@@ -651,6 +773,11 @@ describe('perspective, diplomacy and historical continuity', () => {
       status: 'active',
       visibility: 'private',
       conflictId: null,
+      influenceTerms: [],
+      breaches: [],
+      enforcements: [],
+      directives: [],
+      ratificationGovernments: [],
     });
     world.goals[0]!.visibility = 'private';
     const outsider = buildContext(world, NationId.parse('nation:rus'), [

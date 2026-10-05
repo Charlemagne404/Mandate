@@ -139,6 +139,14 @@ export function continuityProblems(w: WorldState): string[] {
       check(
         [...f.attackers, ...f.defenders].includes(t.nationId) &&
           unique(t.regionIds) &&
+          t.recentOutcomes.every(
+            (outcome, index) =>
+              outcome.date >= w.scenario.startDate &&
+              outcome.date <= w.date &&
+              (!index || outcome.date >= t.recentOutcomes[index - 1]!.date) &&
+              (!outcome.regionId ||
+                w.regions.some((r) => r.id === outcome.regionId)),
+          ) &&
           t.regionIds.every((id) =>
             w.regions.some(
               (r) =>
@@ -433,6 +441,19 @@ export function continuityProblems(w: WorldState): string[] {
               l.partnerNationId === e.partnerNationId,
           ),
         'Invalid dependence goal',
+      );
+    if (e.kind === 'influence')
+      check(
+        e.subjectNationIds.every(
+          (subjectNationId) =>
+            subjectNationId !== g.nationId &&
+            w.nations.some((nation) => nation.id === subjectNationId),
+        ) &&
+          new Set(e.subjectNationIds).size === e.subjectNationIds.length &&
+          e.subjectNationIds.every((subjectNationId) =>
+            g.targetNationIds.includes(subjectNationId),
+          ),
+        'Invalid influence strategy goal',
       );
     if (g.deferredToGoalId)
       check(

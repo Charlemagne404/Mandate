@@ -147,6 +147,43 @@ describe('bilateral negotiated conflict settlement', () => {
       ]),
     ).toThrow('active conflict');
   });
+  it('accepts a withdrawal term after the offering government already returned control', () => {
+    const before = fixture();
+    const regionId = 'region:ne-fin';
+    let w = run(before, [
+      conflict,
+      {
+        type: 'TRANSFER_CONTROL',
+        regionId,
+        nationId: 'nation:rus',
+      },
+      offer(before, 'peace', {
+        peaceTerms: [
+          {
+            kind: 'withdrawal',
+            regionId,
+            fromNationId: 'nation:rus',
+            toNationId: 'nation:fin',
+          },
+        ],
+      }),
+    ]);
+    w = run(w, [
+      {
+        type: 'TRANSFER_CONTROL',
+        regionId,
+        nationId: 'nation:fin',
+      },
+      accept('peace'),
+    ]);
+
+    expect(w.conflicts[0]!.status).toBe('ended');
+    expect(w.regions.find((region) => region.id === regionId)).toMatchObject({
+      ownerNationId: 'nation:fin',
+      controllerNationId: 'nation:fin',
+    });
+    expect(w.treaties.find((treaty) => treaty.kind === 'peace')).toBeDefined();
+  });
   it('rejects direct settlement creation and edits that bypass agreed mechanics', () => {
     const before = fixture();
     expect(() =>

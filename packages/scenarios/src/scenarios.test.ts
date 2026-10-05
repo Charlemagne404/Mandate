@@ -5,6 +5,7 @@ import {
   geographyValidator,
   geographyValidatorByVersion,
   loadScenario,
+  resolveOrganizationGeographicSet,
 } from './index.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
@@ -81,6 +82,99 @@ describe('global gameplay scenario', () => {
     world.scenario.geographyVersion = 'constructor';
     expect(() => validate(world)).toThrow('Unsupported geography');
   });
+});
+
+it.each([
+  {
+    expression: 'all countries in Central America',
+    actor: 'Nicaragua',
+    expected: [
+      'Belize',
+      'Costa Rica',
+      'El Salvador',
+      'Guatemala',
+      'Honduras',
+      'Panama',
+    ],
+  },
+  {
+    expression: 'the Nordic countries',
+    actor: 'Sweden',
+    expected: ['Denmark', 'Finland', 'Iceland', 'Norway'],
+  },
+  {
+    expression: 'the Baltics',
+    actor: 'Estonia',
+    expected: ['Latvia', 'Lithuania'],
+  },
+  {
+    expression: 'South America',
+    actor: 'Brazil',
+    expected: [
+      'Argentina',
+      'Bolivia',
+      'Chile',
+      'Colombia',
+      'Ecuador',
+      'Guyana',
+      'Paraguay',
+      'Peru',
+      'Suriname',
+      'Uruguay',
+      'Venezuela',
+    ],
+  },
+  {
+    expression: 'West Africa',
+    actor: 'Ghana',
+    expected: [
+      'Benin',
+      'Burkina Faso',
+      'Cabo Verde',
+      'Gambia',
+      'Guinea',
+      'Guinea-Bissau',
+      'Ivory Coast',
+      'Liberia',
+      'Mali',
+      'Mauritania',
+      'Niger',
+      'Nigeria',
+      'Senegal',
+      'Sierra Leone',
+      'Togo',
+    ],
+  },
+  {
+    expression: 'the Balkans',
+    actor: 'Republic of Serbia',
+    expected: [
+      'Albania',
+      'Bosnia and Herzegovina',
+      'Bulgaria',
+      'Croatia',
+      'Greece',
+      'Montenegro',
+      'North Macedonia',
+      'Romania',
+      'Slovenia',
+    ],
+  },
+])('resolves $expression through scenario geography data', (testCase) => {
+  const world = loadScenario(root + 'data/scenarios/global-regional.json');
+  const actor = world.nations.find((nation) => nation.name === testCase.actor)!;
+  const resolved = resolveOrganizationGeographicSet(
+    world,
+    actor.id,
+    testCase.expression,
+  );
+  expect(resolved?.label).toBeTruthy();
+  expect(
+    resolved?.nationIds
+      .map((id) => world.nations.find((nation) => nation.id === id)!.name)
+      .sort(),
+  ).toEqual([...testCase.expected].sort());
+  expect(resolved?.nationIds).not.toContain(actor.id);
 });
 
 it('Nordic Crossroads has bounded goals, neutrality, dependencies and funded projects without a scripted war', () => {

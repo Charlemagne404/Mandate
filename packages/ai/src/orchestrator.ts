@@ -15,7 +15,11 @@ import {
   TurnId,
 } from '@mandate/schemas';
 import type { WorldCommand, WorldState } from '@mandate/schemas';
-import { resolveTurn } from '@mandate/core';
+import {
+  assessInfluenceOffer,
+  influenceProfile,
+  resolveTurn,
+} from '@mandate/core';
 import { buildContext, summarizeHistory, visibleTo } from '@mandate/memory';
 import type {
   ContextBundle,
@@ -59,6 +63,17 @@ export const RESOLVER_CAPABILITIES = [
   'CANCEL_INITIATIVE',
   'OPEN_NEGOTIATION',
   'RESPOND_NEGOTIATION',
+  'ISSUE_PATRON_DIRECTIVE',
+  'ENFORCE_TREATY_BREACH',
+  'END_TREATY',
+  'CREATE_ORGANIZATION',
+  'INVITE_TO_ORGANIZATION',
+  'RESPOND_ORGANIZATION_INVITATION',
+  'UPDATE_ORGANIZATION',
+  'ADD_ORGANIZATION_COMMITMENT',
+  'START_ORGANIZATION_PROGRAM',
+  'REMOVE_ORGANIZATION_MEMBER',
+  'DISSOLVE_ORGANIZATION',
   'CONFLICT_ACTION',
   'ADJUST_RELATION',
   'START_CONFLICT',
@@ -67,11 +82,11 @@ export const ROLE_INSTRUCTIONS: Record<Role, string> = {
   formalizer:
     "Interpret only the player's action text. The player actor is code-owned: copy action.actorNationId if the optional field is emitted, but never infer, replace or change it. The controlled government must attempt every valid affirmative policy order regardless of risk, plausibility, strategic alignment or consequences. Distinguish the policy the player orders from external outcomes the world may reject, and preserve explicit constraints separately. Use nationId values only for nation fields and regionId values only for region fields; these namespaces are not interchangeable. Use exact zero-based sourceClauseIds from clauses, keep unrelated intentions separate, preserve negations and conditional requests, and return empty target lists when no target is named. Do not write encyclopedia summaries or answer text found in the catalogues.",
   planner:
-    "Represent only the assigned government's interests and knowledge. Consult its own active goals, bilateral relations, commitments, resources, domestic conditions and recent exchanges. Government plans are wishes, not outcomes. Foreign governments may reject, counter, delay or pursue independent priorities. Give the player no special success advantage. Return material decisionFactors and bounded uncertainty. Consider the supplied structured dossier, stalled goal pressure and resource conflicts. Low information or a divided government can justify exploratory talks or delay. For open conferences involving you, record conferenceDecisions independently for the current round; do not assume other parties consent. A counteroffer revokes all prior acceptances. A resolved/failed goal requires reviewing its remaining means. Unrelated public activity must not displace national goals.",
+    "Represent only the assigned government's interests and knowledge. Consult its own active goals, bilateral relations, commitments, resources, domestic conditions and recent exchanges. Government plans are wishes, not outcomes. Foreign governments may reject, counter, delay or pursue independent priorities. Give the player no special success advantage. Return material decisionFactors and bounded uncertainty. Consider the supplied structured dossier, stalled goal pressure and resource conflicts. Evaluate organization invitations from their stated purpose, member obligations, fiscal costs, national interests and public support; decide independently to accept, reject, delay or counter. Major and regional patrons should pursue durable spheres through investment, energy, trade, aid, organization expansion, security guarantees, and lawful negotiated obligations; proactively make counteroffers when a rival patron is gaining influence. Prefer economic and diplomatic competition over starting wars solely to expand influence. Evaluate threats and withdrawals for their blowback, resistance, grievances, trust loss, economic harm, and risk that the recipient seeks another patron. When your autonomy is heavily constrained, domestic opposition rises, benefits fail or payment arrears accumulate, consider renegotiating, diversifying partners, seeking another guarantee or ending the pact; do not abandon useful agreements automatically. For treaty breaches, weigh diplomatic demands, arrears collection, suspending benefits, market restrictions, pressure, guarantee withdrawal, sanctions, renegotiation, or termination before war. Low information or a divided government can justify exploratory talks or delay. For open conferences involving you, record conferenceDecisions independently for the current round; do not assume other parties consent. A counteroffer revokes all prior acceptances. A resolved/failed goal requires reviewing its remaining means. Unrelated public activity must not displace national goals.",
   diplomat:
-    "Speak for the assigned government. Provide a structured negotiation move, preserving participants and secrecy. Accept only an offer compatible with this government's interests; reject coercion or counter with reciprocal terms. Speech alone creates no agreement or treaty. No is a valid outcome, including for consultation. Consider cost, trust, alternatives and urgency; ignore low-value approaches. Uncertainty can justify delay or narrower exploratory terms. Accept beneficial compatible terms when supplied facts support them; do not invent prohibitions or require unspecified analysis for every low-cost offer. Counter when a concrete narrower term would make cooperation worthwhile. Delay only for material unresolved information or domestic constraints. Never accept merely because a proposal exists.",
+    "Speak for the assigned government. Provide a structured negotiation move, preserving participants and secrecy. Accept only an offer compatible with this government's interests; reject coercion or counter with reciprocal terms. Speech alone creates no agreement or treaty. No is a valid outcome, including for consultation. Consider the offered benefits against the supplied dependence profile, alternatives, domestic resistance, sovereignty cost and urgency. Return typed influenceTerms when countering structured control clauses; consultation does not grant a veto, and no term may exceed its accepted scope. Uncertainty can justify delay or narrower exploratory terms. Accept beneficial compatible terms when supplied facts support them; do not invent prohibitions or require unspecified analysis for every low-cost offer. Counter when a concrete narrower term would make cooperation worthwhile. Delay only for material unresolved information or domestic constraints. Never accept merely because a proposal exists.",
   resolver:
-    'Adjudicate foreign/world responses and independent intentions. The deterministic Player Action Executor commits valid policy components ordered by the player; do not veto or substitute those orders because they are risky, implausible or strategically inconsistent. Only listed finite command capabilities are available. State changes require mechanical justification and independent consent where applicable. Never create a treaty directly or fabricate prior agreement. Preserve existing treaties, rejections, active wars and ongoing projects. Initiative effects happen over time. Use the supplied runId prefix for new entity IDs.',
+    'Adjudicate foreign/world responses and independent intentions. The deterministic Player Action Executor commits valid policy components ordered by the player; do not veto or substitute those orders because they are risky, implausible or strategically inconsistent. Plans are compact decision records containing stance, intentions, explanation, decision factors and conference decisions; use those fields without assuming omitted priorities or public statements. Only listed finite command capabilities are available. State changes require mechanical justification and independent consent where applicable. Never create a treaty directly or fabricate prior agreement. Influence clauses bind only after negotiation consent. A patron directive may change another government only inside an accepted treaty term; consultation alone is not a veto. Preserve existing treaties, rejections, active wars and ongoing projects. Initiative effects happen over time. Use the supplied runId prefix for new entity IDs.',
   critic:
     'Check observable semantic consistency against canonical facts, plans, consent and proposal. Flag unexplained success, violated commitments, secrecy disclosure, invented references or factual contradictions. Already executed domain validation is authoritative; you can reject but cannot bypass it.',
   narrator:
@@ -480,28 +495,74 @@ export function createOrchestrator(
       // Open proposals activate their recipient, independently from new player activity.
       for (const n of planningWorld.negotiations
         .filter((n) => n.status === 'open')
-        .slice(0, 8)) {
-        for (const id of [n.proposerNationId, n.recipientNationId])
-          if (!trace.activations.some((a) => a.nationId === id))
-            trace.activations.push({
-              nationId: id,
-              score: 100,
-              reasons: [`Pending negotiation ${n.id}`],
-              background: true,
-            });
+        .sort(
+          (a, b) =>
+            Number(b.kind === 'peace' || b.kind === 'ceasefire') -
+              Number(a.kind === 'peace' || a.kind === 'ceasefire') ||
+            a.createdDate.localeCompare(b.createdDate),
+        )
+        .slice(0, 4)) {
+        const id = n.recipientNationId;
+        if (!trace.activations.some((a) => a.nationId === id))
+          trace.activations.push({
+            nationId: id,
+            score: 120,
+            reasons: [`Pending negotiation ${n.id}`],
+            background: true,
+          });
       }
       for (const conference of planningWorld.conferences
         .filter((c) => c.status === 'open')
         .slice(0, 2)) {
-        for (const id of conference.parties)
+        const awaiting = conference.parties.filter(
+          (id) =>
+            !conference.responses.some(
+              (response) =>
+                response.round === conference.round &&
+                response.nationId === id &&
+                response.move === 'accept',
+            ),
+        );
+        const offset = conference.round % Math.max(1, awaiting.length);
+        const rotated = [
+          ...awaiting.slice(offset),
+          ...awaiting.slice(0, offset),
+        ];
+        for (const id of rotated.slice(0, 4))
           if (!trace.activations.some((a) => a.nationId === id))
             trace.activations.push({
               nationId: id,
-              score: 100,
+              score: 115,
               reasons: [`Multilateral bargaining ${conference.id}`],
               background: true,
             });
       }
+      const pendingInvitations = planningWorld.organizations
+        .filter((entry) => entry.status === 'active')
+        .flatMap((organization) =>
+          organization.invitations
+            .filter(
+              (entry) =>
+                entry.status === 'pending' && entry.lastMove !== 'counter',
+            )
+            .map((invitation) => ({ organization, invitation })),
+        );
+      const invitationOffset =
+        planningWorld.revision % Math.max(1, pendingInvitations.length);
+      const rotatedInvitations = [
+        ...pendingInvitations.slice(invitationOffset),
+        ...pendingInvitations.slice(0, invitationOffset),
+      ];
+      for (const { organization, invitation } of rotatedInvitations.slice(0, 4))
+        if (!trace.activations.some((a) => a.nationId === invitation.nationId))
+          trace.activations.push({
+            nationId: invitation.nationId,
+            score: 105,
+            reasons: [
+              `Membership decision for ${organization.acronym ?? organization.name}`,
+            ],
+            background: true,
+          });
       progress('governments-deliberating');
       const planning = trace.activations.map(async (activation) => {
         const nationId = activation.nationId;
@@ -567,6 +628,7 @@ export function createOrchestrator(
         let historicalLimit = regionalWorld ? 4 : 8;
         let regionsPerNation = regionalWorld ? 3 : 16;
         let priorityRegionLimit = regionalWorld ? 24 : 80;
+        let influenceRelationshipLimit = 6;
         let summariesEnabled = true;
         const topics = [
           input.action.source === 'player'
@@ -588,10 +650,54 @@ export function createOrchestrator(
             focusRegionIds: focusedRegionIds,
           });
         let context = buildPlanningContext();
+        const influenceWorld = {
+          ...planningWorld,
+          treaties: planningWorld.treaties.filter((treaty) =>
+            visibleTo(treaty, nationId),
+          ),
+        };
+        const influenceSummaryCache = new Map<string, unknown>();
+        const summarizeInfluence = (
+          patronNationId: NationId,
+          subjectNationId: NationId,
+        ) => {
+          const key = `${patronNationId}->${subjectNationId}`;
+          const cached = influenceSummaryCache.get(key);
+          if (cached) return cached;
+          const profile = influenceProfile(
+            influenceWorld,
+            patronNationId,
+            subjectNationId,
+          );
+          const summary = {
+            tier: profile.tier,
+            leverage: profile.leverage,
+            resistance: profile.resistance,
+            autonomy: profile.autonomy,
+            strongestDependencies: Object.entries(profile.dependency)
+              .filter(([, value]) => value > 0)
+              .sort((left, right) => right[1] - left[1])
+              .slice(0, 2)
+              .map(([dimension, value]) => ({ dimension, value })),
+            activeObligations: profile.activeTerms
+              .slice(0, 4)
+              .map((term) => term.kind),
+          };
+          influenceSummaryCache.set(key, summary);
+          return summary;
+        };
         const buildPlanningPayload = () => ({
           context,
           intent,
           activation,
+          influenceRelationships: context.nationIds
+            .filter((counterpart) => counterpart !== nationId)
+            .slice(0, influenceRelationshipLimit)
+            .map((counterpart) => ({
+              counterpart,
+              asPatron: summarizeInfluence(nationId, counterpart),
+              dependenceOn: summarizeInfluence(counterpart, nationId),
+            })),
           considerations: decisionInputs(context, intent),
         });
         let plannerPayload = buildPlanningPayload();
@@ -618,9 +724,19 @@ export function createOrchestrator(
             summariesEnabled = false;
           } else if (eventBudget > 0) {
             eventBudget = 0;
+          } else if (influenceRelationshipLimit > 1) {
+            // Relationship briefs supplement the country context. Trim only
+            // this bounded list after the core regional context is compacted.
+            influenceRelationshipLimit--;
           } else {
+            const payloadLengths = Object.fromEntries(
+              Object.entries(plannerPayload).map(([key, value]) => [
+                key,
+                JSON.stringify(value).length,
+              ]),
+            );
             throw new Error(
-              `Planner context cannot fit configured budget (${config.contextBudget} characters) after regional compaction`,
+              `Planner context cannot fit configured budget (${config.contextBudget} characters) after regional compaction; payload ${JSON.stringify(plannerPayload).length}, components ${JSON.stringify(payloadLengths)}`,
             );
           }
           context = buildPlanningContext();
@@ -680,6 +796,21 @@ export function createOrchestrator(
               intent,
               context,
               negotiationId,
+              influenceRelationship: influenceProfile(
+                planningWorld,
+                plan.nationId,
+                intent.actorNationId,
+              ),
+              offerAssessment: negotiationId
+                ? assessInfluenceOffer(
+                    planningWorld,
+                    intent.actorNationId,
+                    plan.nationId,
+                    planningWorld.negotiations.find(
+                      (n) => n.id === negotiationId,
+                    )?.influenceTerms ?? [],
+                  )
+                : null,
               considerations: decisionInputs(context, intent),
             },
             trace,
@@ -736,26 +867,34 @@ export function createOrchestrator(
           ...conflict.theaters.flatMap((theater) => theater.regionIds),
           ...conflict.campaigns.map((campaign) => campaign.regionId),
         ]);
-      const sampledRegionIds = trace.contexts.flatMap((context) =>
-        [...context.canonical.regions]
-          .sort(
-            (a, b) =>
-              (b.ownerNationId === context.perspectiveNationId ? 20 : 0) +
-                (b.controllerNationId === context.perspectiveNationId
-                  ? 16
-                  : 0) +
-                (b.ownerNationId !== b.controllerNationId ? 8 : 0) +
-                (b.claims.length ? 4 : 0) -
-                ((a.ownerNationId === context.perspectiveNationId ? 20 : 0) +
-                  (a.controllerNationId === context.perspectiveNationId
-                    ? 16
-                    : 0) +
-                  (a.ownerNationId !== a.controllerNationId ? 8 : 0) +
-                  (a.claims.length ? 4 : 0)) || a.id.localeCompare(b.id),
+      const needsTerritorialContext =
+        trace.intent?.actionGraph?.actions.some((action) =>
+          ['annex', 'invade', 'strike', 'mobilize'].includes(action.action),
+        ) ?? false;
+      const sampledRegionIds = needsTerritorialContext
+        ? trace.contexts.flatMap((context) =>
+            [...context.canonical.regions]
+              .sort(
+                (a, b) =>
+                  (b.ownerNationId === context.perspectiveNationId ? 20 : 0) +
+                    (b.controllerNationId === context.perspectiveNationId
+                      ? 16
+                      : 0) +
+                    (b.ownerNationId !== b.controllerNationId ? 8 : 0) +
+                    (b.claims.length ? 4 : 0) -
+                    ((a.ownerNationId === context.perspectiveNationId
+                      ? 20
+                      : 0) +
+                      (a.controllerNationId === context.perspectiveNationId
+                        ? 16
+                        : 0) +
+                      (a.ownerNationId !== a.controllerNationId ? 8 : 0) +
+                      (a.claims.length ? 4 : 0)) || a.id.localeCompare(b.id),
+              )
+              .slice(0, 4)
+              .map((region) => region.id),
           )
-          .slice(0, 4)
-          .map((region) => region.id),
-      );
+        : [];
       const resolverRegionIds = new Set([
         ...directlyGroundedRegionIds,
         ...activeConflictRegionIds.slice(0, 24),
@@ -799,6 +938,9 @@ export function createOrchestrator(
           neighborhoods: planningWorld.scenario.neighborhoods?.filter((n) =>
             plannedIds.includes(n.nationId),
           ),
+          // The graph is code-owned simulation data, not resolver context.
+          // Sending 4,595 adjacency records would overwhelm the local model.
+          regionAdjacency: [],
         },
         nations: planningWorld.nations.filter((n) => plannedIds.includes(n.id)),
         regions: planningWorld.regions.filter((r) =>
@@ -816,8 +958,13 @@ export function createOrchestrator(
             plannedIds.includes(id),
           ),
         ),
-        organizations: planningWorld.organizations.filter((o) =>
-          o.members.some((id) => plannedIds.includes(id)),
+        organizations: planningWorld.organizations.filter(
+          (organization) =>
+            organization.members.some((id) => plannedIds.includes(id)) ||
+            organization.invitedStates.some((id) => plannedIds.includes(id)) ||
+            organization.pendingApplications.some((application) =>
+              plannedIds.includes(application.nationId),
+            ),
         ),
         goals: resolutionGoals,
         initiatives: planningWorld.initiatives.filter(
@@ -882,8 +1029,29 @@ export function createOrchestrator(
         runId,
         nextDate: nextDate.toISOString().slice(0, 10),
         instruction:
-          "Only proposal commands. Do not ADVANCE_DATE (the engine adds it). No territorial transfer or stat/debug mutation. Preserve secrecy. Respond only on behalf of a planned government. Acceptance must match that government's recorded diplomatic move. Create no treaty directly. Initiatives must start now with zero progress. New object IDs must use the supplied runId prefix.",
+          "Only proposal commands. Do not ADVANCE_DATE (the engine adds it). No territorial transfer or stat/debug mutation. Preserve secrecy. Respond only on behalf of a planned government. Organization membership responses must belong to the invited government's own pending invitation. New organizations start with their planned founder only; invitees decide independently. Create no treaty directly. Initiatives must start now with zero progress. New object IDs must use the supplied runId prefix.",
       };
+      const resolutionPlans = trace.plans.map((plan) => ({
+        nationId: plan.nationId,
+        stance: plan.stance,
+        intentions: plan.intentions
+          .slice(0, 8)
+          .map((item) => item.slice(0, 800)),
+        explanation: plan.explanation.slice(0, 1200),
+        conferenceDecisions: plan.conferenceDecisions.map((decision) => ({
+          ...decision,
+          message: decision.message.slice(0, 600),
+          ...(decision.counterTerms
+            ? { counterTerms: decision.counterTerms.slice(0, 1200) }
+            : {}),
+        })),
+        uncertainty: plan.uncertainty,
+        decisionFactors: plan.decisionFactors.slice(0, 12).map((factor) => ({
+          ...factor,
+          assessment: factor.assessment.slice(0, 800),
+          references: factor.references.slice(0, 8),
+        })),
+      }));
       for (let attempt = 0; attempt <= config.maxRepairs; attempt++) {
         try {
           trace.proposal = await call(
@@ -891,6 +1059,7 @@ export function createOrchestrator(
             ResolutionProposal,
             {
               ...payload,
+              plans: resolutionPlans,
               ...(attempt ? { repair: trace.failures.at(-1) } : {}),
             },
             trace,
@@ -1007,7 +1176,7 @@ export function createOrchestrator(
               CriticResult,
               {
                 intent: trace.intent,
-                plans: trace.plans,
+                plans: resolutionPlans,
                 moves: trace.moves,
                 proposal: trace.proposal,
                 canonical: resolutionWorld,
@@ -1145,6 +1314,34 @@ export function validateCapabilities(
     if (!id.startsWith(`${prefix}:${runId}-`))
       throw new Error('New entity ID does not belong to this proposal');
   };
+  const plannedIntent = (nationId: NationId, pattern: RegExp) =>
+    plans
+      .find((plan) => plan.nationId === nationId)
+      ?.intentions.some((text) => pattern.test(text)) ?? false;
+  const proposedOrganizations = new Set(
+    proposal.commands.flatMap((entry) =>
+      entry.command.type === 'CREATE_ORGANIZATION'
+        ? [entry.command.organization.id]
+        : [],
+    ),
+  );
+  for (const { command } of proposal.commands)
+    if (command.type === 'RESPOND_NEGOTIATION' && command.move === 'accept') {
+      const negotiation = world.negotiations.find(
+        (entry) => entry.id === command.negotiationId,
+      );
+      const existing =
+        negotiation?.kind === 'influence'
+          ? world.treaties.find(
+              (treaty) =>
+                treaty.status === 'active' &&
+                treaty.kind === 'influence' &&
+                treaty.parties.includes(negotiation.proposerNationId) &&
+                treaty.parties.includes(negotiation.recipientNationId),
+            )
+          : undefined;
+      if (existing) command.treatyId = existing.id;
+    }
   for (const { command } of proposal.commands) {
     const semanticIssue = semanticCommandIssue(
       world,
@@ -1154,7 +1351,7 @@ export function validateCapabilities(
     if (semanticIssue) throw new Error(semanticIssue);
     if (!(RESOLVER_CAPABILITIES as readonly string[]).includes(command.type))
       throw new Error(`Unauthorized resolver command ${command.type}`);
-    validateReferenceIds(command, world);
+    validateReferenceIds(command, world, proposedOrganizations);
     switch (command.type) {
       case 'THEATER_ACTION':
         if (!planned.has(command.nationId))
@@ -1366,13 +1563,196 @@ export function validateCapabilities(
                   JSON.stringify(command.counterObligations ?? []) ===
                     JSON.stringify(m.obligations) &&
                   JSON.stringify(command.counterPeaceTerms ?? []) ===
-                    JSON.stringify(m.peaceTerms))),
+                    JSON.stringify(m.peaceTerms) &&
+                  JSON.stringify(command.counterInfluenceTerms ?? []) ===
+                    JSON.stringify(m.influenceTerms))),
           )
         )
           throw new Error(
             'Negotiation response lacks an independent matching diplomatic move',
           );
-        if (command.treatyId) newId(command.treatyId, 'treaty');
+        if (command.treatyId) {
+          const amendment =
+            negotiation.kind === 'influence'
+              ? world.treaties.find(
+                  (t) =>
+                    t.status === 'active' &&
+                    t.kind === 'influence' &&
+                    t.parties.includes(negotiation.proposerNationId) &&
+                    t.parties.includes(negotiation.recipientNationId),
+                )
+              : undefined;
+          if (amendment) {
+            if (command.treatyId !== amendment.id)
+              throw new Error(
+                'Influence amendment must reference its existing treaty',
+              );
+          } else newId(command.treatyId, 'treaty');
+        }
+        break;
+      }
+      case 'ISSUE_PATRON_DIRECTIVE': {
+        const treaty = world.treaties.find(
+          (entry) => entry.id === command.treatyId,
+        );
+        if (!planned.has(command.patronNationId))
+          throw new Error('Patron directive issuer did not plan');
+        if (
+          treaty?.status !== 'active' ||
+          !treaty.parties.includes(command.patronNationId) ||
+          !treaty.parties.includes(command.subjectNationId)
+        )
+          throw new Error(
+            'Patron directive requires an active bilateral treaty',
+          );
+        break;
+      }
+      case 'END_TREATY': {
+        const treaty = world.treaties.find(
+          (entry) => entry.id === command.treatyId,
+        );
+        if (
+          !command.nationId ||
+          !treaty ||
+          treaty.status !== 'active' ||
+          !planned.has(command.nationId) ||
+          !treaty.parties.includes(command.nationId) ||
+          (command.nationId !== intent?.actorNationId &&
+            !plannedIntent(
+              command.nationId,
+              /end|exit|withdraw|renegotiate|sovereignty|autonomy|independence|dependency|patron|treaty/i,
+            ))
+        )
+          throw new Error(
+            'Treaty exit requires the party government’s independent sovereignty decision',
+          );
+        break;
+      }
+      case 'CREATE_ORGANIZATION': {
+        const organization = command.organization;
+        const founder = organization.founders[0];
+        newId(organization.id, 'organization');
+        if (
+          !founder ||
+          !planned.has(founder) ||
+          organization.foundingDate !== world.date ||
+          organization.status !== 'active' ||
+          organization.founders.length !== 1 ||
+          organization.members.length !== 1 ||
+          organization.members[0] !== founder ||
+          organization.invitations.length ||
+          organization.pendingApplications.length ||
+          organization.history.length ||
+          !plannedIntent(
+            founder,
+            /create|form|found|establish|organization|union|bloc|alliance/i,
+          )
+        )
+          throw new Error(
+            'New organizations require a planned founder, an empty charter history and voluntary later invitations',
+          );
+        break;
+      }
+      case 'INVITE_TO_ORGANIZATION': {
+        const organization = world.organizations.find(
+          (entry) => entry.id === command.organizationId,
+        );
+        const createdHere = proposal.commands.some(
+          (entry) =>
+            entry.command.type === 'CREATE_ORGANIZATION' &&
+            entry.command.organization.id === command.organizationId &&
+            entry.command.organization.founders.includes(
+              command.inviterNationId,
+            ),
+        );
+        nation(command.inviterNationId);
+        nation(command.nationId);
+        const neighboring =
+          world.scenario.neighborhoods
+            ?.find((entry) => entry.nationId === command.inviterNationId)
+            ?.neighbors.includes(command.nationId) ?? false;
+        if (
+          !planned.has(command.inviterNationId) ||
+          (!createdHere &&
+            !organization?.members.includes(command.inviterNationId)) ||
+          !neighboring ||
+          !plannedIntent(
+            command.inviterNationId,
+            /invite|organization|union|bloc|alliance|regional/i,
+          )
+        )
+          throw new Error(
+            'Organization invitations require a planned member and a neighboring government',
+          );
+        break;
+      }
+      case 'RESPOND_ORGANIZATION_INVITATION': {
+        const organization = world.organizations.find(
+          (entry) => entry.id === command.organizationId,
+        );
+        const invitation = organization?.invitations.find(
+          (entry) => entry.nationId === command.nationId,
+        );
+        if (
+          !planned.has(command.nationId) ||
+          invitation?.status !== 'pending' ||
+          invitation.lastMove === 'counter' ||
+          (command.move === 'counter'
+            ? !command.counterTerms
+            : !!command.counterTerms) ||
+          !plannedIntent(
+            command.nationId,
+            /organization|invitation|membership|member|join|accept|decline|reject/i,
+          )
+        )
+          throw new Error(
+            'Organization invitation responses require the invited government’s own independent pending decision',
+          );
+        break;
+      }
+      case 'UPDATE_ORGANIZATION':
+      case 'ADD_ORGANIZATION_COMMITMENT':
+      case 'REMOVE_ORGANIZATION_MEMBER':
+      case 'DISSOLVE_ORGANIZATION': {
+        const organizationId = command.organizationId;
+        const issuer =
+          command.type === 'ADD_ORGANIZATION_COMMITMENT'
+            ? command.commitment.issuer
+            : command.issuerNationId;
+        const organization = world.organizations.find(
+          (entry) => entry.id === organizationId,
+        );
+        if (
+          !planned.has(issuer) ||
+          !organization?.founders.includes(issuer) ||
+          !plannedIntent(
+            issuer,
+            /organization|charter|commit|member|dissolv|support|aid|subsid/i,
+          )
+        )
+          throw new Error(
+            'Organization charter changes and commitments require an independently planned founding government',
+          );
+        if (command.type === 'ADD_ORGANIZATION_COMMITMENT')
+          newId(command.commitment.id, 'orgcommitment');
+        break;
+      }
+      case 'START_ORGANIZATION_PROGRAM': {
+        const organization = world.organizations.find(
+          (entry) => entry.id === command.organizationId,
+        );
+        if (
+          !planned.has(command.program.issuerNationId) ||
+          !organization?.members.includes(command.program.issuerNationId) ||
+          !plannedIntent(
+            command.program.issuerNationId,
+            /organization|integrat|infrastructure|politic|foreign policy|trade|customs|coordination|sanction|development fund/i,
+          )
+        )
+          throw new Error(
+            'Organization programs require an independently planned member government and a relevant order',
+          );
+        newId(command.program.id, 'orgprogram');
         break;
       }
       case 'CONFLICT_ACTION': {
@@ -1430,12 +1810,17 @@ export function validateCapabilities(
     }
   }
 }
-function validateReferenceIds(command: WorldCommand, world: WorldState) {
+function validateReferenceIds(
+  command: WorldCommand,
+  world: WorldState,
+  proposedOrganizations = new Set<string>(),
+) {
   const known = new Set<string>([
     ...world.crises.map((c) => c.id),
     ...world.conferences.map((c) => c.id),
     ...world.sanctions.map((s) => s.id),
     ...world.organizations.map((o) => o.id),
+    ...proposedOrganizations,
     ...world.nations.map((n) => n.id),
     ...world.regions.map((r) => r.id),
     ...world.goals.map((g) => g.id),

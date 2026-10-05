@@ -239,9 +239,38 @@ export function Timeline({
         .map((event) => {
           const turn = world.turns.find((t) => t.id === event.turnId)!;
           const action = world.actions.find((a) => a.id === turn.actionId)!;
+          const originatingAction = event.provenance?.originatingActionId
+            ? world.actions.find(
+                (candidate) =>
+                  candidate.id === event.provenance?.originatingActionId,
+              )
+            : undefined;
           const commands = world.commands.filter((c) =>
             event.sourceCommandIds.includes(c.id),
           );
+          const decisionReason = commands.find(
+            (command) => command.command.type !== 'ADVANCE_DATE',
+          )?.reason;
+          const currentOrderReason = decisionReason?.replace(
+            /^Player order:\s*/i,
+            '',
+          );
+          const safeCurrentOrderReason =
+            currentOrderReason &&
+            action.semanticGraph?.actions.some(
+              (entry) =>
+                entry.secrecy === 'public' &&
+                entry.text.toLocaleLowerCase() ===
+                  currentOrderReason.toLocaleLowerCase(),
+            )
+              ? currentOrderReason
+              : null;
+          const automaticEffect =
+            event.provenance?.kind === 'automatic-effect' ||
+            (event.type !== 'ADVANCE_DATE' &&
+              commands.some(
+                (command) => command.command.type === 'ADVANCE_DATE',
+              ));
           return (
             <article
               className={`event ${event.importance >= 60 ? 'major-event' : ''}`}
@@ -299,17 +328,50 @@ export function Timeline({
               <details>
                 <summary>Why did this happen?</summary>
                 <div className="provenance">
-                  <p>
-                    <strong>PLAYER ORDER</strong>{' '}
-                    <small>Original wording, not a committed world fact.</small>{' '}
-                    {developerMode ||
-                    action.actorNationId === world.playerNationId
-                      ? action.text
-                      : 'Independent government decision'}
-                  </p>
-                  <p>
-                    <strong>SIMULATION RECORD</strong> {event.title}
-                  </p>
+                  {automaticEffect ? (
+                    <>
+                      {originatingAction && (
+                        <p>
+                          <strong>ORIGINATING DECISION</strong> An earlier
+                          committed directive continues to shape this
+                          development.
+                        </p>
+                      )}
+                      <p>
+                        <strong>AUTOMATIC EFFECT</strong> {event.title}
+                      </p>
+                      {action.source === 'player' && (
+                        <p>
+                          <strong>CURRENT PLAYER ORDER</strong>{' '}
+                          <small>
+                            This order advanced the simulation; it did not
+                            create this recurring policy.
+                          </small>{' '}
+                          This directive advanced the simulation.
+                        </p>
+                      )}
+                    </>
+                  ) : event.provenance?.kind === 'current-player-order' ||
+                    (!event.provenance &&
+                      action.source === 'player' &&
+                      action.actorNationId === world.playerNationId) ? (
+                    <p>
+                      <strong>CURRENT PLAYER ORDER</strong>{' '}
+                      <small>Committed clause, not a guaranteed outcome.</small>{' '}
+                      {safeCurrentOrderReason || event.title}
+                    </p>
+                  ) : (
+                    <p>
+                      <strong>INDEPENDENT GOVERNMENT DECISION</strong>{' '}
+                      {decisionReason ||
+                        'This government acted according to its own priorities.'}
+                    </p>
+                  )}
+                  {!automaticEffect && (
+                    <p>
+                      <strong>SIMULATION RECORD</strong> {event.title}
+                    </p>
+                  )}
                   {commands
                     .filter((c) => {
                       if (developerMode) return true;

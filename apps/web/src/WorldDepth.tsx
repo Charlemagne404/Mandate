@@ -590,6 +590,7 @@ export function BranchComparison({ world }: { world: WorldState }) {
       crises: 'Crises',
       relations: 'Diplomatic relations',
       initiatives: 'National projects',
+      organizations: 'International organizations',
     })[category] ?? category;
   const summary = (category: string, value: unknown): string => {
     if (value === null) return 'Not present on this branch';
@@ -627,6 +628,21 @@ export function BranchComparison({ world }: { world: WorldState }) {
       return `${item.status ?? 'absent'}${item.escalation === undefined ? '' : ` · escalation ${item.escalation}`}${item.settlement ? ` · ${item.settlement}` : ''}`;
     if (category === 'treaties')
       return `${item.status ?? 'absent'}${item.terms ? ` · ${item.terms}` : ''}`;
+    if (category === 'organizations') {
+      const members = (item.members as string[] | undefined) ?? [];
+      const invitations =
+        (item.invitations as
+          Array<{ nationId: string; status: string }> | undefined) ?? [];
+      return [
+        item.status,
+        item.kind,
+        item.purpose,
+        members.length ? 'Members: ' + members.length : '',
+        invitations.length ? 'Invitations: ' + invitations.length : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    }
     return Object.entries(item)
       .map(
         ([key, entry]) =>

@@ -417,6 +417,50 @@ export function compareWorlds(
       );
     }
   }
+  const visibleOrganizations = (world: WorldState) =>
+    world.organizations.filter(
+      (organization) =>
+        organization.visibility !== 'private' ||
+        organization.founders.includes(perspective) ||
+        organization.members.includes(perspective) ||
+        organization.invitedStates.includes(perspective),
+    );
+  const organizationsA = visibleOrganizations(a);
+  const organizationsB = visibleOrganizations(b);
+  for (const id of new Set([
+    ...organizationsA.map((organization) => organization.id),
+    ...organizationsB.map((organization) => organization.id),
+  ])) {
+    const before = organizationsA.find(
+      (organization) => organization.id === id,
+    );
+    const after = organizationsB.find((organization) => organization.id === id);
+    const summarize = (organization: typeof before) =>
+      organization
+        ? {
+            status: organization.status,
+            kind: organization.kind,
+            purpose: organization.purpose,
+            geographicScope: organization.geographicScope,
+            founders: organization.founders,
+            members: organization.members,
+            invitations: organization.invitations,
+            applications: organization.pendingApplications,
+            commitments: organization.commitments,
+            history: organization.history.slice(-8),
+          }
+        : null;
+    const organization = after ?? before!;
+    push(
+      'organizations',
+      id,
+      organization.acronym
+        ? organization.acronym + ' · ' + organization.name
+        : organization.name,
+      summarize(before),
+      summarize(after),
+    );
+  }
   for (const id of new Set(
     [...a.relations, ...b.relations].map((r) => `${r.nationA}~${r.nationB}`),
   )) {

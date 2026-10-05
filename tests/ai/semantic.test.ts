@@ -22,7 +22,9 @@ import {
   canonicalizeFormalizerIntent,
   semanticCommandIssue,
   formalizerReferences,
+  splitActionClauses,
 } from '@mandate/ai';
+import { resolveOrganizationGeographicSet } from '@mandate/scenarios';
 import {
   chaosSemanticCases,
   difficultSemanticCases,
@@ -47,6 +49,72 @@ const regionalWorld = WorldState.parse(
 regionalWorld.playerNationId = regionalWorld.nations.find(
   (n) => n.name === 'Sweden',
 )!.id;
+it('does not classify conditional debt relief as a territorial objective', () => {
+  const nicaragua = regionalWorld.nations.find(
+    (nation) => nation.name === 'Nicaragua',
+  )!;
+  const nicaraguaWorld = WorldState.parse({
+    ...regionalWorld,
+    playerNationId: nicaragua.id,
+  });
+  const intent = deterministicPlayerIntent(nicaraguaWorld, {
+    actorNationId: nicaragua.id,
+    text: 'Make a conditional offer to Guatemala: relieve part of its debt and expand CAEU subsidies if it accepts agreed limits on rival security and economic treaties.',
+  });
+  expect(intent.policyOrders[0]?.kind).toBe('diplomacy');
+  expect(intent.majorIntentClauses).toEqual([]);
+});
+it('keeps a split conditional subsidy offer grounded and emits typed terms', () => {
+  const nicaragua = regionalWorld.nations.find(
+    (nation) => nation.name === 'Nicaragua',
+  )!;
+  const worldWithNicaragua = WorldState.parse({
+    ...regionalWorld,
+    playerNationId: nicaragua.id,
+  });
+  worldWithNicaragua.nations.find(
+    (nation) => nation.name === 'Nicaragua',
+  )!.stats.treasury = 500;
+  worldWithNicaragua.nations.find(
+    (nation) => nation.name === 'Guatemala',
+  )!.stats.debt = 20;
+  const text =
+    'Make a conditional offer to Guatemala: relieve part of its debt and expand CAEU subsidies if it accepts agreed limits on rival security and economic treaties.';
+  const intent = deterministicPlayerIntent(worldWithNicaragua, {
+    actorNationId: nicaragua.id,
+    text,
+  });
+  const execution = executePlayerAction(
+    worldWithNicaragua,
+    intent,
+    'conditional-influence-offer',
+  );
+  const offer = execution.commands.find(
+    (entry) => entry.command.type === 'OPEN_NEGOTIATION',
+  );
+  expect(offer?.command.type).toBe('OPEN_NEGOTIATION');
+  if (offer?.command.type !== 'OPEN_NEGOTIATION') return;
+  expect(offer.command.negotiation.recipientNationId).toBe(
+    worldWithNicaragua.nations.find((nation) => nation.name === 'Guatemala')!
+      .id,
+  );
+  expect(offer.command.negotiation.kind).toBe('influence');
+  expect(offer.command.negotiation.terms).toContain(
+    'expand CAEU subsidies if it accepts',
+  );
+  expect(
+    offer.command.negotiation.influenceTerms.map((term) => term.kind),
+  ).toEqual(expect.arrayContaining(['debt-relief', 'subsidy']));
+});
+it('recognizes named state integration as a territorial objective', () => {
+  const intent = deterministicPlayerIntent(regionalWorld, {
+    actorNationId: regionalWorld.playerNationId,
+    text: 'Make Finland join Sweden.',
+  });
+  expect(intent.majorIntentClauses.map((clause) => clause.kind)).toContain(
+    'conquest-objective',
+  );
+});
 it('keeps direct diplomacy conditions grounded to the named counterpart', () => {
   const finland = regionalWorld.nations.find((n) => n.name === 'Finland')!;
   const graph = buildSemanticGraph(regionalWorld, {
@@ -56,7 +124,7 @@ it('keeps direct diplomacy conditions grounded to the named counterpart', () => 
   });
   expect(validateSemanticGraph(graph, regionalWorld)).toEqual([]);
 });
-it('turns a conditional guarantee into a persistent defense proposal', () => {
+it('turns a conditional security guarantee and basing offer into typed influence terms', () => {
   const finland = regionalWorld.nations.find((n) => n.name === 'Finland')!;
   const text =
     'Tell Finland we will guarantee their independence if they allow Swedish aircraft to use their bases.';
@@ -76,7 +144,10 @@ it('turns a conditional guarantee into a persistent defense proposal', () => {
   expect(offer?.command.type).toBe('OPEN_NEGOTIATION');
   if (offer?.command.type !== 'OPEN_NEGOTIATION') return;
   expect(offer.command.negotiation.recipientNationId).toBe(finland.id);
-  expect(offer.command.negotiation.kind).toBe('defense');
+  expect(offer.command.negotiation.kind).toBe('influence');
+  expect(
+    offer.command.negotiation.influenceTerms.map((term) => term.kind),
+  ).toEqual(expect.arrayContaining(['security-guarantee', 'host-bases']));
   expect(offer.command.negotiation.terms).toBe(text);
   expect(execution.semanticAudit?.[0]?.status).toBe('ATTEMPTED');
 });
@@ -222,7 +293,7 @@ it('turns a foreign independence order into political support, not invented sove
   ).toBe(finland.id);
   expect(execution.semanticAudit?.[0]?.status).toBe('ABSTRACTED');
 });
-it('opens bilateral federation talks instead of merging sovereign states by fiat', () => {
+it('creates a voluntary political federation without merging sovereign states by fiat', () => {
   const intent = deterministicPlayerIntent(regionalWorld, {
     actorNationId: regionalWorld.playerNationId,
     text: 'Create a Nordic federation.',
@@ -232,20 +303,387 @@ it('opens bilateral federation talks instead of merging sovereign states by fiat
     intent,
     'nordic-federation',
   );
-  const offers = execution.commands.filter(
-    (entry) => entry.command.type === 'OPEN_NEGOTIATION',
+  const creation = execution.commands.find(
+    (entry) => entry.command.type === 'CREATE_ORGANIZATION',
   );
-  expect(offers.length).toBe(4);
+  expect(creation?.command.type).toBe('CREATE_ORGANIZATION');
+  if (creation?.command.type === 'CREATE_ORGANIZATION')
+    expect(creation.command.organization).toMatchObject({
+      name: 'Nordic Federation',
+      kind: 'political-organization',
+      members: [world.playerNationId],
+    });
   expect(
-    offers.every(
-      (entry) =>
-        entry.command.type === 'OPEN_NEGOTIATION' &&
-        entry.command.negotiation.kind === 'consultation' &&
-        entry.command.negotiation.terms.includes('do not change borders'),
+    execution.commands.some(
+      (entry) => entry.command.type === 'TRANSFER_OWNERSHIP',
+    ),
+  ).toBe(false);
+  expect(execution.semanticAudit?.[0]?.status).toBe('EXECUTED');
+});
+it('founds CAEU, resolves Central America without the United States, and waits for consent', () => {
+  const before = structuredClone(regionalWorld);
+  const nicaragua = before.nations.find(
+    (nation) => nation.name === 'Nicaragua',
+  )!;
+  before.playerNationId = nicaragua.id;
+  const text =
+    'Nicaragua forms the CAEU (Central american economic union) and invites all countries in central america. The economic union focuses on increased economic integration between the central american countries. Nicaragua is prepared to subsidize and support any country that joins economically.';
+  const intent = deterministicPlayerIntent(before, {
+    actorNationId: nicaragua.id,
+    text,
+  });
+  const graph = intent.actionGraph!;
+  expect(splitActionClauses(text)).toHaveLength(4);
+  expect(validateSemanticGraph(graph, before)).toEqual([]);
+  expect(
+    graph.actions.flatMap((action) => [
+      ...action.targets,
+      ...action.sources,
+      ...action.participants,
+      ...action.beneficiaries,
+    ]),
+  ).not.toContain('nation:usa');
+  expect(
+    graph.references.filter((reference) => reference.role === 'target'),
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        origin: 'geography',
+        expression: 'central america',
+      }),
+    ]),
+  );
+  const geographic = resolveOrganizationGeographicSet(
+    before,
+    nicaragua.id,
+    text,
+  )!;
+  const eligibleNames = [
+    'Belize',
+    'Costa Rica',
+    'El Salvador',
+    'Guatemala',
+    'Honduras',
+    'Panama',
+  ];
+  const eligible = before.nations
+    .filter((nation) => eligibleNames.includes(nation.name))
+    .map((nation) => nation.id)
+    .sort();
+  expect(geographic.nationIds).toEqual(eligible);
+
+  const execution = executePlayerAction(before, intent, 'nicaragua-caeu');
+  expect(execution.commands.map((entry) => entry.command.type)).toEqual(
+    expect.arrayContaining([
+      'CREATE_ORGANIZATION',
+      'INVITE_TO_ORGANIZATION',
+      'UPDATE_ORGANIZATION',
+      'ADD_ORGANIZATION_COMMITMENT',
+    ]),
+  );
+  expect(execution.semanticAudit).toHaveLength(graph.actions.length);
+  expect(
+    execution.semanticAudit?.every((entry) => entry.status === 'EXECUTED'),
+  ).toBe(true);
+
+  const after = resolveTurn(
+    before,
+    {
+      expectedRevision: before.revision,
+      action: {
+        actorNationId: nicaragua.id,
+        source: 'player',
+        text,
+        semanticGraph: graph,
+      },
+      commands: execution.commands.map((entry, index) => ({
+        id: CommandId.parse(`command:nicaragua-caeu-${index}`),
+        reason: entry.reason,
+        command: entry.command,
+      })),
+    },
+    {
+      turnId: TurnId.parse('turn:nicaragua-caeu'),
+      actionId: ActionId.parse('action:nicaragua-caeu'),
+      recordedAt: '2026-10-04T00:00:00.000Z',
+    },
+  );
+  const organization = after.organizations.find(
+    (entry) => entry.acronym === 'CAEU',
+  )!;
+  expect(organization).toMatchObject({
+    name: 'Central American Economic Union',
+    kind: 'economic-union',
+    foundingDate: before.date,
+    founders: [nicaragua.id],
+    members: [nicaragua.id],
+    geographicScope: 'Central America',
+    purpose:
+      'increased economic integration between the central american countries',
+  });
+  expect(
+    organization.invitations.map((invitation) => invitation.nationId).sort(),
+  ).toEqual(eligible);
+  expect(
+    organization.invitations.every(
+      (invitation) => invitation.status === 'pending',
     ),
   ).toBe(true);
-  expect(execution.semanticAudit?.[0]?.status).toBe('ATTEMPTED');
+  expect(organization.members).not.toEqual(expect.arrayContaining(eligible));
+  expect(organization.invitedStates).not.toContain('nation:usa');
+  expect(organization.commitments).toHaveLength(1);
+  expect(organization.commitments[0]).toMatchObject({
+    kind: 'economic-support',
+    appliesTo: 'new-members',
+    recipientNationIds: [],
+    costPerMember: 2,
+    createdDate: before.date,
+  });
+  expect(organization.commitments[0]!.terms).toContain('subsidize and support');
+  expect(
+    after.events.some(
+      (event) =>
+        event.title === 'Nicaragua establishes Central American Economic Union',
+    ),
+  ).toBe(true);
+  expect(
+    after.events.filter((event) => event.type === 'INVITE_TO_ORGANIZATION'),
+  ).toHaveLength(eligible.length);
 });
+
+it('names and founds a region-wide union when the player gives no acronym', () => {
+  const before = structuredClone(regionalWorld);
+  const nicaragua = before.nations.find(
+    (nation) => nation.name === 'Nicaragua',
+  )!;
+  before.playerNationId = nicaragua.id;
+  const intent = deterministicPlayerIntent(before, {
+    actorNationId: nicaragua.id,
+    text: 'Create an economic union for Central America and invite everyone in the region.',
+  });
+  const execution = executePlayerAction(
+    before,
+    intent,
+    'central-american-union',
+  );
+  const created = execution.commands.find(
+    (entry) => entry.command.type === 'CREATE_ORGANIZATION',
+  );
+  expect(created?.command.type).toBe('CREATE_ORGANIZATION');
+  if (created?.command.type === 'CREATE_ORGANIZATION')
+    expect(created.command.organization.name).toBe(
+      'Central American Economic Union',
+    );
+  expect(
+    execution.commands.filter(
+      (entry) => entry.command.type === 'INVITE_TO_ORGANIZATION',
+    ),
+  ).toHaveLength(6);
+  expect(
+    intent.actionGraph?.actions.some((action) =>
+      [...action.targets, ...action.participants].includes(
+        NationId.parse('nation:usa'),
+      ),
+    ),
+  ).toBe(false);
+});
+
+it.each([
+  {
+    actor: 'Sweden',
+    text: 'Sweden creates a Nordic defense alliance and invites Finland and Norway.',
+    name: 'Nordic Defense Alliance',
+    kind: 'military-alliance',
+    invitees: ['Finland', 'Norway'],
+    scope: 'the Nordic countries',
+  },
+  {
+    actor: 'Germany',
+    text: 'Germany creates a European trade bloc and invites its neighbors.',
+    name: 'European Trade Bloc',
+    kind: 'trade-bloc',
+    invitees: null,
+    scope: 'neighbours of Germany',
+  },
+  {
+    actor: 'Brazil',
+    text: 'Brazil creates a South American economic union.',
+    name: 'South American Economic Union',
+    kind: 'economic-union',
+    invitees: [],
+    scope: 'South America',
+  },
+])('creates $name with independently consented invitations', (testCase) => {
+  const before = structuredClone(regionalWorld);
+  const actor = before.nations.find(
+    (nation) => nation.name === testCase.actor,
+  )!;
+  before.playerNationId = actor.id;
+  const intent = deterministicPlayerIntent(before, {
+    actorNationId: actor.id,
+    text: testCase.text,
+  });
+  expect(validateSemanticGraph(intent.actionGraph!, before)).toEqual([]);
+  const execution = executePlayerAction(
+    before,
+    intent,
+    `organization-${testCase.actor.toLowerCase()}`,
+  );
+  const created = execution.commands.find(
+    (entry) => entry.command.type === 'CREATE_ORGANIZATION',
+  );
+  expect(created?.command.type).toBe('CREATE_ORGANIZATION');
+  const invitations = execution.commands.filter(
+    (entry) => entry.command.type === 'INVITE_TO_ORGANIZATION',
+  );
+  const geographicNeighbors =
+    before.scenario.neighborhoods?.find((entry) => entry.nationId === actor.id)
+      ?.neighbors ?? [];
+  const expectedInvitees =
+    testCase.invitees ??
+    geographicNeighbors.map(
+      (id) => before.nations.find((nation) => nation.id === id)!.name,
+    );
+  expect(
+    invitations
+      .map((entry) => {
+        if (entry.command.type !== 'INVITE_TO_ORGANIZATION') return '';
+        const nationId = entry.command.nationId;
+        return before.nations.find((nation) => nation.id === nationId)!.name;
+      })
+      .sort(),
+  ).toEqual([...expectedInvitees].sort());
+  if (created?.command.type === 'CREATE_ORGANIZATION')
+    expect(created.command.organization).toMatchObject({
+      name: testCase.name,
+      kind: testCase.kind,
+      founders: [actor.id],
+      members: [actor.id],
+      geographicScope: testCase.scope,
+    });
+});
+
+it('supports later invitations, membership, charter, commitment and dissolution orders', () => {
+  const before = structuredClone(regionalWorld);
+  const nicaragua = before.nations.find(
+    (nation) => nation.name === 'Nicaragua',
+  )!;
+  before.playerNationId = nicaragua.id;
+  const seed = deterministicPlayerIntent(before, {
+    actorNationId: nicaragua.id,
+    text: 'Create the CAEU (Central American Economic Union).',
+  });
+  const seedExecution = executePlayerAction(before, seed, 'seed-caeu');
+  const afterCreate = resolveTurn(
+    before,
+    {
+      expectedRevision: before.revision,
+      action: {
+        actorNationId: nicaragua.id,
+        source: 'player',
+        text: seed.summary,
+        semanticGraph: seed.actionGraph,
+      },
+      commands: seedExecution.commands.map((entry, index) => ({
+        id: CommandId.parse(`command:seed-caeu-${index}`),
+        reason: entry.reason,
+        command: entry.command,
+      })),
+    },
+    {
+      turnId: TurnId.parse('turn:seed-caeu'),
+      actionId: ActionId.parse('action:seed-caeu'),
+      recordedAt: '2026-10-04T00:00:00.000Z',
+    },
+  );
+  const mexico = afterCreate.nations.find(
+    (nation) => nation.name === 'Mexico',
+  )!;
+  const inviteIntent = deterministicPlayerIntent(afterCreate, {
+    actorNationId: nicaragua.id,
+    text: 'Invite Mexico to the CAEU.',
+  });
+  expect(inviteIntent.actionGraph?.actions[0]?.participants).toEqual([
+    mexico.id,
+  ]);
+  const invite = executePlayerAction(
+    afterCreate,
+    inviteIntent,
+    'invite-mexico',
+  );
+  expect(invite.commands.map((entry) => entry.command.type)).toEqual([
+    'INVITE_TO_ORGANIZATION',
+  ]);
+
+  const charterIntent = deterministicPlayerIntent(afterCreate, {
+    actorNationId: nicaragua.id,
+    text: 'Turn the CAEU into a customs union.',
+  });
+  expect(
+    executePlayerAction(afterCreate, charterIntent, 'customs-union').commands[0]
+      ?.command,
+  ).toMatchObject({
+    type: 'UPDATE_ORGANIZATION',
+    kind: 'customs-union',
+  });
+  const aidIntent = deterministicPlayerIntent(afterCreate, {
+    actorNationId: nicaragua.id,
+    text: 'Offer every CAEU member financial aid.',
+  });
+  expect(
+    executePlayerAction(afterCreate, aidIntent, 'member-aid').commands[0]
+      ?.command,
+  ).toMatchObject({
+    type: 'ADD_ORGANIZATION_COMMITMENT',
+    commitment: {
+      kind: 'financial-aid',
+      appliesTo: 'all-members',
+      costPerMember: 1,
+    },
+  });
+  const guatemala = afterCreate.nations.find(
+    (nation) => nation.name === 'Guatemala',
+  )!;
+  const targetedTerms = deterministicPlayerIntent(afterCreate, {
+    actorNationId: nicaragua.id,
+    text: 'Offer Guatemala larger subsidies if it joins the CAEU.',
+  });
+  expect(
+    executePlayerAction(afterCreate, targetedTerms, 'guatemala-support')
+      .commands[0]?.command,
+  ).toMatchObject({
+    type: 'ADD_ORGANIZATION_COMMITMENT',
+    commitment: {
+      appliesTo: 'new-members',
+      recipientNationIds: [guatemala.id],
+      costPerMember: 4,
+    },
+  });
+
+  const leaveIntent = deterministicPlayerIntent(afterCreate, {
+    actorNationId: nicaragua.id,
+    text: 'Leave the CAEU.',
+  });
+  expect(
+    executePlayerAction(afterCreate, leaveIntent, 'leave-caeu').commands[0]
+      ?.command,
+  ).toMatchObject({
+    type: 'SET_ORGANIZATION_MEMBERSHIP',
+    nationId: nicaragua.id,
+    member: false,
+  });
+  const dissolveIntent = deterministicPlayerIntent(afterCreate, {
+    actorNationId: nicaragua.id,
+    text: 'Dissolve the organization.',
+  });
+  expect(
+    executePlayerAction(afterCreate, dissolveIntent, 'dissolve-caeu')
+      .commands[0]?.command,
+  ).toMatchObject({
+    type: 'DISSOLVE_ORGANIZATION',
+  });
+});
+
 it('a territorial transfer source is not a foreign-force acquisition dependency', () => {
   const graph = parse(
     'Give Åland to Finland and then demand Gotland from Denmark.',

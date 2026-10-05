@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
   mkdirSync,
@@ -15,6 +16,7 @@ import type { WorldStore } from './index.js';
 import { migrate } from './migrations.js';
 import { geographyValidator } from '@mandate/scenarios';
 import { parseSave } from '@mandate/core';
+import { Treaty } from '@mandate/schemas';
 import {
   context,
   control,
@@ -63,6 +65,96 @@ afterEach(() => {
 });
 
 describe('SQLite canonical persistence', () => {
+  it('round trips complete influence treaty authority, breaches, enforcement and directives across restart', () => {
+    const filename = join(directory(), 'influence-treaty.sqlite');
+    const store = open(filename);
+    const initial = fixture();
+    initial.treaties.push(
+      Treaty.parse({
+        id: 'treaty:influence-persistence',
+        name: 'Influence persistence compact',
+        kind: 'influence',
+        parties: ['nation:swe', 'nation:fin'],
+        status: 'active',
+        ratifiedDate: initial.date,
+        terms: 'Binding security and foreign-policy control.',
+        influenceTerms: [
+          {
+            kind: 'join-patron-wars',
+            patronNationId: 'nation:swe',
+            subjectNationId: 'nation:fin',
+          },
+          {
+            kind: 'foreign-policy-alignment',
+            patronNationId: 'nation:swe',
+            subjectNationId: 'nation:fin',
+          },
+          {
+            kind: 'tribute',
+            patronNationId: 'nation:swe',
+            subjectNationId: 'nation:fin',
+            ratePercent: 5,
+            paidAmount: 15,
+            paymentsMade: 3,
+            arrears: 1,
+          },
+        ],
+        breaches: [
+          {
+            id: 'breach:persistence-test',
+            date: initial.date,
+            violatingNationId: 'nation:fin',
+            injuredNationId: 'nation:swe',
+            reason: 'Missed a tribute payment',
+            status: 'enforced',
+          },
+        ],
+        enforcements: [
+          {
+            id: 'enforcement:persistence-test',
+            date: initial.date,
+            breachId: 'breach:persistence-test',
+            patronNationId: 'nation:swe',
+            subjectNationId: 'nation:fin',
+            action: 'diplomatic-demand',
+            result: 'Formal demand issued.',
+          },
+        ],
+        ratificationGovernments: [
+          {
+            nationId: 'nation:fin',
+            government: { type: 'Coalition', ideology: 'Neutralist' },
+          },
+        ],
+      }),
+    );
+    let world = store.initialize(initial);
+    world = store.commit(
+      request(world, [
+        {
+          type: 'ISSUE_PATRON_DIRECTIVE',
+          treatyId: 'treaty:influence-persistence',
+          patronNationId: 'nation:swe',
+          subjectNationId: 'nation:fin',
+          directiveId: 'directive:persistence-test',
+          kind: 'support-diplomatic-initiative',
+          policyText: 'Support the Nordic trade proposal.',
+        },
+      ]),
+    );
+    const expectedHash = canonicalHash(world);
+    const expectedTreaty = world.treaties[0]!;
+    store.close();
+
+    const restored = open(filename).load();
+    expect(canonicalHash(restored)).toBe(expectedHash);
+    expect(restored.treaties[0]).toEqual(expectedTreaty);
+    expect(restored.treaties[0]!.influenceTerms).toHaveLength(3);
+    expect(restored.treaties[0]!.breaches).toHaveLength(1);
+    expect(restored.treaties[0]!.enforcements).toHaveLength(1);
+    expect(restored.treaties[0]!.directives).toHaveLength(1);
+    expect(restored.treaties[0]!.ratificationGovernments).toHaveLength(1);
+  });
   it('round trips version-three crises, economic dependencies, elections and disclosure after restart', () => {
     const filename = join(directory(), 'continuity.sqlite'),
       store = open(filename);
@@ -332,9 +424,32 @@ describe('SQLite canonical persistence', () => {
           organization: {
             id: 'organization:nordic',
             name: 'Nordic forum',
+            acronym: 'NF',
             kind: 'regional',
-            members: ['nation:swe', 'nation:fin'],
+            foundingDate: before.date,
+            founders: ['nation:swe'],
+            members: ['nation:swe'],
+            invitedStates: ['nation:fin'],
+            invitations: [
+              {
+                nationId: 'nation:fin',
+                invitedDate: before.date,
+                updatedDate: before.date,
+                status: 'pending',
+                lastMove: null,
+                message: null,
+                counterTerms: null,
+              },
+            ],
+            pendingApplications: [],
+            purpose: 'Consultation',
             charter: 'Consultation',
+            commitments: [],
+            geographicScope: 'Northern Europe',
+            history: [],
+            status: 'active',
+            dissolvedDate: null,
+            visibility: 'public',
           },
         },
         { type: 'ADVANCE_DATE', date: '2025-01-31' },
@@ -343,6 +458,13 @@ describe('SQLite canonical persistence', () => {
     );
     expect(after.initiatives[0]!.status).toBe('completed');
     expect(after.negotiations[0]!.status).toBe('accepted');
+    expect(after.organizations[0]).toMatchObject({
+      acronym: 'NF',
+      founders: ['nation:swe'],
+      members: ['nation:swe'],
+      invitedStates: ['nation:fin'],
+      geographicScope: 'Northern Europe',
+    });
     expect(
       after.events.find((e) => e.type === 'ADVANCE_DATE')!.effects.length,
     ).toBeGreaterThan(0);
@@ -505,7 +627,7 @@ describe('SQLite canonical persistence', () => {
     expect(
       db.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()
         ?.count,
-    ).toBe(8);
+    ).toBe(10);
     expect(db.prepare('PRAGMA integrity_check').get()?.integrity_check).toBe(
       'ok',
     );
@@ -603,46 +725,12 @@ describe('SQLite canonical persistence', () => {
     const d = directory();
     const migrations = join(d, 'migrations');
     mkdirSync(migrations);
-    const sql = readFileSync(
-      root + 'packages/persistence/migrations/001_initial.sql',
-      'utf8',
-    );
-    writeFileSync(join(migrations, '001_initial.sql'), sql);
-    writeFileSync(
-      join(migrations, '002_alpha.sql'),
-      readFileSync(
-        root + 'packages/persistence/migrations/002_alpha.sql',
-        'utf8',
-      ),
-    );
-    writeFileSync(
-      join(migrations, '003_settlements.sql'),
-      readFileSync(
-        root + 'packages/persistence/migrations/003_settlements.sql',
-        'utf8',
-      ),
-    );
-    writeFileSync(
-      join(migrations, '004_depth.sql'),
-      readFileSync(
-        root + 'packages/persistence/migrations/004_depth.sql',
-        'utf8',
-      ),
-    );
-    writeFileSync(
-      join(migrations, '005_continuity.sql'),
-      readFileSync(
-        root + 'packages/persistence/migrations/005_continuity.sql',
-        'utf8',
-      ),
-    );
-    writeFileSync(
-      join(migrations, '006_world_version.sql'),
-      readFileSync(
-        root + 'packages/persistence/migrations/006_world_version.sql',
-        'utf8',
-      ),
-    );
+    for (const file of readdirSync(root + 'packages/persistence/migrations'))
+      writeFileSync(
+        join(migrations, file),
+        readFileSync(root + 'packages/persistence/migrations/' + file, 'utf8'),
+      );
+    const sql = readFileSync(join(migrations, '001_initial.sql'), 'utf8');
     const filename = join(d, 'world.sqlite');
     const a = open(filename, migrations);
     a.initialize(fixture());

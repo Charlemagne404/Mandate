@@ -91,17 +91,77 @@ export function commandReferences(c: WorldCommand) {
         negotiationIds: [c.negotiationId],
         treatyIds: c.treatyId ? [c.treatyId] : [],
       };
+    case 'ISSUE_PATRON_DIRECTIVE':
+      return {
+        ...empty,
+        nationIds: [c.patronNationId, c.subjectNationId],
+        treatyIds: [
+          c.treatyId,
+          ...(c.targetTreatyId ? [c.targetTreatyId] : []),
+        ],
+        conflictIds: c.conflictId ? [c.conflictId] : [],
+        organizationIds: c.organizationId ? [c.organizationId] : [],
+      };
     case 'CREATE_ORGANIZATION':
       return {
         ...empty,
         organizationIds: [c.organization.id],
-        nationIds: c.organization.members,
+        nationIds: [
+          ...c.organization.founders,
+          ...c.organization.members,
+          ...c.organization.invitedStates,
+          ...c.organization.commitments.flatMap((commitment) => [
+            commitment.issuer,
+            ...commitment.recipientNationIds,
+          ]),
+        ],
       };
     case 'SET_ORGANIZATION_MEMBERSHIP':
       return {
         ...empty,
         organizationIds: [c.organizationId],
         nationIds: [c.nationId],
+      };
+    case 'INVITE_TO_ORGANIZATION':
+      return {
+        ...empty,
+        organizationIds: [c.organizationId],
+        nationIds: [c.inviterNationId, c.nationId],
+      };
+    case 'RESPOND_ORGANIZATION_INVITATION':
+      return {
+        ...empty,
+        organizationIds: [c.organizationId],
+        nationIds: [c.nationId],
+      };
+    case 'UPDATE_ORGANIZATION':
+    case 'DISSOLVE_ORGANIZATION':
+      return {
+        ...empty,
+        organizationIds: [c.organizationId],
+        nationIds: [c.issuerNationId],
+      };
+    case 'ADD_ORGANIZATION_COMMITMENT':
+      return {
+        ...empty,
+        organizationIds: [c.organizationId],
+        nationIds: [c.commitment.issuer, ...c.commitment.recipientNationIds],
+      };
+    case 'START_ORGANIZATION_PROGRAM':
+      return {
+        ...empty,
+        organizationIds: [c.organizationId],
+        nationIds: [
+          c.program.issuerNationId,
+          ...c.program.participantNationIds,
+          ...c.program.responses.map((response) => response.nationId),
+        ],
+      };
+    case 'REMOVE_ORGANIZATION_MEMBER':
+      return {
+        ...empty,
+        organizationIds: [c.organizationId],
+        nationIds: [c.issuerNationId, c.nationId],
       };
     case 'APPLY_DOMESTIC_PRESSURE':
       return { ...empty, nationIds: [c.nationId] };
@@ -142,7 +202,19 @@ export function commandReferences(c: WorldCommand) {
       };
     case 'UPDATE_TREATY':
     case 'END_TREATY':
-      return { ...empty, treatyIds: [c.treatyId] };
+      return {
+        ...empty,
+        ...(c.type === 'END_TREATY' && c.nationId
+          ? { nationIds: [c.nationId] }
+          : {}),
+        treatyIds: [c.treatyId],
+      };
+    case 'ENFORCE_TREATY_BREACH':
+      return {
+        ...empty,
+        nationIds: [c.patronNationId, c.subjectNationId],
+        treatyIds: [c.treatyId],
+      };
     case 'START_CONFLICT':
       return {
         ...empty,

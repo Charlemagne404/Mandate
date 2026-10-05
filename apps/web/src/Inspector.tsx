@@ -29,6 +29,23 @@ export function Inspector({
     adjacentRegionIds: string[];
   };
 }) {
+  const region = world.regions.find((r) => r.id === regionId);
+  const controlHistory = region
+    ? [...world.events]
+        .reverse()
+        .find(
+          (event) =>
+            event.regionIds.includes(region.id) &&
+            event.nationIds[0] === region.controllerNationId &&
+            (event.type.startsWith('WAR_') ||
+              event.type === 'OCCUPIED_TERRITORY_RETURNED'),
+        )
+    : null;
+  const controlConflict = controlHistory?.conflictIds[0]
+    ? world.conflicts.find(
+        (conflict) => conflict.id === controlHistory.conflictIds[0],
+      )
+    : null;
   const tabs = [
     'Overview',
     'Diplomacy',
@@ -42,7 +59,6 @@ export function Inspector({
   const [tab, setTab] = useState<(typeof tabs)[number]>('Overview');
   const shown = (...sections: Array<(typeof tabs)[number]>) =>
     sections.includes(tab);
-  const region = world.regions.find((r) => r.id === regionId);
   const relation = world.relations.find(
     (r) =>
       [r.nationA, r.nationB].includes(nation.id) &&
@@ -228,8 +244,24 @@ export function Inspector({
             <dd data-testid="owner">{name(region.ownerNationId)}</dd>
             <dt>Military control</dt>
             <dd data-testid="controller">{name(region.controllerNationId)}</dd>
+            <dt>Status</dt>
+            <dd>
+              {region.ownerNationId === region.controllerNationId
+                ? 'Not occupied'
+                : 'Occupied'}
+            </dd>
+            {region.ownerNationId !== region.controllerNationId && (
+              <>
+                <dt>Changed control</dt>
+                <dd>{controlHistory?.date ?? 'Date unrecorded'}</dd>
+                <dt>Conflict</dt>
+                <dd>{controlConflict?.name ?? 'No recorded conflict'}</dd>
+              </>
+            )}
             <dt>Claims</dt>
             <dd>{region.claims.map(name).join(', ') || 'None'}</dd>
+            <dt>Recognized claims</dt>
+            <dd>{region.recognizedClaims.map(name).join(', ') || 'None'}</dd>
           </dl>
         ) : (
           <p className="muted">Select a region on the map.</p>

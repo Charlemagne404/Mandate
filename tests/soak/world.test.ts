@@ -38,7 +38,13 @@ it('survives 250 deterministic turns with bounded stats, append-only history, an
     }
     expect(w.revision).toBe(250);
     expect(w.commands).toHaveLength(500);
-    expect(w.events).toHaveLength(500);
+    expect(w.events.length).toBeLessThan(w.commands.length);
+    expect(
+      new Set([
+        ...w.events.flatMap((event) => event.sourceCommandIds),
+        ...w.turns.flatMap((turn) => turn.suppressedCommandIds ?? []),
+      ]).size,
+    ).toBe(w.commands.length);
     expect(
       w.nations.every(
         (n) =>

@@ -87,6 +87,31 @@ test('select Finland on the map, transfer control, render mode, inspect provenan
   expect((await (await page.request.get('/api/world')).json()).hash).toBe(hash);
   expect(errors).toEqual([]);
 });
+test('shows the selected country sphere and colors the map by derived relationship tier', async ({
+  page,
+}) => {
+  const mapModes = page.getByLabel('More map modes');
+  await mapModes.selectOption('influence');
+  await expect(mapModes).toHaveValue('influence');
+  await expect(page.locator('.map-key')).toContainText('Green: partner');
+  await page.getByRole('button', { name: 'Sphere', exact: true }).click();
+  const view = page.getByRole('region', { name: 'Sphere of influence' });
+  await expect(
+    view.getByRole('heading', { name: 'Sweden sphere', exact: true }),
+  ).toBeVisible();
+  const network = view.getByRole('table', { name: 'Sweden sphere network' });
+  await expect(network).toBeVisible();
+  await expect(network).toContainText('Autonomy');
+  await expect(network).toContainText('Resistance');
+  await expect(network).toContainText('Payments / arrears');
+  await expect(network).toContainText('Obligations');
+  await expect(network).toContainText('Rival patron');
+  await expect(network).toContainText('Defection risk');
+  await expect(view.locator('.influence-card').first()).toBeVisible();
+  await expect(view).toContainText('Why this relationship exists');
+  await expect(view).toContainText('Political resistance');
+  await expect(view).toContainText(/modeled index \d+\/100/);
+});
 test('shows a player annexation as an order, an attempted implementation, and an unresolved outcome', async ({
   page,
 }) => {

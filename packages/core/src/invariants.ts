@@ -57,7 +57,38 @@ export function assertWorld(input: unknown): asserts input is World {
       'region nation',
     );
     check(unique(r.claims), 'Duplicate claims');
+    check(unique(r.recognizedClaims), 'Duplicate recognized claims');
+    check(
+      r.recognizedClaims.every(
+        (nationId) =>
+          r.claims.includes(nationId) && nationId !== r.ownerNationId,
+      ),
+      'Recognized claims must refer to existing claims by another nation',
+    );
     check(r.geometryId === r.id, 'Region geometry ID must be stable');
+  }
+  const adjacency = new Map(
+    w.scenario.regionAdjacency.map((entry) => [
+      entry.regionId,
+      entry.neighbors,
+    ]),
+  );
+  check(
+    unique(w.scenario.regionAdjacency.map((entry) => entry.regionId)),
+    'Duplicate regional adjacency entry',
+  );
+  for (const entry of w.scenario.regionAdjacency) {
+    refs([entry.regionId, ...entry.neighbors], regions, 'adjacent region');
+    check(unique(entry.neighbors), 'Duplicate adjacent region');
+    check(
+      !entry.neighbors.includes(entry.regionId),
+      'Region cannot neighbor itself',
+    );
+    for (const neighbor of entry.neighbors)
+      check(
+        adjacency.get(neighbor)?.includes(entry.regionId) ?? false,
+        'Regional adjacency must be symmetric',
+      );
   }
   const relations = new Set<string>();
   for (const r of w.relations) {
@@ -71,6 +102,116 @@ export function assertWorld(input: unknown): asserts input is World {
   for (const t of w.treaties) {
     refs(t.parties, nations, 'treaty party');
     check(unique(t.parties), 'Treaty parties must be unique');
+    check(
+      unique(
+        t.influenceTerms.map((term) =>
+          [
+            term.kind,
+            term.patronNationId,
+            term.subjectNationId,
+            term.amount,
+            term.ratePercent,
+          ].join(':'),
+        ),
+      ),
+      'Duplicate treaty influence term',
+    );
+    for (const term of t.influenceTerms) {
+      refs(
+        [term.patronNationId, term.subjectNationId],
+        nations,
+        'influence treaty party',
+      );
+      check(
+        term.patronNationId !== term.subjectNationId &&
+          t.parties.includes(term.patronNationId) &&
+          t.parties.includes(term.subjectNationId),
+        'Influence term parties must be treaty parties',
+      );
+      check(
+        term.kind === 'tribute'
+          ? term.amount > 0 !== term.ratePercent > 0
+          : [
+                'subsidy',
+                'infrastructure-investment',
+                'debt-repayment',
+                'loan',
+                'debt-relief',
+              ].includes(term.kind)
+            ? term.amount > 0 && term.ratePercent === 0
+            : term.amount === 0 && term.ratePercent === 0,
+        `Invalid influence payment fields for ${term.kind}`,
+      );
+      check(
+        term.paidAmount >= 0 && term.arrears >= 0,
+        'Invalid influence payment history',
+      );
+      check(
+        !term.lastPaymentDate ||
+          (term.lastPaymentDate >= w.scenario.startDate &&
+            term.lastPaymentDate <= w.date),
+        'Influence payment date outside world chronology',
+      );
+    }
+    check(
+      unique(t.breaches.map((breach) => breach.id)),
+      'Duplicate treaty breach ID',
+    );
+    for (const breach of t.breaches) {
+      refs(
+        [breach.violatingNationId, breach.injuredNationId],
+        nations,
+        'treaty breach party',
+      );
+      check(
+        breach.violatingNationId !== breach.injuredNationId &&
+          t.parties.includes(breach.violatingNationId) &&
+          t.parties.includes(breach.injuredNationId) &&
+          breach.date >= w.scenario.startDate &&
+          breach.date <= w.date,
+        'Invalid treaty breach parties or date',
+      );
+    }
+    check(
+      unique(t.ratificationGovernments.map((entry) => entry.nationId)) &&
+        t.ratificationGovernments.every((entry) =>
+          t.parties.includes(entry.nationId),
+        ),
+      'Invalid ratification government record',
+    );
+    check(
+      unique(t.directives.map((directive) => directive.id)),
+      'Duplicate patron directive ID',
+    );
+    for (const directive of t.directives) {
+      refs(
+        [directive.patronNationId, directive.subjectNationId],
+        nations,
+        'patron directive party',
+      );
+      check(
+        directive.patronNationId !== directive.subjectNationId &&
+          t.parties.includes(directive.patronNationId) &&
+          t.parties.includes(directive.subjectNationId) &&
+          directive.issuedDate >= w.scenario.startDate &&
+          directive.issuedDate <= w.date,
+        'Patron directive parties or date invalid',
+      );
+      if (directive.conflictId)
+        refs([directive.conflictId], conflicts, 'patron directive conflict');
+      if (directive.organizationId)
+        refs(
+          [directive.organizationId],
+          organizationIds,
+          'patron directive organization',
+        );
+      if (directive.targetTreatyId)
+        refs(
+          [directive.targetTreatyId],
+          treaties,
+          'patron directive target treaty',
+        );
+    }
     const settlement = t.kind === 'ceasefire' || t.kind === 'peace';
     check(
       settlement === (t.conflictId !== null),
@@ -333,8 +474,209 @@ export function assertWorld(input: unknown): asserts input is World {
       'Project investment cannot fulfill multiple obligations twice',
     );
   for (const o of w.organizations) {
-    refs(o.members, nations, 'organization member');
+    refs(
+      [...o.founders, ...o.members, ...o.invitedStates],
+      nations,
+      'organization nation',
+    );
+    refs(
+      o.invitations.map((invitation) => invitation.nationId),
+      nations,
+      'organization invitee',
+    );
+    refs(
+      o.pendingApplications.map((application) => application.nationId),
+      nations,
+      'organization applicant',
+    );
+    refs(
+      o.commitments.flatMap((commitment) => [
+        commitment.issuer,
+        ...commitment.recipientNationIds,
+      ]),
+      nations,
+      'organization commitment party',
+    );
+    refs(
+      o.programs.flatMap((program) => [
+        program.issuerNationId,
+        ...program.participantNationIds,
+        ...program.responses.map((response) => response.nationId),
+      ]),
+      nations,
+      'organization program party',
+    );
+    refs(
+      o.history.flatMap((entry) =>
+        entry.actorNationId ? [entry.actorNationId] : [],
+      ),
+      nations,
+      'organization history actor',
+    );
     check(unique(o.members), 'Duplicate organization members');
+    check(unique(o.founders), 'Duplicate organization founders');
+    check(unique(o.invitedStates), 'Duplicate invited states');
+    check(
+      unique(o.invitations.map((invitation) => invitation.nationId)),
+      'Duplicate organization invitations',
+    );
+    check(
+      unique(o.pendingApplications.map((application) => application.nationId)),
+      'Duplicate organization applications',
+    );
+    check(
+      unique(o.commitments.map((commitment) => commitment.id)),
+      'Duplicate organization commitment IDs',
+    );
+    check(
+      unique(o.programs.map((program) => program.id)),
+      'Duplicate organization program IDs',
+    );
+    check(
+      unique(o.development.map((entry) => entry.dimension)),
+      'Duplicate organization development dimensions',
+    );
+    check(
+      unique(
+        o.programs
+          .filter((program) =>
+            ['proposed', 'active', 'suspended'].includes(program.status),
+          )
+          .map((program) => program.dimension),
+      ),
+      'Only one active organization program may target each development dimension',
+    );
+    check(
+      o.programs.every((program) => {
+        const responseIds = program.responses.map(
+          (response) => response.nationId,
+        );
+        return (
+          o.members.includes(program.issuerNationId) &&
+          !program.participantNationIds.includes(program.issuerNationId) &&
+          unique(program.participantNationIds) &&
+          unique(responseIds) &&
+          JSON.stringify([...responseIds].sort()) ===
+            JSON.stringify([...program.participantNationIds].sort()) &&
+          program.participantNationIds.every((id) => o.members.includes(id)) &&
+          program.createdDate >= (o.foundingDate ?? w.scenario.startDate) &&
+          program.createdDate <= program.updatedDate &&
+          program.updatedDate <= w.date &&
+          (program.status === 'completed'
+            ? program.completedDate !== null &&
+              program.completedDate >= program.createdDate &&
+              program.completedDate <= w.date &&
+              program.progress === 100
+            : program.completedDate === null) &&
+          program.responses.every((response) =>
+            response.move === 'pending'
+              ? response.decidedDate === null &&
+                response.message === null &&
+                response.counterTerms === null
+              : response.decidedDate !== null &&
+                response.decidedDate >= program.createdDate &&
+                response.decidedDate <= w.date &&
+                (response.move === 'counter'
+                  ? !!response.counterTerms
+                  : response.counterTerms === null),
+          )
+        );
+      }),
+      'Invalid organization program parties, dates, status, or responses',
+    );
+    check(
+      unique(o.history.map((entry) => entry.id)),
+      'Duplicate organization history IDs',
+    );
+    check(
+      o.invitedStates.length === o.invitations.length &&
+        o.invitedStates.every((id) =>
+          o.invitations.some((invitation) => invitation.nationId === id),
+        ),
+      'Invited-state index must match invitation records',
+    );
+    check(
+      o.invitations.every(
+        (invitation) =>
+          !o.members.includes(invitation.nationId) ||
+          o.founders.includes(invitation.nationId) ||
+          invitation.status === 'accepted',
+      ),
+      'Membership requires accepted invitation or founding status',
+    );
+    check(
+      o.pendingApplications.every(
+        (application) =>
+          application.status !== 'pending' ||
+          o.invitations.some(
+            (invitation) =>
+              invitation.nationId === application.nationId &&
+              invitation.lastMove === 'counter',
+          ),
+      ),
+      'Organization application requires a countered invitation',
+    );
+    check(
+      o.commitments.every(
+        (commitment) =>
+          (commitment.appliesTo === 'specific-members'
+            ? commitment.recipientNationIds.length > 0
+            : commitment.appliesTo === 'all-members'
+              ? commitment.recipientNationIds.length === 0
+              : true) &&
+          (commitment.status !== 'active' || o.status === 'active') &&
+          commitment.createdDate >= (o.foundingDate ?? w.scenario.startDate) &&
+          commitment.createdDate <= w.date,
+      ),
+      'Invalid organization commitment scope or chronology',
+    );
+    check(
+      o.foundingDate === null ||
+        (o.foundingDate >= w.scenario.startDate && o.foundingDate <= w.date),
+      'Invalid organization founding date',
+    );
+    check(
+      o.foundingDate === null || o.founders.length > 0,
+      'A dated organization must record its founders',
+    );
+    check(
+      (o.status === 'dissolved') === (o.dissolvedDate !== null) &&
+        (!o.dissolvedDate ||
+          (o.dissolvedDate >= (o.foundingDate ?? w.scenario.startDate) &&
+            o.dissolvedDate <= w.date)),
+      'Invalid organization dissolution history',
+    );
+    check(
+      o.status !== 'active' || o.members.length > 0,
+      'An active organization requires at least one member',
+    );
+    check(
+      o.invitations.every(
+        (invitation) =>
+          invitation.invitedDate >= (o.foundingDate ?? w.scenario.startDate) &&
+          invitation.invitedDate <= invitation.updatedDate &&
+          invitation.updatedDate <= w.date,
+      ),
+      'Invalid organization invitation chronology',
+    );
+    check(
+      o.pendingApplications.every(
+        (application) =>
+          application.appliedDate >= (o.foundingDate ?? w.scenario.startDate) &&
+          application.appliedDate <= application.updatedDate &&
+          application.updatedDate <= w.date,
+      ),
+      'Invalid organization application chronology',
+    );
+    check(
+      o.history.every(
+        (entry, index) =>
+          entry.date >= (o.foundingDate ?? w.scenario.startDate) &&
+          entry.date <= w.date &&
+          (index === 0 || entry.date >= o.history[index - 1]!.date),
+      ),
+      'Organization history must be chronological',
+    );
   }
   const initiativeIds = new Set(w.initiatives.map((v) => v.id as string));
   const activeInitiatives = new Set<string>();
@@ -513,6 +855,28 @@ export function assertWorld(input: unknown): asserts input is World {
         n.expiresDate > n.createdDate,
       'Invalid negotiation chronology',
     );
+    if (n.conditionalPressure) {
+      const pressure = n.conditionalPressure;
+      check(
+        pressure.patronNationId === n.proposerNationId &&
+          pressure.subjectNationId === n.recipientNationId &&
+          pressure.createdDate === n.createdDate,
+        'Conditional pressure must match its negotiating parties and date',
+      );
+      check(
+        pressure.status === 'triggered'
+          ? !!pressure.triggeredDate &&
+              pressure.triggeredDate >= pressure.createdDate &&
+              pressure.triggeredDate <= w.date
+          : pressure.triggeredDate === null,
+        'Conditional pressure status and trigger date disagree',
+      );
+      check(
+        pressure.status !== 'satisfied' ||
+          (pressure.condition === 'rejection' && n.status === 'accepted'),
+        'Only an accepted offer can satisfy rejection pressure',
+      );
+    }
     check(
       n.responses.every(
         (v) =>
@@ -678,7 +1042,13 @@ export function assertWorld(input: unknown): asserts input is World {
     refs(r.initiativeIds, initiativeIds, 'command initiative');
     refs(r.negotiationIds, negotiationIds, 'command negotiation');
     refs(r.organizationIds, organizationIds, 'command organization');
-    check(sourcedCommands.has(c.id), 'Every command must have a factual event');
+    const commandTurn = turns.get(c.turnId);
+    const reportedSuppression =
+      commandTurn?.suppressedCommandIds?.includes(c.id) === true;
+    check(
+      sourcedCommands.has(c.id) || reportedSuppression,
+      'An unsurfaced command event must be accounted for by novelty suppression',
+    );
   }
   for (const e of w.events) {
     refs(e.nationIds, nations, 'event nation');
@@ -692,8 +1062,10 @@ export function assertWorld(input: unknown): asserts input is World {
         (v) =>
           v.before >= 0 &&
           v.after >= 0 &&
-          v.before <= (v.stat === 'treasury' ? 1000000000 : 100) &&
-          v.after <= (v.stat === 'treasury' ? 1000000000 : 100) &&
+          v.before <=
+            (v.stat === 'treasury' || v.stat === 'debt' ? 1000000000 : 100) &&
+          v.after <=
+            (v.stat === 'treasury' || v.stat === 'debt' ? 1000000000 : 100) &&
           v.before !== v.after,
       ),
       'Invalid factual event stat effect',

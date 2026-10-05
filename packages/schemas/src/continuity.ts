@@ -100,6 +100,7 @@ export const EconomicLink = z.strictObject({
   energy: level,
   strategicGoods: level,
   finance: level,
+  infrastructure: level.default(0),
   alternatives: level.default(20),
   adaptation: level.default(0),
 });

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { Initiative, Negotiation, Organization } from '@mandate/schemas';
+import {
+  Initiative,
+  NationId,
+  Negotiation,
+  Organization,
+  OrganizationProgram,
+} from '@mandate/schemas';
 import { assertWorld, exportSave, parseSave, resolveTurn } from './index.js';
 import {
   context,
@@ -75,6 +81,129 @@ describe('deterministic alpha mechanics', () => {
       move: 'delay',
     });
     expect(() => assertWorld(extra)).toThrow('Closed negotiation');
+  });
+  it('peace at current lines ends the war without annexing occupied territory', () => {
+    let w = fixture();
+    w = run(w, [
+      conflict,
+      {
+        type: 'TRANSFER_CONTROL',
+        regionId: 'region:ne-fin',
+        nationId: 'nation:rus',
+      },
+      {
+        type: 'OPEN_NEGOTIATION',
+        negotiation: negotiation(w, {
+          kind: 'peace',
+          conflictId: 'conflict:crisis',
+          proposerNationId: NationId.parse('nation:rus'),
+          terms: 'End hostilities at current control lines.',
+        }),
+      },
+    ]);
+    w = run(w, [
+      {
+        type: 'RESPOND_NEGOTIATION',
+        negotiationId: 'negotiation:cooperation',
+        nationId: 'nation:fin',
+        move: 'accept',
+        message: 'Accepted at current lines.',
+        treatyId: 'treaty:status-quo-peace',
+      },
+    ]);
+    expect(w.conflicts[0]!.status).toBe('ended');
+    expect(
+      w.regions.find((region) => region.id === 'region:ne-fin'),
+    ).toMatchObject({
+      ownerNationId: 'nation:fin',
+      controllerNationId: 'nation:rus',
+    });
+  });
+
+  it('a signed cession transfers ownership while a recognized claim remains explicit', () => {
+    let w = fixture();
+    w = run(w, [
+      conflict,
+      {
+        type: 'TRANSFER_CONTROL',
+        regionId: 'region:ne-fin',
+        nationId: 'nation:rus',
+      },
+      { type: 'ADD_CLAIM', regionId: 'region:ne-fin', nationId: 'nation:rus' },
+      {
+        type: 'OPEN_NEGOTIATION',
+        negotiation: negotiation(w, {
+          kind: 'peace',
+          conflictId: 'conflict:crisis',
+          proposerNationId: NationId.parse('nation:rus'),
+          peaceTerms: [
+            {
+              kind: 'territorial-transfer',
+              regionId: 'region:ne-fin',
+              fromNationId: 'nation:fin',
+              toNationId: 'nation:rus',
+            },
+          ],
+        }),
+      },
+    ]);
+    w = run(w, [
+      {
+        type: 'RESPOND_NEGOTIATION',
+        negotiationId: 'negotiation:cooperation',
+        nationId: 'nation:fin',
+        move: 'accept',
+        message: 'Accepted cession.',
+        treatyId: 'treaty:cession-peace',
+      },
+    ]);
+    expect(
+      w.regions.find((region) => region.id === 'region:ne-fin'),
+    ).toMatchObject({
+      ownerNationId: 'nation:rus',
+      controllerNationId: 'nation:rus',
+    });
+
+    let recognized = fixture();
+    recognized = run(recognized, [
+      conflict,
+      { type: 'ADD_CLAIM', regionId: 'region:ne-fin', nationId: 'nation:rus' },
+      {
+        type: 'OPEN_NEGOTIATION',
+        negotiation: negotiation(recognized, {
+          kind: 'peace',
+          conflictId: 'conflict:crisis',
+          proposerNationId: NationId.parse('nation:rus'),
+          peaceTerms: [
+            {
+              kind: 'recognize-claim',
+              regionId: 'region:ne-fin',
+              fromNationId: 'nation:fin',
+              toNationId: 'nation:rus',
+            },
+          ],
+        }),
+      },
+    ]);
+    recognized = run(recognized, [
+      {
+        type: 'RESPOND_NEGOTIATION',
+        negotiationId: 'negotiation:cooperation',
+        nationId: 'nation:fin',
+        move: 'accept',
+        message: 'Accepted claim recognition.',
+        treatyId: 'treaty:claim-recognition-peace',
+      },
+    ]);
+    expect(
+      recognized.regions.find((region) => region.id === 'region:ne-fin'),
+    ).toMatchObject({
+      ownerNationId: 'nation:fin',
+      recognizedClaims: ['nation:rus'],
+    });
+    expect(
+      recognized.events.some((event) => event.type === 'CLAIM_RECOGNIZED'),
+    ).toBe(true);
   });
   it.each([
     ['energy', 'energyExposure', -6],
@@ -494,22 +623,47 @@ describe('deterministic alpha mechanics', () => {
       'failed',
     );
   });
-  it('maintains organization membership and rejects duplicate/unknown members', () => {
+  it('requires independent consent for membership and records organization history', () => {
+    let w = fixture();
     const o = Organization.parse({
       id: 'organization:nordic',
       name: 'Nordic cooperation',
-      kind: 'regional',
+      acronym: 'NC',
+      kind: 'regional-organization',
+      foundingDate: w.date,
+      founders: ['nation:swe'],
       members: ['nation:swe'],
+      purpose: 'Consultation',
       charter: 'Consultation',
     });
-    let w = fixture();
     w = run(w, [
       { type: 'CREATE_ORGANIZATION', organization: o },
       {
-        type: 'SET_ORGANIZATION_MEMBERSHIP',
+        type: 'INVITE_TO_ORGANIZATION',
+        organizationId: o.id,
+        inviterNationId: 'nation:swe',
+        nationId: 'nation:fin',
+      },
+    ]);
+    expect(w.organizations[0]!.members).toEqual(['nation:swe']);
+    expect(w.organizations[0]!.invitations[0]!.status).toBe('pending');
+    expect(() =>
+      run(w, [
+        {
+          type: 'SET_ORGANIZATION_MEMBERSHIP',
+          organizationId: o.id,
+          nationId: 'nation:fin',
+          member: true,
+        },
+      ]),
+    ).toThrow('accepted invitation');
+    w = run(w, [
+      {
+        type: 'RESPOND_ORGANIZATION_INVITATION',
         organizationId: o.id,
         nationId: 'nation:fin',
-        member: true,
+        move: 'accept',
+        message: 'The government accepts.',
       },
       {
         type: 'SET_ORGANIZATION_MEMBERSHIP',
@@ -519,16 +673,175 @@ describe('deterministic alpha mechanics', () => {
       },
     ]);
     expect(w.organizations[0]!.members).toEqual(['nation:fin']);
+    expect(w.organizations[0]!.history.map((entry) => entry.kind)).toEqual([
+      'founded',
+      'invited',
+      'member-joined',
+      'member-left',
+    ]);
+    const dissolved = run(w, [
+      {
+        type: 'SET_ORGANIZATION_MEMBERSHIP',
+        organizationId: o.id,
+        nationId: 'nation:fin',
+        member: false,
+      },
+    ]);
+    expect(dissolved.organizations[0]!.status).toBe('dissolved');
     expect(() =>
-      run(w, [
+      run(dissolved, [
         {
           type: 'SET_ORGANIZATION_MEMBERSHIP',
           organizationId: o.id,
           nationId: 'nation:fin',
-          member: false,
+          member: true,
         },
       ]),
-    ).toThrow('retain');
+    ).toThrow('active organization');
+  });
+  it('records an organization program proposal without inventing member consent or funding', () => {
+    let w = fixture();
+    const organization = Organization.parse({
+      id: 'organization:nordic-programs',
+      name: 'Nordic development forum',
+      kind: 'economic-union',
+      foundingDate: w.date,
+      founders: ['nation:swe'],
+      members: ['nation:swe'],
+      purpose: 'Coordinate regional development.',
+      charter: 'Voluntary cooperation among members.',
+    });
+    w = run(w, [
+      { type: 'CREATE_ORGANIZATION', organization },
+      {
+        type: 'INVITE_TO_ORGANIZATION',
+        organizationId: organization.id,
+        inviterNationId: 'nation:swe',
+        nationId: 'nation:fin',
+      },
+      {
+        type: 'RESPOND_ORGANIZATION_INVITATION',
+        organizationId: organization.id,
+        nationId: 'nation:fin',
+        move: 'accept',
+        message: 'The government accepts.',
+      },
+      {
+        type: 'START_ORGANIZATION_PROGRAM',
+        organizationId: organization.id,
+        program: OrganizationProgram.parse({
+          id: 'orgprogram:nordic-trade-study',
+          dimension: 'common-standards',
+          title: 'Cross border standards review',
+          terms: 'Review technical standards for member trade.',
+          issuerNationId: 'nation:swe',
+          participantNationIds: ['nation:fin'],
+          responses: [
+            {
+              nationId: 'nation:fin',
+              move: 'pending',
+              decidedDate: null,
+              message: null,
+              counterTerms: null,
+            },
+          ],
+          monthlyCost: 0,
+          createdDate: w.date,
+          updatedDate: w.date,
+        }),
+      },
+    ]);
+    expect(w.organizations[0]!.programs[0]!.status).toBe('proposed');
+    expect(w.organizations[0]!.programs[0]!.participantNationIds).toEqual([
+      'nation:fin',
+    ]);
+    expect(w.organizations[0]!.programs[0]!.responses[0]!.move).toBe('pending');
+    expect(w.organizations[0]!.history.at(-1)?.kind).toBe('program-proposed');
+    expect(w.organizations[0]!.programs[0]!.totalInvested).toBe(0);
+  });
+  it('applies bounded monthly economic benefits and funded member support', () => {
+    let w = fixture();
+    const o = Organization.parse({
+      id: 'organization:economic-cooperation',
+      name: 'Nordic Economic Cooperation',
+      kind: 'economic-union',
+      foundingDate: w.date,
+      founders: ['nation:swe'],
+      members: ['nation:swe'],
+      invitedStates: ['nation:fin'],
+      invitations: [
+        {
+          nationId: 'nation:fin',
+          invitedDate: w.date,
+          updatedDate: w.date,
+          status: 'pending',
+          lastMove: null,
+          message: null,
+          counterTerms: null,
+        },
+      ],
+      purpose: 'Gradual economic integration.',
+      charter: 'Gradual economic integration.',
+      commitments: [
+        {
+          id: 'orgcommitment:nordic-support',
+          issuer: 'nation:swe',
+          kind: 'economic-support',
+          terms: 'Offer economic support to countries that join.',
+          appliesTo: 'new-members',
+          recipientNationIds: [],
+          costPerMember: 2,
+          frequencyDays: 30,
+          status: 'active',
+          createdDate: w.date,
+          lastPaymentDate: null,
+        },
+      ],
+    });
+    const baseline = run(structuredClone(w), [
+      { type: 'ADVANCE_DATE', date: '2025-01-31' },
+    ]);
+    const swedenBaseline = baseline.nations.find(
+      (nation) => nation.id === 'nation:swe',
+    )!;
+    const finlandBaseline = baseline.nations.find(
+      (nation) => nation.id === 'nation:fin',
+    )!;
+    w = run(w, [
+      { type: 'CREATE_ORGANIZATION', organization: o },
+      {
+        type: 'RESPOND_ORGANIZATION_INVITATION',
+        organizationId: o.id,
+        nationId: 'nation:fin',
+        move: 'accept',
+        message: 'The government accepts.',
+      },
+      { type: 'ADVANCE_DATE', date: '2025-01-31' },
+    ]);
+    expect(w.organizations[0]!.commitments[0]!.lastPaymentDate).toBe(
+      '2025-01-31',
+    );
+    expect(
+      w.nations.find((nation) => nation.id === 'nation:swe')!.stats.treasury,
+    ).toBe(swedenBaseline.stats.treasury - 2);
+    expect(
+      w.nations.find((nation) => nation.id === 'nation:fin')!.stats.treasury,
+    ).toBe(finlandBaseline.stats.treasury + 2);
+    const relation = w.relations.find(
+      (entry) =>
+        entry.nationA === 'nation:fin' && entry.nationB === 'nation:swe',
+    );
+    expect(relation?.tradeDependence).toBeGreaterThan(25);
+    expect(
+      w.organizations[0]!.history.some(
+        (entry) => entry.kind === 'commitment-payment-started',
+      ),
+    ).toBe(true);
+    expect(
+      w.events.some(
+        (event) => event.type === 'ORGANIZATION_COMMITMENT_MILESTONE',
+      ),
+    ).toBe(true);
   });
   it('strategic combat resolves from capacity/readiness/logistics, changes only control', () => {
     let w = fixture();

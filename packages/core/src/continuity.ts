@@ -11,6 +11,7 @@ import { Sanction, EconomicLink } from '@mandate/schemas';
 import { requireDomain } from './errors.js';
 import { relationshipEffect, liveGoal } from './depth.js';
 import { endConflict } from './mechanics.js';
+import { influenceProfile } from './influence.js';
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 export function crisisSeverity(c: Crisis) {
@@ -189,7 +190,11 @@ function validateConference(w: WorldState, c: Conference) {
         t.kind === 'withdrawal'
           ? r.controllerNationId === t.fromNationId &&
               r.ownerNationId === t.toNationId
-          : r.ownerNationId === t.fromNationId,
+          : t.kind === 'territorial-transfer'
+            ? r.ownerNationId === t.fromNationId
+            : r.ownerNationId === t.fromNationId &&
+              r.claims.includes(t.toNationId) &&
+              !r.recognizedClaims.includes(t.toNationId),
         'Peace concession must match current ownership/control',
       );
     }
@@ -341,7 +346,10 @@ export function applyContinuityCommand(
           logistics: 50,
           supplyPressure: 0,
           initiative: 50,
+          momentum: 0,
+          exhaustion: 0,
           progress: 0,
+          recentOutcomes: [],
         });
       return true;
     }
@@ -695,9 +703,13 @@ export function applyContinuityCommand(
         if (v.kind === 'peace') {
           for (const t of v.peaceTerms) {
             const r = w.regions.find((r) => r.id === t.regionId)!;
-            if (t.kind === 'territorial-transfer')
+            if (t.kind === 'territorial-transfer') {
               r.ownerNationId = t.toNationId;
-            r.controllerNationId = t.toNationId;
+              r.controllerNationId = t.toNationId;
+            } else if (t.kind === 'withdrawal')
+              r.controllerNationId = t.toNationId;
+            else if (!r.recognizedClaims.includes(t.toNationId))
+              r.recognizedClaims.push(t.toNationId);
           }
           endConflict(w, v.conflictId!);
         } else if (v.kind === 'sanctions') {
@@ -724,14 +736,28 @@ export function applyContinuityCommand(
           w.organizations.push({
             id,
             name: v.title,
+            acronym: null,
             kind:
               v.kind === 'security'
                 ? 'alliance'
                 : v.kind === 'trade'
                   ? 'economic'
                   : 'regional',
+            foundingDate: w.date,
+            founders: [...v.parties],
             members: [...v.parties],
+            invitedStates: [],
+            invitations: [],
+            pendingApplications: [],
+            purpose: v.terms,
             charter: v.terms,
+            commitments: [],
+            development: [],
+            programs: [],
+            geographicScope: null,
+            history: [],
+            status: 'active',
+            dissolvedDate: null,
             visibility: v.visibility,
           });
           if (v.kind === 'trade') {
@@ -864,93 +890,33 @@ export function updateContinuity(
     }
   }
   if (!accountingTick) return;
-  // Stable variation derives only from scenario identity, date, theater and actor.
-  for (const f of w.conflicts.filter((f) => f.status === 'active'))
-    for (const t of [...f.theaters].sort((a, b) => a.id.localeCompare(b.id))) {
-      const n = w.nations.find((n) => n.id === t.nationId)!;
-      const enemies = f.attackers.includes(n.id) ? f.defenders : f.attackers;
-      if (t.posture === 'prepare-ceasefire') {
-        f.escalation = clamp(f.escalation - 3);
+  // Front geography and territorial movement are resolved once by the
+  // strategic front engine. Continuity handles only non-operational postures.
+  for (const conflict of w.conflicts.filter(
+    (entry) => entry.status === 'active',
+  ))
+    for (const theater of [...conflict.theaters].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    )) {
+      if (theater.posture === 'prepare-ceasefire') {
+        conflict.escalation = clamp(conflict.escalation - 3);
         continue;
       }
-      if (t.posture === 'withdraw') {
-        const held = t.regionIds
-          .map((id) => w.regions.find((r) => r.id === id)!)
-          .find(
-            (r) =>
-              r.controllerNationId === n.id &&
-              enemies.includes(r.ownerNationId),
-          );
-        if (held) held.controllerNationId = held.ownerNationId;
-        t.progress = 0;
-        t.supplyPressure = clamp(t.supplyPressure - 10);
+      if (conflict.settlementState === 'ceasefire') continue;
+      if (theater.posture === 'hold') {
+        theater.supplyPressure = clamp(theater.supplyPressure - 2);
         continue;
       }
-      if (f.settlementState === 'ceasefire') continue;
-      if (t.posture === 'hold') {
-        t.supplyPressure = clamp(t.supplyPressure - 2);
-        continue;
-      }
-      const cost =
-        t.posture === 'major-offensive'
-          ? 8
-          : t.posture === 'limited-offensive'
-            ? 4
-            : 3;
-      if (n.stats.treasury < cost || n.stats.stability < 25) {
-        t.supplyPressure = clamp(t.supplyPressure + 10);
-        continue;
-      }
-      n.stats.treasury -= cost;
-      if (t.posture === 'reinforce') {
-        t.logistics = clamp(t.logistics + 5);
-        n.stats.readiness = clamp(n.stats.readiness + 3);
-        t.supplyPressure = clamp(t.supplyPressure - 5);
-        continue;
-      }
-      const target = t.regionIds
-        .map((id) => w.regions.find((r) => r.id === id)!)
-        .find((r) => enemies.includes(r.controllerNationId));
-      if (!target) continue;
-      const d = w.nations.find((n) => n.id === target.controllerNationId)!;
-      let seed = 2166136261;
-      for (const ch of `${w.scenario.rules?.seed ?? w.scenario.id}:${date}:${t.id}`)
-        seed = Math.imul(seed ^ ch.charCodeAt(0), 16777619) >>> 0;
-      const variation = 0.9 + (seed % 21) / 100;
-      const strength =
-        n.stats.military *
-        (0.5 + n.stats.readiness / 100) *
-        (t.allocation / 100) *
-        (0.5 + t.logistics / 100) *
-        (1 - f.exhaustion / 150) *
-        (1 - t.supplyPressure / 150) *
-        variation;
-      const defensive =
-        d.stats.military *
-        (0.5 + d.stats.readiness / 100) *
-        (0.6 + d.stats.industrial / 200);
-      t.initiative = clamp(50 + 20 * (strength / Math.max(1, defensive) - 1));
-      const advance = Math.max(
-        -8,
-        Math.min(
-          t.posture === 'major-offensive' ? 20 : 12,
-          Math.round((strength / Math.max(1, defensive) - 0.6) * 12),
-        ),
-      );
-      const pressureOnly = ['air-pressure', 'naval-pressure'].includes(
-        t.posture,
-      );
-      if (!pressureOnly) t.progress = clamp(t.progress + advance);
-      else
-        d.stats.readiness = clamp(
-          d.stats.readiness - (strength > defensive ? 2 : 0),
-        );
-      t.supplyPressure = clamp(t.supplyPressure + 5);
-      n.stats.readiness = clamp(n.stats.readiness - 2);
-      f.exhaustion = clamp(f.exhaustion + 2);
-      if (t.progress === 100) {
-        target.controllerNationId = n.id;
-        t.progress = 0;
+      if (theater.posture === 'reinforce') {
+        const nation = w.nations.find(
+          (entry) => entry.id === theater.nationId,
+        )!;
+        if (nation.stats.treasury >= 3 && nation.stats.stability >= 25) {
+          nation.stats.treasury -= 3;
+          nation.stats.readiness = clamp(nation.stats.readiness + 3);
+          theater.logistics = clamp(theater.logistics + 5);
+          theater.supplyPressure = clamp(theater.supplyPressure - 5);
+        } else theater.supplyPressure = clamp(theater.supplyPressure + 10);
       }
     }
   for (const l of w.economicLinks) {
@@ -1163,6 +1129,31 @@ export function evaluateGoal(
         evidence: [
           `Composite dependence on ${e.partnerNationId}: ${effective}; target ${e.target}`,
         ],
+      };
+    }
+    case 'influence': {
+      const tierOrder = [
+        'INDEPENDENT',
+        'PARTNER',
+        'DEPENDENT PARTNER',
+        'CLIENT STATE',
+        'PROTECTORATE',
+        'SUBJECT STATE',
+        'PUPPET STATE',
+      ];
+      const target = tierOrder.indexOf(e.tier);
+      const achieved = e.subjectNationIds.filter((subjectNationId) => {
+        const current = influenceProfile(w, n.id, subjectNationId);
+        return tierOrder.indexOf(current.tier) >= target;
+      });
+      return {
+        progress: Math.floor(
+          (achieved.length * 100) / e.subjectNationIds.length,
+        ),
+        evidence: e.subjectNationIds.map((subjectNationId) => {
+          const current = influenceProfile(w, n.id, subjectNationId);
+          return `${subjectNationId}: ${current.tier}; target ${e.tier}; resistance ${current.resistance}/100`;
+        }),
       };
     }
   }

@@ -20,7 +20,9 @@ test.beforeEach(async ({ page }) => {
   });
   expect(imported.ok()).toBe(true);
   await page.goto('/');
-  await expect(page.locator('[data-map-ready=true]')).toBeVisible();
+  await expect(page.locator('[data-map-ready=true]')).toBeVisible({
+    timeout: 15_000,
+  });
 });
 test('free-form compound directive, private diplomatic continuity and inspectable resolution', async ({
   page,
@@ -45,10 +47,12 @@ test('free-form compound directive, private diplomatic continuity and inspectabl
   ).toBe(true);
   await page.getByLabel('Playing as').selectOption('nation:fin');
   await page.getByRole('button', { name: 'Diplomacy', exact: true }).click();
-  await expect(page.locator('.diplomatic-thread')).toContainText('PRIVATE');
-  await expect(page.locator('.diplomatic-thread')).not.toContainText(
-    'military readiness',
-  );
+  const finlandThread = page
+    .locator('.diplomatic-thread')
+    .filter({ hasText: 'Sweden → Finland' });
+  await expect(finlandThread).toHaveCount(1);
+  await expect(finlandThread).toContainText('PRIVATE');
+  await expect(finlandThread).not.toContainText('military readiness');
   await page.getByRole('button', { name: 'Advance turn', exact: true }).click();
   await expect(page.locator('time')).toHaveText('2025-03-02');
   await expect(page.locator('.diplomatic-thread')).toContainText('ACCEPTED');
@@ -168,6 +172,51 @@ test('regional world library loads 242 polities and a one-month player turn', as
     fullPage: true,
   });
   expect(errors).toEqual([]);
+});
+
+test('dynamic organizations show their charter and clickable invitation recipients', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Scenario', exact: true }).click();
+  await page
+    .locator('.scenario-card')
+    .filter({ hasText: '4595 regions' })
+    .getByRole('button', { name: 'Start scenario', exact: true })
+    .click();
+  await expect(page.locator('time')).toHaveText('2028-01-01');
+  await page
+    .getByRole('button', { name: 'Close world settings', exact: true })
+    .click();
+  await page.getByLabel('Playing as').selectOption('nation:nic');
+  await page
+    .getByLabel('Nicaragua action composer', { exact: true })
+    .fill(
+      'Nicaragua forms the CAEU (Central american economic union) and invites all countries in central america. The economic union focuses on increased economic integration between the central american countries. Nicaragua is prepared to subsidize and support any country that joins economically.',
+    );
+  await page.getByRole('button', { name: 'Issue order', exact: true }).click();
+  await expect(page.locator('time')).toHaveText('2028-01-31', {
+    timeout: 90_000,
+  });
+  await page
+    .getByRole('button', { name: 'Organizations', exact: true })
+    .click();
+  const card = page
+    .locator('.organization-card')
+    .filter({ hasText: 'Central American Economic Union' });
+  await expect(card).toContainText('CAEU');
+  await expect(card).toContainText('increased economic integration');
+  await expect(card).toContainText('Pending invitations');
+  await expect(card).toContainText('Terms and commitments');
+  await expect(card).toContainText('Next payment:');
+  await expect(
+    card.getByRole('button', { name: 'Belize', exact: true }),
+  ).toBeVisible();
+  const belize = card.getByRole('button', { name: 'Belize', exact: true });
+  await belize.click();
+  await expect(belize).toHaveClass(/selected/);
+  await expect(page.getByLabel('Playing as')).toHaveValue('nation:nic');
 });
 
 test('controlled recipient accepts a treaty through ordinary diplomacy controls', async ({

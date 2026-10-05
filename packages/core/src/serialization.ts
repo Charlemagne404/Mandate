@@ -50,7 +50,23 @@ export function canonicalStringify(w: WorldState): string {
   }
   for (const g of sorted.goals) g.targetNationIds.sort();
   for (const i of sorted.initiatives) i.dependencies.sort();
-  for (const o of sorted.organizations) o.members.sort();
+  for (const o of sorted.organizations) {
+    o.founders.sort();
+    o.members.sort();
+    o.invitedStates.sort();
+    o.invitations.sort((a, b) => compare(a.nationId, b.nationId));
+    o.pendingApplications.sort((a, b) => compare(a.nationId, b.nationId));
+    o.commitments.sort((a, b) => compare(a.id, b.id));
+    for (const commitment of o.commitments)
+      commitment.reportedPaymentMilestones.sort((a, b) => a - b);
+    o.development.sort((a, b) => compare(a.dimension, b.dimension));
+    o.programs.sort((a, b) => compare(a.id, b.id));
+    for (const program of o.programs) {
+      program.participantNationIds.sort();
+      program.responses.sort((a, b) => compare(a.nationId, b.nationId));
+      program.reportedMilestones.sort((a, b) => a - b);
+    }
+  }
   for (const e of sorted.events) {
     e.nationIds.sort();
     e.regionIds.sort();

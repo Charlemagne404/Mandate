@@ -12,6 +12,8 @@ import { DebugDrawer } from './DebugDrawer.js';
 import { Modal } from './Modal.js';
 import { Operations } from './Operations.js';
 import { Diplomacy, Conflicts } from './Diplomacy.js';
+import { Organizations } from './Organizations.js';
+import { InfluenceView } from './InfluenceView.js';
 import { api, parseResponse } from './api.js';
 import type { WorldResponse } from './api.js';
 import { eventHeadline } from './event-headline.js';
@@ -280,7 +282,11 @@ export function App() {
               'START_CONFLICT',
               'STRATEGIC_ATTACK',
               'TRANSFER_CONTROL',
-            ].includes(event.type),
+              'TERRITORY_CEDED',
+              'OCCUPIED_TERRITORY_RETURNED',
+            ].includes(event.type) ||
+            event.type === 'WAR_MAJOR_ADVANCE' ||
+            event.type === 'WAR_COUNTERATTACK',
         );
         if (critical) {
           interrupted = true;
@@ -297,7 +303,7 @@ export function App() {
         .slice(0, 3)
         .map((event) => event.title);
       setNotice(
-        `${interrupted ? `Jump paused for a major development · ${completedMonths} of ${months} months` : `Jump complete · ${completedMonths} ${completedMonths === 1 ? 'month' : 'months'}`} · ${completedDate}${topHeadlines.length ? ` · ${topHeadlines.join(' · ')}` : ''}`,
+        `${interrupted ? `Jump paused for a major development · ${completedMonths} of ${months} months` : `Jump complete · ${completedMonths} ${completedMonths === 1 ? 'month' : 'months'}`} · ${completedDate}${topHeadlines.length ? ` · WORLD DEVELOPMENTS: ${topHeadlines.join(' · ')}` : ''}`,
       );
     } catch (e) {
       await refresh();
@@ -347,6 +353,22 @@ export function App() {
     : null;
   const regionController = selectedRegion
     ? world.nations.find((n) => n.id === selectedRegion.controllerNationId)
+    : null;
+  const controlHistory = selectedRegion
+    ? [...world.events]
+        .reverse()
+        .find(
+          (event) =>
+            event.regionIds.includes(selectedRegion.id) &&
+            event.nationIds[0] === selectedRegion.controllerNationId &&
+            (event.type.startsWith('WAR_') ||
+              event.type === 'OCCUPIED_TERRITORY_RETURNED'),
+        )
+    : null;
+  const controlConflict = controlHistory?.conflictIds[0]
+    ? world.conflicts.find(
+        (conflict) => conflict.id === controlHistory.conflictIds[0],
+      )
     : null;
   const branchTimeline = () => {
     const name = `Before ${directive.trim().slice(0, 45) || 'next decision'} — ${world.date}`;
@@ -462,10 +484,11 @@ export function App() {
           <strong>{selectedRegion?.name ?? nation.name}</strong>
           {selectedRegion && (
             <span>
-              {regionOwner?.name ?? 'Unknown owner'}
-              {regionController && regionController.id !== regionOwner?.id
-                ? ` · controlled by ${regionController.name}`
-                : ''}
+              Owner: {regionOwner?.name ?? 'Unknown'} · Controller:{' '}
+              {regionController?.name ?? 'Unknown'}
+              {regionController &&
+                regionController.id !== regionOwner?.id &&
+                ` · Occupied · changed control ${controlHistory?.date ?? 'date unrecorded'}${controlConflict ? ` · ${controlConflict.name}` : ''}`}
               {selectedRegion.claims.length
                 ? ` · ${selectedRegion.claims.length} claim${selectedRegion.claims.length === 1 ? '' : 's'}`
                 : ''}
@@ -554,17 +577,23 @@ export function App() {
         />
         <aside className="context-workspace">
           <div className="context-tabs">
-            {['History', 'Country', 'Diplomacy', 'Conflicts', 'Branches'].map(
-              (tab) => (
-                <button
-                  key={tab}
-                  aria-pressed={workspaceTab === tab}
-                  onClick={() => setWorkspaceTab(tab)}
-                >
-                  {tab}
-                </button>
-              ),
-            )}
+            {[
+              'History',
+              'Country',
+              'Diplomacy',
+              'Organizations',
+              'Sphere',
+              'Conflicts',
+              'Branches',
+            ].map((tab) => (
+              <button
+                key={tab}
+                aria-pressed={workspaceTab === tab}
+                onClick={() => setWorkspaceTab(tab)}
+              >
+                {tab}
+              </button>
+            ))}
           </div>
           {workspaceTab === 'History' && (
             <Timeline
@@ -582,6 +611,24 @@ export function App() {
               selected={nation.id}
               busy={isBusy}
               operate={operate}
+            />
+          )}
+          {workspaceTab === 'Organizations' && (
+            <Organizations
+              world={world}
+              selected={nation.id}
+              busy={isBusy}
+              commit={commit}
+              onSelect={selectNation}
+            />
+          )}
+          {workspaceTab === 'Sphere' && (
+            <InfluenceView
+              world={world}
+              selected={nation.id}
+              onSelect={selectNation}
+              commit={commit}
+              busy={isBusy}
             />
           )}
           {workspaceTab === 'Country' && (

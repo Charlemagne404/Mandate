@@ -8,6 +8,7 @@ import {
   SimulationDate,
   WorldCommand,
   CommitmentTerms,
+  InfluenceTerm,
   PeaceTerm,
 } from '@mandate/schemas';
 
@@ -265,6 +266,7 @@ export const DiplomaticMove = z.strictObject({
   message: reason,
   terms: z.string().max(4000),
   obligations: z.array(CommitmentTerms).max(8).default([]),
+  influenceTerms: z.array(InfluenceTerm).max(32).default([]),
   peaceTerms: z.array(PeaceTerm).max(8).default([]),
   visibility: z.enum(['public', 'private']),
 });

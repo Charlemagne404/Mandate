@@ -3,7 +3,13 @@ import { relationshipEffect, liveGoal } from './depth.js';
 import type { WorldCommand, WorldState } from '@mandate/schemas';
 import { requireDomain } from './errors.js';
 import { advanceSimulation } from './simulation.js';
-import { applyAlphaCommand, endConflict, isSettlement } from './mechanics.js';
+import {
+  applyAlphaCommand,
+  endConflict,
+  enforcePatronWarObligations,
+  isSettlement,
+  recordInfluenceBreach,
+} from './mechanics.js';
 
 export function applyCommand(
   w: WorldState,
@@ -50,8 +56,17 @@ export function applyCommand(
     case 'CANCEL_INITIATIVE':
     case 'OPEN_NEGOTIATION':
     case 'RESPOND_NEGOTIATION':
+    case 'ISSUE_PATRON_DIRECTIVE':
+    case 'ENFORCE_TREATY_BREACH':
     case 'CREATE_ORGANIZATION':
     case 'SET_ORGANIZATION_MEMBERSHIP':
+    case 'INVITE_TO_ORGANIZATION':
+    case 'RESPOND_ORGANIZATION_INVITATION':
+    case 'UPDATE_ORGANIZATION':
+    case 'ADD_ORGANIZATION_COMMITMENT':
+    case 'START_ORGANIZATION_PROGRAM':
+    case 'REMOVE_ORGANIZATION_MEMBER':
+    case 'DISSOLVE_ORGANIZATION':
     case 'CONFLICT_ACTION':
     case 'STRATEGIC_ATTACK':
     case 'MOBILIZE_FORCE':
@@ -153,10 +168,39 @@ export function applyCommand(
         'Settlement treaties require accepted negotiation',
       );
       requireDomain(
+        c.treaty.kind !== 'influence' && !c.treaty.influenceTerms.length,
+        'Influence obligations require bilateral negotiation and consent',
+      );
+      requireDomain(
         !w.treaties.some((t) => t.id === c.treaty.id),
         'Treaty ID already exists',
       );
       c.treaty.parties.forEach(nation);
+      for (const treaty of w.treaties.filter(
+        (entry) => entry.status === 'active' && entry.kind === 'influence',
+      ))
+        for (const term of treaty.influenceTerms)
+          if (
+            term.status === 'active' &&
+            term.kind === 'foreign-policy-veto' &&
+            c.treaty.parties.includes(term.subjectNationId) &&
+            !c.treaty.parties.includes(term.patronNationId)
+          )
+            requireDomain(
+              false,
+              'A binding foreign-policy veto requires the patron to approve or join the treaty',
+            );
+          else if (
+            term.status === 'active' &&
+            term.kind === 'economic-policy-approval' &&
+            c.treaty.kind === 'trade' &&
+            c.treaty.parties.includes(term.subjectNationId) &&
+            !c.treaty.parties.includes(term.patronNationId)
+          )
+            requireDomain(
+              false,
+              'A binding economic-policy approval term requires the patron to approve or join the agreement',
+            );
       w.treaties.push(structuredClone(c.treaty));
       return;
     case 'UPDATE_TREATY':
@@ -168,6 +212,29 @@ export function applyCommand(
       return;
     case 'END_TREATY': {
       const t = treaty(c.treatyId);
+      if (c.nationId) {
+        nation(c.nationId);
+        requireDomain(
+          t.parties.includes(c.nationId),
+          'Only a treaty party can end it',
+        );
+        if (t.kind === 'influence') {
+          const patrons = new Set(
+            t.influenceTerms
+              .filter((term) => term.subjectNationId === c.nationId)
+              .map((term) => term.patronNationId),
+          );
+          for (const patron of patrons)
+            recordInfluenceBreach(
+              w,
+              patron,
+              c.nationId,
+              'Ended the influence agreement to regain policy autonomy',
+              c.nationId,
+              t.id,
+            );
+        }
+      }
       t.status = 'ended';
       if (t.kind === 'ceasefire') {
         const conflict = w.conflicts.find((v) => v.id === t.conflictId)!;
@@ -189,7 +256,36 @@ export function applyCommand(
         'Conflict ID already exists',
       );
       [...c.conflict.attackers, ...c.conflict.defenders].forEach(nation);
+      for (const treaty of w.treaties.filter(
+        (entry) => entry.status === 'active' && entry.kind === 'influence',
+      ))
+        for (const term of treaty.influenceTerms) {
+          if (
+            term.status !== 'active' ||
+            !c.conflict.attackers.includes(term.subjectNationId)
+          )
+            continue;
+          if (
+            term.kind === 'war-declaration-approval' &&
+            ![...c.conflict.attackers, ...c.conflict.defenders].includes(
+              term.patronNationId,
+            )
+          )
+            requireDomain(
+              false,
+              'Independent offensive war requires patron approval under the binding treaty',
+            );
+          if (
+            term.kind === 'no-war-against-patron' &&
+            c.conflict.defenders.includes(term.patronNationId)
+          )
+            requireDomain(
+              false,
+              'The binding non-aggression term bars an attack on the patron',
+            );
+        }
       w.conflicts.push(structuredClone(c.conflict));
+      enforcePatronWarObligations(w, w.conflicts.at(-1)!);
       return;
     case 'UPDATE_CONFLICT':
       conflict(c.conflictId).escalation = c.escalation;

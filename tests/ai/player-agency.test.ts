@@ -6,6 +6,7 @@ import {
   Conflict,
   Goal,
   NationId,
+  Negotiation,
   Treaty,
   WorldCommand,
 } from '@mandate/schemas';
@@ -726,6 +727,114 @@ describe('player authority evaluation suite', () => {
       ),
     ).toBe(false);
     expect(execution.implementation.join(' ')).toMatch(/offered to Finland/);
+  });
+
+  it('turns a return-occupied-territory peace order into a structured withdrawal term', () => {
+    const world = fixture();
+    const finland = NationId.parse('nation:fin');
+    world.conflicts.push(
+      Conflict.parse({
+        id: 'conflict:agency-peace-return',
+        name: 'Sweden–Finland War',
+        attackers: [world.playerNationId],
+        defenders: [finland],
+        status: 'active',
+        escalation: 60,
+      }),
+    );
+    world.regions.find(
+      (region) => region.id === 'region:ne-fin',
+    )!.controllerNationId = world.playerNationId;
+    const text =
+      'Negotiate peace with Finland and withdraw from occupied Finland.';
+    const execution = executePlayerAction(
+      world,
+      deterministicPlayerIntent(world, {
+        actorNationId: world.playerNationId,
+        text,
+      }),
+      'agency-peace-return',
+    );
+    const offer = execution.commands.find(
+      ({ command }) =>
+        command.type === 'OPEN_NEGOTIATION' &&
+        command.negotiation.kind === 'peace',
+    );
+    expect(offer?.command.type).toBe('OPEN_NEGOTIATION');
+    if (offer?.command.type === 'OPEN_NEGOTIATION')
+      expect(offer.command.negotiation.peaceTerms).toEqual([
+        {
+          kind: 'withdrawal',
+          regionId: 'region:ne-fin',
+          fromNationId: world.playerNationId,
+          toNationId: finland,
+        },
+      ]);
+  });
+
+  it('counters an existing incoming peace offer with the player settlement terms', () => {
+    const world = fixture();
+    const finland = NationId.parse('nation:fin');
+    world.conflicts.push(
+      Conflict.parse({
+        id: 'conflict:agency-peace-counter',
+        name: 'Sweden–Finland War',
+        attackers: [world.playerNationId],
+        defenders: [finland],
+        status: 'active',
+        escalation: 60,
+      }),
+    );
+    world.regions.find(
+      (region) => region.id === 'region:ne-fin',
+    )!.controllerNationId = world.playerNationId;
+    world.negotiations.push(
+      Negotiation.parse({
+        id: 'negotiation:finland-peace-offer',
+        proposerNationId: finland,
+        recipientNationId: world.playerNationId,
+        kind: 'peace',
+        conflictId: 'conflict:agency-peace-counter',
+        topic: 'Peace proposal',
+        terms: 'Sweden and Finland end hostilities',
+        peaceTerms: [],
+        createdDate: world.date,
+        expiresDate: '2026-12-31',
+      }),
+    );
+
+    const execution = executePlayerAction(
+      world,
+      deterministicPlayerIntent(world, {
+        actorNationId: world.playerNationId,
+        text: 'Seek peace with Finland and withdraw from occupied Finland.',
+      }),
+      'agency-peace-counter',
+    );
+    const counter = execution.commands.find(
+      ({ command }) =>
+        command.type === 'RESPOND_NEGOTIATION' && command.move === 'counter',
+    );
+
+    expect(counter?.command.type).toBe('RESPOND_NEGOTIATION');
+    if (counter?.command.type === 'RESPOND_NEGOTIATION') {
+      expect(counter.command.negotiationId).toBe(
+        'negotiation:finland-peace-offer',
+      );
+      expect(counter.command.counterPeaceTerms).toEqual([
+        {
+          kind: 'withdrawal',
+          regionId: 'region:ne-fin',
+          fromNationId: world.playerNationId,
+          toNationId: finland,
+        },
+      ]);
+    }
+    expect(
+      execution.commands.some(
+        ({ command }) => command.type === 'OPEN_NEGOTIATION',
+      ),
+    ).toBe(false);
   });
 
   it('reversing annexation withdraws its claim, goal and standing directive', () => {

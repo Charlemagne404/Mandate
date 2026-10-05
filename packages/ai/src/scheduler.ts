@@ -15,6 +15,28 @@ export function selectRelevance(
     if (ids.some((id) => direct.has(id))) {
       ids.forEach((id) => secondary.add(id));
       reasons.push(`Active conflict ${conflict.id}`);
+      for (const party of ids) {
+        const neighbors =
+          world.scenario.neighborhoods?.find(
+            (entry) => entry.nationId === party,
+          )?.neighbors ?? [];
+        for (const neighbor of neighbors) {
+          const relation = world.relations.find(
+            (entry) =>
+              [entry.nationA, entry.nationB].includes(party) &&
+              [entry.nationA, entry.nationB].includes(neighbor),
+          );
+          const defenseAlly = world.treaties.some(
+            (treaty) =>
+              treaty.status === 'active' &&
+              treaty.kind === 'defense' &&
+              treaty.parties.includes(party) &&
+              treaty.parties.includes(neighbor),
+          );
+          if (defenseAlly || (relation?.tension ?? 0) >= 45)
+            secondary.add(neighbor);
+        }
+      }
     }
   }
   for (const treaty of world.treaties.filter((t) => t.status === 'active')) {
@@ -81,13 +103,133 @@ export interface ActorActivation {
 export function scheduleActors(
   world: WorldState,
   relevance: RelevanceSelection,
-  backgroundCount = 3,
+  backgroundCount = 4,
 ): ActorActivation[] {
   const sorted = [...world.nations].sort((a, b) => a.id.localeCompare(b.id));
   const direct = new Set([
     ...relevance.directNationIds,
     ...relevance.secondaryNationIds,
   ]);
+  const pendingDiplomacy = new Set(
+    world.negotiations
+      .filter((entry) => entry.status === 'open')
+      .map((entry) => entry.recipientNationId),
+  );
+  const pendingInvitation = new Set(
+    world.organizations.flatMap((organization) =>
+      organization.status === 'active'
+        ? organization.invitations
+            .filter(
+              (invitation) =>
+                invitation.status === 'pending' &&
+                invitation.lastMove !== 'counter',
+            )
+            .map((invitation) => invitation.nationId)
+        : [],
+    ),
+  );
+  const severeSanctions = new Set(
+    world.sanctions
+      .filter((entry) => entry.status === 'active' && entry.intensity >= 60)
+      .flatMap((entry) => [entry.issuer, entry.target]),
+  );
+  const brokenPromises = new Set(
+    world.commitments
+      .filter(
+        (entry) =>
+          entry.status === 'breached' &&
+          Date.parse(world.date) -
+            Date.parse(entry.history.at(-1)?.date ?? world.date) <
+            180 * 86400000,
+      )
+      .flatMap((entry) => [entry.issuer, ...entry.recipients]),
+  );
+  const stalledGoals = new Set(
+    world.goals
+      .filter(
+        (entry) =>
+          ['stalled', 'threatened', 'blocked'].includes(entry.status) &&
+          entry.priority >= 55,
+      )
+      .map((entry) => entry.nationId),
+  );
+  const recentGovernmentChanges = new Set(
+    world.events
+      .filter(
+        (event) =>
+          ['UPDATE_GOVERNMENT', 'UPDATE_LEADER', 'ELECTION_OUTCOME'].includes(
+            event.type,
+          ) && Date.parse(world.date) - Date.parse(event.date) < 180 * 86400000,
+      )
+      .flatMap((event) => event.nationIds),
+  );
+  const recentWarDevelopments = new Set(
+    world.events
+      .filter(
+        (event) =>
+          (event.type.startsWith('WAR_') ||
+            event.type === 'TERRITORY_CEDED' ||
+            event.type === 'OCCUPIED_TERRITORY_RETURNED') &&
+          Date.parse(world.date) - Date.parse(event.date) < 180 * 86400000,
+      )
+      .flatMap((event) => event.nationIds),
+  );
+  const recentSalientActors = new Set(
+    world.events
+      .filter(
+        (event) =>
+          event.importance >= 75 &&
+          Date.parse(world.date) - Date.parse(event.date) < 120 * 86400000,
+      )
+      .flatMap((event) => event.nationIds),
+  );
+  const secondOrderReactions = new Set<NationId>();
+  for (const actor of recentSalientActors) {
+    const neighbors =
+      world.scenario.neighborhoods?.find((entry) => entry.nationId === actor)
+        ?.neighbors ?? [];
+    for (const neighbor of neighbors) {
+      const relation = world.relations.find(
+        (entry) =>
+          [entry.nationA, entry.nationB].includes(actor) &&
+          [entry.nationA, entry.nationB].includes(neighbor),
+      );
+      const defenseAlly = world.treaties.some(
+        (treaty) =>
+          treaty.status === 'active' &&
+          treaty.kind === 'defense' &&
+          treaty.parties.includes(actor) &&
+          treaty.parties.includes(neighbor),
+      );
+      if (
+        defenseAlly ||
+        (relation?.tension ?? 0) >= 35 ||
+        (relation?.score ?? 0) <= -35
+      )
+        secondOrderReactions.add(neighbor);
+    }
+    for (const organization of world.organizations)
+      if (
+        organization.status === 'active' &&
+        organization.members.includes(actor)
+      )
+        organization.members
+          .filter((member) => member !== actor)
+          .slice(0, 6)
+          .forEach((member) => secondOrderReactions.add(member));
+  }
+  const importantPowers = new Set(
+    world.scenario.strategicActors ??
+      [...world.nations]
+        .sort(
+          (a, b) =>
+            b.stats.military +
+              b.stats.economy -
+              (a.stats.military + a.stats.economy) || a.id.localeCompare(b.id),
+        )
+        .slice(0, 8)
+        .map((entry) => entry.id),
+  );
   const ranked = sorted.map((n): ActorActivation => {
     const goals = world.goals.filter(
       (g) =>
@@ -109,12 +251,46 @@ export function scheduleActors(
         n.stats.military / 5 +
         n.stats.economy / 10 +
         goals.reduce((s, g) => s + g.priority / 10, 0) +
-        wars.length * 25 +
+        wars.length * 50 +
+        (pendingDiplomacy.has(n.id) ? 125 : 0) +
+        (pendingInvitation.has(n.id) ? 105 : 0) +
+        (severeSanctions.has(n.id) ? 90 : 0) +
+        (brokenPromises.has(n.id) ? 85 : 0) +
+        (stalledGoals.has(n.id) ? 60 : 0) +
+        (recentGovernmentChanges.has(n.id) ? 70 : 0) +
+        (recentWarDevelopments.has(n.id) ? 45 : 0) +
+        (secondOrderReactions.has(n.id) ? 40 : 0) +
+        (recentSalientActors.has(n.id) ? 35 : 0) +
+        (importantPowers.has(n.id) ? 25 : 0) +
         (100 - n.stats.stability) / 5 +
         (recent ? 0 : 10),
       reasons: [
         ...(goals.length ? ['Unresolved strategic goals'] : []),
         ...(wars.length ? ['Active conflict'] : []),
+        ...(pendingDiplomacy.has(n.id) ? ['Pending diplomatic proposal'] : []),
+        ...(pendingInvitation.has(n.id)
+          ? ['Organization membership decision']
+          : []),
+        ...(severeSanctions.has(n.id) ? ['Severe sanction pressure'] : []),
+        ...(brokenPromises.has(n.id)
+          ? ['Broken commitment needs a response']
+          : []),
+        ...(stalledGoals.has(n.id) ? ['Stalled strategic goal'] : []),
+        ...(recentGovernmentChanges.has(n.id)
+          ? ['Recent government change']
+          : []),
+        ...(recentWarDevelopments.has(n.id)
+          ? ['Recent territorial or war development']
+          : []),
+        ...(secondOrderReactions.has(n.id)
+          ? ['Relevant second-order reaction']
+          : []),
+        ...(recentSalientActors.has(n.id)
+          ? ['Recent high-salience action']
+          : []),
+        ...(importantPowers.has(n.id)
+          ? ['High capability and global reach']
+          : []),
         ...(n.stats.stability < 40 ? ['Domestic pressure'] : []),
         ...(recent ? [] : ['No recent canonical action']),
       ],
@@ -128,6 +304,13 @@ export function scheduleActors(
     ...world.conflicts
       .filter((c) => c.status === 'active')
       .flatMap((c) => [...c.attackers, ...c.defenders]),
+    ...pendingDiplomacy,
+    ...pendingInvitation,
+    ...severeSanctions,
+    ...brokenPromises,
+    ...stalledGoals,
+    ...recentGovernmentChanges,
+    ...secondOrderReactions,
   ]);
   for (const actor of [...ranked]
     .filter((a) => crisis.has(a.nationId))
@@ -154,11 +337,15 @@ export function scheduleActors(
   for (
     let offset = 0;
     offset < sorted.length &&
-    selected.filter((s) => s.background).length < Math.min(2, slots);
+    selected.filter((s) => s.background).length <
+      Math.min(backgroundCount, slots);
     offset++
   ) {
     const candidate =
-      ranked[(world.revision * Math.min(2, slots) + offset) % sorted.length];
+      ranked[
+        (world.revision * Math.min(backgroundCount, slots) + offset) %
+          sorted.length
+      ];
     if (
       candidate &&
       !direct.has(candidate.nationId) &&

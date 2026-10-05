@@ -61,6 +61,10 @@ export function TurnSummary({ world }: { world: WorldState }) {
   );
   const isPlayerCommand = (record: (typeof world.commands)[number]) => {
     const command = record.command;
+    if (command.type === 'INVITE_TO_ORGANIZATION')
+      return command.inviterNationId === own.id;
+    if (command.type === 'REMOVE_ORGANIZATION_MEMBER')
+      return command.issuerNationId === own.id;
     if ('nationId' in command) return command.nationId === own.id;
     if (command.type === 'STRATEGIC_ATTACK')
       return command.attackerNationId === own.id;
@@ -74,6 +78,17 @@ export function TurnSummary({ world }: { world: WorldState }) {
       return command.negotiation.proposerNationId === own.id;
     if (command.type === 'CREATE_STRATEGIC_GOAL')
       return command.goal.nationId === own.id;
+    if (command.type === 'CREATE_ORGANIZATION')
+      return command.organization.founders.includes(own.id);
+    if (
+      command.type === 'UPDATE_ORGANIZATION' ||
+      command.type === 'DISSOLVE_ORGANIZATION'
+    )
+      return command.issuerNationId === own.id;
+    if (command.type === 'ADD_ORGANIZATION_COMMITMENT')
+      return command.commitment.issuer === own.id;
+    if (command.type === 'START_ORGANIZATION_PROGRAM')
+      return command.program.issuerNationId === own.id;
     if (command.type === 'ADJUST_RELATION')
       return [command.nationA, command.nationB].includes(own.id);
     return false;
@@ -92,13 +107,45 @@ export function TurnSummary({ world }: { world: WorldState }) {
     )
     .sort((a, b) => b.importance - a.importance);
   const responses = events.filter(
-    (e) => e.type === 'RESPOND_NEGOTIATION' && e.nationIds.includes(own.id),
+    (e) =>
+      /^RESPOND_|ORGANIZATION_PROGRAM_(?:RESPONSE|APPROVED|REJECTED)/.test(
+        e.type,
+      ) && e.nationIds.includes(own.id),
   );
   const consequences = events.filter(
-    (e) => e.nationIds.includes(own.id) && !responses.includes(e),
+    (e) =>
+      e.nationIds.includes(own.id) &&
+      !responses.includes(e) &&
+      !committedPlayerEvents.includes(e),
   );
   const news = events.filter(
     (e) => !e.nationIds.includes(own.id) && e.importance >= 50,
+  );
+  const milestones = events.filter(
+    (event) =>
+      (event.novelty === 'milestone' ||
+        event.novelty === 'major-development') &&
+      !committedPlayerEvents.includes(event) &&
+      !responses.includes(event),
+  );
+  const newDevelopments = events.filter(
+    (event) =>
+      event.importance >= 50 &&
+      !committedPlayerEvents.includes(event) &&
+      !responses.includes(event) &&
+      !milestones.includes(event) &&
+      !consequences.includes(event),
+  );
+  const ongoingOrganizations = world.organizations.filter(
+    (organization) =>
+      organization.status === 'active' &&
+      organization.members.includes(own.id) &&
+      (organization.programs.some((program) =>
+        ['proposed', 'active', 'suspended'].includes(program.status),
+      ) ||
+        organization.commitments.some(
+          (commitment) => commitment.status === 'active',
+        )),
   );
   const projects = world.initiatives.filter(
     (i) => i.nationId === own.id && i.status === 'active',
@@ -208,7 +255,7 @@ export function TurnSummary({ world }: { world: WorldState }) {
               </div>
             )}
           <div>
-            <strong>ATTEMPTS</strong>
+            <strong>YOUR NEW ACTIONS</strong>
             {committedPlayerEvents.length ? (
               <ul>
                 {committedPlayerEvents.slice(0, 8).map((event) => (
@@ -219,6 +266,36 @@ export function TurnSummary({ world }: { world: WorldState }) {
               <p>No player-controlled action was committed this turn.</p>
             )}
           </div>
+          {!!responses.length && (
+            <div>
+              <strong>RESPONSES</strong>
+              <ul>
+                {responses.slice(0, 8).map((event) => (
+                  <li key={event.id}>{event.title}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!!newDevelopments.length && (
+            <div>
+              <strong>NEW DEVELOPMENTS</strong>
+              <ul>
+                {newDevelopments.slice(0, 8).map((event) => (
+                  <li key={event.id}>{event.title}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!!milestones.length && (
+            <div>
+              <strong>MILESTONES</strong>
+              <ul>
+                {milestones.slice(0, 8).map((event) => (
+                  <li key={event.id}>{event.title}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {!!playerExecution?.constraints.length && (
             <p>
               <strong>Constraint:</strong>{' '}
@@ -238,9 +315,39 @@ export function TurnSummary({ world }: { world: WorldState }) {
               </ul>
             </div>
           )}
+          {!!ongoingOrganizations.length && (
+            <details>
+              <summary>ONGOING / ROUTINE</summary>
+              <ul>
+                {ongoingOrganizations.map((organization) => (
+                  <li key={organization.id}>
+                    {organization.acronym ?? organization.name}:{' '}
+                    {organization.programs
+                      .filter((program) =>
+                        ['proposed', 'active', 'suspended'].includes(
+                          program.status,
+                        ),
+                      )
+                      .map(
+                        (program) =>
+                          `${program.title} · ${program.status} · ${program.progress}%`,
+                      )
+                      .join('; ')}
+                    {organization.commitments
+                      .filter((commitment) => commitment.status === 'active')
+                      .map(
+                        (commitment) =>
+                          `Support paid ${commitment.lastPaymentAmount} this month; total ${commitment.totalPaid}; next ${commitment.nextPaymentDate ?? 'pending eligible recipients'}`,
+                      )
+                      .join('; ')}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           {!!playerExecution?.semanticAudit?.length && (
             <div>
-              <strong>ORDER RESULTS</strong>
+              <strong>ATTEMPTS</strong>
               <ul>
                 {playerExecution.semanticAudit.map((entry) => (
                   <li key={entry.actionId}>

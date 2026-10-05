@@ -837,7 +837,12 @@ export function Launch({
                 <li key={g.id}>{g.title}</li>
               ))}
             {preview.commitments
-              .filter((c) => c.issuer === own.id && c.status === 'active')
+              .filter(
+                (c) =>
+                  c.issuer === own.id &&
+                  c.status === 'active' &&
+                  c.terms.trim().length > 0,
+              )
               .slice(0, 3)
               .map((c) => (
                 <li key={c.id}>Promised: {c.terms}</li>

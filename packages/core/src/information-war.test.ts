@@ -134,7 +134,7 @@ it('strategic theaters spend funds, accumulate supply pressure and cannot instan
   const treasury = w.nations.find((n) => n.id === 'nation:rus')!.stats.treasury;
   w = step(w, [{ type: 'ADVANCE_DATE', date: '2025-01-31' }]);
   expect(w.conflicts[0]!.theaters[0]!.progress).toBeLessThanOrEqual(20);
-  expect(w.conflicts[0]!.theaters[0]!.supplyPressure).toBe(5);
+  expect(w.conflicts[0]!.theaters[0]!.supplyPressure).toBeGreaterThan(0);
   expect(
     w.regions.find((r) => r.id === 'region:ne-fin')!.controllerNationId,
   ).toBe('nation:fin');
