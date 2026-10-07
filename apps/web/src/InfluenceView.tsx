@@ -138,6 +138,14 @@ function ProfileCard({
     .sort((left, right) => right.createdDate.localeCompare(left.createdDate))
     .slice(0, 4);
   const rivals = competingPatrons(world, subject.id, selected);
+  const strategyPlan = world.nations
+    .find((nation) => nation.id === selected)
+    ?.strategy.influencePlans.find(
+      (plan) => plan.targetNationId === subject.id,
+    );
+  const nationalSpherePortfolio = world.nations.find(
+    (nation) => nation.id === selected,
+  )?.strategy.influencePortfolio;
   const leadingRival = rivals[0];
   const rivalLeads = Boolean(
     leadingRival && leadingRival.profile.leverage >= profile.leverage + 8,
@@ -161,49 +169,106 @@ function ProfileCard({
           !treaty.parties.includes(selected),
       )
     : [];
-  const enforceableBreaches = agreements.flatMap((treaty) =>
+  const treatyBreaches = agreements.flatMap((treaty) =>
     treaty.breaches
       .filter(
         (breach) =>
           breach.status !== 'resolved' &&
-          breach.violatingNationId === subject.id &&
-          breach.injuredNationId === selected,
+          [breach.violatingNationId, breach.injuredNationId].includes(
+            selected,
+          ) &&
+          [breach.violatingNationId, breach.injuredNationId].includes(
+            subject.id,
+          ),
       )
-      .map((breach) => ({ treaty, breach })),
+      .map((breach) => {
+        const termIndex = breach.obligationKey
+          ? Number(/-term-(\d+)$/.exec(breach.obligationKey)?.[1])
+          : Number.NaN;
+        const term = Number.isFinite(termIndex)
+          ? treaty.influenceTerms[termIndex]
+          : treaty.influenceTerms.find(
+              (candidate) =>
+                [candidate.patronNationId, candidate.subjectNationId].includes(
+                  breach.injuredNationId,
+                ) &&
+                [candidate.patronNationId, candidate.subjectNationId].includes(
+                  breach.violatingNationId,
+                ),
+            );
+        return {
+          treaty,
+          breach,
+          patronNationId: term?.patronNationId ?? treaty.parties[0]!,
+          subjectNationId: term?.subjectNationId ?? treaty.parties[1]!,
+        };
+      }),
   );
-  const hasArrears = restrictions.some(
-    (term) =>
-      ['tribute', 'debt-repayment'].includes(term.kind) && term.arrears > 0,
-  );
-  const enforcementOptions: [EnforcementAction, string][] = [
-    ['diplomatic-demand', 'Issue diplomatic demand'],
-    ['political-pressure', 'Apply political pressure'],
-    ['sanction', 'Impose trade sanction'],
-    ['renegotiate', 'Demand renegotiation'],
-    ['terminate', 'Terminate influence treaty'],
-  ];
-  if (hasArrears)
-    enforcementOptions.push(['demand-arrears', 'Demand treaty arrears']);
-  if (restrictions.some((term) => term.kind === 'subsidy'))
-    enforcementOptions.push(['suspend-subsidy', 'Suspend patron subsidy']);
-  if (
-    restrictions.some((term) =>
-      [
-        'preferential-trade',
-        'market-access-concession',
-        'exclusive-market-access',
-        'customs-alignment',
-        'common-economic-rules',
-        'mandatory-procurement',
-      ].includes(term.kind),
+  const breachActions = (
+    treaty: WorldState['treaties'][number],
+    breach: WorldState['treaties'][number]['breaches'][number],
+    patronNationId: NationId,
+    subjectNationId: NationId,
+  ): [EnforcementAction, string][] => {
+    if (breach.injuredNationId !== selected) return [];
+    const actions: [EnforcementAction, string][] = [];
+    const recorded = treaty.enforcements.filter(
+      (entry) => entry.breachId === breach.id,
+    );
+    const terms = treaty.influenceTerms.filter(
+      (term) =>
+        term.status === 'active' &&
+        term.patronNationId === patronNationId &&
+        term.subjectNationId === subjectNationId,
+    );
+    const owesSupport = breach.violatingNationId === patronNationId;
+    const arrears = terms.some(
+      (term) =>
+        term.arrears > 0 &&
+        (owesSupport
+          ? ['subsidy', 'infrastructure-investment'].includes(term.kind)
+          : ['tribute', 'debt-repayment'].includes(term.kind)),
+    );
+    if (!breach.milestones.some((entry) => entry.key === 'demanded'))
+      actions.push(['diplomatic-demand', 'Issue a compliance demand']);
+    if (arrears) actions.push(['demand-arrears', 'Collect overdue payments']);
+    if (
+      !treaty.enforcements.some(
+        (entry) =>
+          entry.breachId === breach.id && entry.action === 'renegotiate',
+      ) &&
+      !world.negotiations.some(
+        (negotiation) =>
+          negotiation.status === 'open' &&
+          negotiation.sourceBreachId === breach.id,
+      )
     )
-  )
-    enforcementOptions.push(['cancel-market-access', 'Cancel market access']);
-  if (restrictions.some((term) => term.kind === 'security-guarantee'))
-    enforcementOptions.push([
-      'withdraw-guarantee',
-      'Withdraw security guarantee',
-    ]);
+      actions.push(['renegotiate', 'Negotiate an amendment']);
+    if (
+      !breach.milestones.some((entry) => entry.key === 'suspended') &&
+      treaty.influenceTerms.some(
+        (term) =>
+          term.status === 'active' &&
+          term.patronNationId === subjectNationId &&
+          term.subjectNationId === patronNationId,
+      )
+    )
+      actions.push(['suspend-reciprocals', 'Suspend reciprocal obligations']);
+    if (
+      breach.severity >= 60 &&
+      !recorded.some((entry) => entry.action === 'political-pressure')
+    )
+      actions.push(['political-pressure', 'Apply political pressure']);
+    if (
+      breach.severity >= 75 &&
+      !recorded.some((entry) => entry.action === 'sanction')
+    )
+      actions.push(['sanction', 'Impose targeted trade sanctions']);
+    if (breach.severity <= 40) actions.push(['waive', 'Waive this breach']);
+    if (breach.severity >= 85 && breach.durationMonths >= 12)
+      actions.push(['terminate', 'Terminate the treaty']);
+    return actions;
+  };
 
   return (
     <article
@@ -310,6 +375,77 @@ function ProfileCard({
             ))}
         </div>
       </details>
+
+      {strategyPlan && (
+        <section className="influence-section influence-strategy-plan">
+          <h3>Sphere strategy</h3>
+          {nationalSpherePortfolio && (
+            <p>
+              National portfolio priority:{' '}
+              {nationalSpherePortfolio.priorityTargetNationId
+                ? name(nationalSpherePortfolio.priorityTargetNationId)
+                : 'unassigned'}
+              {' · '}available treasury{' '}
+              {nationalSpherePortfolio.availableTreasury}
+              {' · '}annual commitments{' '}
+              {nationalSpherePortfolio.committedAnnualCost}
+              {nationalSpherePortfolio.priorityTargetNationId !== subject.id
+                ? ' · this target plan remains separate and can be resumed'
+                : ''}
+            </p>
+          )}
+          <p>
+            Target: {strategyPlan.desiredTier} · Current:{' '}
+            {strategyPlan.currentTier}
+            {' · '}Leverage {strategyPlan.leverage}/100 · Resistance{' '}
+            {strategyPlan.resistance}/100 · Patron reliability{' '}
+            {strategyPlan.patronReliability}/100
+          </p>
+          <p>
+            Main dependence:{' '}
+            {strategyPlan.strongestChannels.length
+              ? strategyPlan.strongestChannels.join(' / ')
+              : 'no strong channel'}
+            {' · '}Weakest:{' '}
+            {strategyPlan.weakestChannels.join(' / ') || 'unmeasured'}
+          </p>
+          <p>
+            Next realistic step: {strategyPlan.nextStep.rationale}
+            {strategyPlan.nextStep.proposedBenefits
+              ? ` ${strategyPlan.nextStep.proposedBenefits}`
+              : ''}
+          </p>
+          {!!strategyPlan.rivalInfluence.length && (
+            <p>
+              Rival alternatives:{' '}
+              {strategyPlan.rivalInfluence
+                .slice(0, 3)
+                .map(
+                  (rival) =>
+                    `${name(rival.patronNationId)} (${rival.leverage} leverage, ${rival.reliability} reliability)`,
+                )
+                .join(' · ')}
+            </p>
+          )}
+          {!!strategyPlan.blockers.length && (
+            <p>
+              Main blockers: {strategyPlan.blockers.slice(0, 3).join(' · ')}
+            </p>
+          )}
+          {!!strategyPlan.rejectedObligations.length && (
+            <p>
+              Most recent rejection:{' '}
+              {strategyPlan.rejectedObligations.at(-1)!.explanation}
+            </p>
+          )}
+          {!!strategyPlan.recentCounteroffers.length && (
+            <p>
+              Most recent counteroffer:{' '}
+              {strategyPlan.recentCounteroffers.at(-1)!.explanation}
+            </p>
+          )}
+        </section>
+      )}
 
       {profile.activeTerms.length > 0 && (
         <section className="influence-section puppet-requirements">
@@ -422,40 +558,65 @@ function ProfileCard({
         </section>
       )}
 
-      {!!enforceableBreaches.length && (
+      {!!treatyBreaches.length && (
         <section className="influence-section influence-enforcement">
-          <h3>Respond to treaty breach</h3>
-          {enforceableBreaches.map(({ treaty, breach }) => (
-            <div className="influence-breach" key={breach.id}>
-              <p>
-                <b>{breach.status}</b> · {breach.date} · {breach.reason}
-              </p>
-              <div className="influence-directive-actions">
-                {enforcementOptions.map(([action, label]) => (
-                  <button
-                    key={action}
-                    disabled={busy}
-                    onClick={() =>
-                      void commit(
-                        {
-                          type: 'ENFORCE_TREATY_BREACH',
-                          treatyId: treaty.id,
-                          breachId: breach.id,
-                          patronNationId: selected,
-                          subjectNationId: subject.id,
-                          enforcementId: `enforcement:${globalThis.crypto.randomUUID()}`,
-                          action,
-                        },
-                        `${label} against ${subject.name} for treaty breach`,
-                      )
-                    }
-                  >
-                    {label}
-                  </button>
-                ))}
+          <h3>Treaty breach episodes</h3>
+          {treatyBreaches.map(
+            ({ treaty, breach, patronNationId, subjectNationId }) => (
+              <div className="influence-breach" key={breach.id}>
+                <p>
+                  <b>{breach.status}</b> ·{' '}
+                  {breach.firstMissedDate ?? breach.date}
+                  {' · '}last missed {breach.lastMissedDate ?? breach.date}
+                  {' · '}
+                  {breach.missedInstallments} missed installments
+                  {' · '}
+                  {breach.arrearsAmount} arrears
+                  {' · '}
+                  {breach.durationMonths} months
+                  {' · severity '}
+                  {breach.severity}/100 · {breach.reason}
+                </p>
+                {breach.injuredNationId === selected ? (
+                  <div className="influence-directive-actions">
+                    {breachActions(
+                      treaty,
+                      breach,
+                      patronNationId,
+                      subjectNationId,
+                    ).map(([action, label]) => (
+                      <button
+                        key={action}
+                        disabled={busy}
+                        onClick={() =>
+                          void commit(
+                            {
+                              type: 'ENFORCE_TREATY_BREACH',
+                              treatyId: treaty.id,
+                              breachId: breach.id,
+                              patronNationId,
+                              subjectNationId,
+                              actingNationId: selected,
+                              enforcementId: `enforcement:${globalThis.crypto.randomUUID()}`,
+                              action,
+                            },
+                            `${label} against ${subject.name} for treaty breach`,
+                          )
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <small>
+                    {name(breach.violatingNationId)} has an outstanding
+                    obligation to {name(breach.injuredNationId)}.
+                  </small>
+                )}
               </div>
-            </div>
-          ))}
+            ),
+          )}
           {!!agreements.flatMap((treaty) => treaty.enforcements).length && (
             <ul className="influence-directives">
               {agreements
@@ -494,6 +655,110 @@ function ProfileCard({
                     <small>
                       {name(latest.nationId)} {latest.move}: {latest.message}
                     </small>
+                  )}
+                  {latest?.influenceDecision && (
+                    <>
+                      {latest.influenceDecision.assessment && (
+                        <small>
+                          Decision perspective:{' '}
+                          {latest.influenceDecision.decisionPerspective ??
+                            'unrecorded'}{' '}
+                          · hybrid{' '}
+                          {latest.influenceDecision.rawDisposition ??
+                            'unrecorded'}{' '}
+                          →{' '}
+                          {latest.influenceDecision.disposition ?? latest.move}{' '}
+                          ·{' '}
+                          {
+                            latest.influenceDecision.assessment
+                              .recommendationZone
+                          }{' '}
+                          (
+                          {latest.influenceDecision.assessment.score >= 0
+                            ? '+'
+                            : ''}
+                          {latest.influenceDecision.assessment.score}). Benefits{' '}
+                          {latest.influenceDecision.assessment.benefits.total}
+                          /100; sovereignty cost{' '}
+                          {
+                            latest.influenceDecision.assessment.costs
+                              .sovereignty
+                          }
+                          ; leverage{' '}
+                          {
+                            latest.influenceDecision.assessment.relationship
+                              .leverage
+                          }
+                          ; resistance{' '}
+                          {
+                            latest.influenceDecision.assessment.relationship
+                              .resistance
+                          }
+                          ; reliability{' '}
+                          {
+                            latest.influenceDecision.assessment.relationship
+                              .reliability
+                          }
+                          /100.
+                        </small>
+                      )}
+                      <small>
+                        Strategic assessment (
+                        {latest.influenceDecision.reasonCode}):{' '}
+                        {latest.influenceDecision.explanation}
+                      </small>
+                      {latest.influenceDecision.counterOfferAvailable && (
+                        <small>
+                          A structured counter was available
+                          {latest.influenceDecision.counterOfferId
+                            ? ` · selected ${latest.influenceDecision.counterOfferId}`
+                            : ` · options: ${latest.influenceDecision.counterOfferIds?.join(', ') ?? 'recorded'}`}
+                          .
+                        </small>
+                      )}
+                      {latest.influenceDecision.counterOfferCandidates?.map(
+                        (candidate) => (
+                          <small key={candidate.id}>
+                            Available {candidate.label.toLowerCase()}:{' '}
+                            {candidate.termsText}
+                          </small>
+                        ),
+                      )}
+                      {!!latest.influenceDecision.reconsiderationConditions
+                        ?.length && (
+                        <small>
+                          Reconsider when:{' '}
+                          {latest.influenceDecision.reconsiderationConditions.join(
+                            ' · ',
+                          )}
+                        </small>
+                      )}
+                      {!!latest.influenceDecision.repairNotes?.length && (
+                        <small>
+                          Model reasoning checked:{' '}
+                          {latest.influenceDecision.repairNotes.join(' · ')}
+                        </small>
+                      )}
+                      {!!latest.influenceDecision.comparison.length && (
+                        <small>
+                          Compared offers:{' '}
+                          {latest.influenceDecision.comparison
+                            .map((offer) => {
+                              const patron = name(offer.patronNationId);
+                              return `${offer.selected ? 'selected ' : ''}${patron}: net ${offer.netScore}, economic ${offer.economicValue}, security ${offer.securityValue}, sovereignty cost ${offer.sovereigntyCost}, reliability ${offer.reliability}`;
+                            })
+                            .join(' · ')}
+                        </small>
+                      )}
+                      {!!latest.influenceDecision.possibleLeverage.length && (
+                        <small>
+                          Political factors to weigh:{' '}
+                          {latest.influenceDecision.possibleLeverage.join(
+                            ' · ',
+                          )}
+                        </small>
+                      )}
+                    </>
                   )}
                   {negotiation.conditionalPressure && (
                     <small>

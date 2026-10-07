@@ -712,9 +712,11 @@ export function scopeIntent(
 ): PlayerIntent | null {
   if (nationId === intent.actorNationId) return intent;
   const internalClauses = new Set(
-    intent.intentions
-      .filter((i) => i.visibility === 'private' && i.kind !== 'diplomacy')
-      .flatMap((i) => i.sourceClauseIds),
+    intent.policyOrders
+      .filter(
+        (order) => order.visibility === 'private' && order.kind !== 'diplomacy',
+      )
+      .flatMap((order) => order.sourceClauseIds),
   );
   const intentions = intent.intentions.filter(
     (i) =>
@@ -736,8 +738,10 @@ export function scopeIntent(
     intentions,
     targetNationIds: [...new Set(intentions.flatMap((i) => i.targetNationIds))],
     targetRegionIds: [],
-    policyOrders: intent.policyOrders.filter((o) =>
-      o.sourceClauseIds.some((id) => sourceClauseIds.has(id)),
+    policyOrders: intent.policyOrders.filter(
+      (order) =>
+        order.sourceClauseIds.some((id) => sourceClauseIds.has(id)) &&
+        !order.sourceClauseIds.some((id) => internalClauses.has(id)),
     ),
     desiredOutcomes: intent.desiredOutcomes.filter((o) =>
       o.sourceClauseIds.some((id) => sourceClauseIds.has(id)),
@@ -751,5 +755,42 @@ export function scopeIntent(
     visibility: intentions.every((i) => i.visibility === 'public')
       ? 'public'
       : 'private',
+  };
+}
+
+/**
+ * Returns only exact player-authored diplomatic clauses addressed to one
+ * recipient. Private domestic or strategic clauses can never be promoted into
+ * a message because an action graph linked them to the same target.
+ */
+export function authorizedDiplomaticProposal(
+  intent: PlayerIntent,
+  recipientNationId: NationId,
+) {
+  const privateInternalClauses = new Set(
+    intent.policyOrders
+      .filter(
+        (order) => order.visibility === 'private' && order.kind !== 'diplomacy',
+      )
+      .flatMap((order) => order.sourceClauseIds),
+  );
+  const clauses = intent.policyOrders.filter(
+    (order) =>
+      order.kind === 'diplomacy' &&
+      order.targetNationIds.includes(recipientNationId) &&
+      order.sourceClauseIds.every((id) => !privateInternalClauses.has(id)),
+  );
+  if (!clauses.length) return null;
+  return {
+    text: [...new Set(clauses.map((order) => order.text.trim()))]
+      .filter(Boolean)
+      .join('; ')
+      .slice(0, 4000),
+    visibility: clauses.some((order) => order.visibility === 'private')
+      ? ('private' as const)
+      : ('public' as const),
+    sourceClauseIds: [
+      ...new Set(clauses.flatMap((order) => order.sourceClauseIds)),
+    ],
   };
 }

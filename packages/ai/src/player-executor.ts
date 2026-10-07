@@ -9,6 +9,7 @@ import {
   CrisisId,
   Crisis,
   Goal,
+  InfluenceTerm,
   Initiative,
   Negotiation,
   Nation,
@@ -28,6 +29,7 @@ import {
   influenceTermsFromText,
   isInfluenceProposal,
 } from './influence-intent.js';
+import { influencePartiesForNegotiation } from './influence-strategy.js';
 
 export interface PlayerExecution {
   semanticAudit?: SemanticAudit[];
@@ -50,7 +52,58 @@ const safe = (value: string) =>
     .replace(/[^a-z0-9._-]/g, '-')
     .slice(0, 48);
 
-const targetsFor = (node: SemanticAction) => node.targets;
+function targetsFor(intent: PlayerIntent, node: SemanticAction) {
+  if (node.targets.length) return node.targets;
+  const actions = intent.actionGraph?.actions ?? [];
+  const nodeIndex = actions.findIndex((action) => action.id === node.id);
+  const scope = nodeIndex > 0 ? actions[nodeIndex - 1] : undefined;
+  if (
+    !scope ||
+    scope.action !== 'other' ||
+    scope.targets.length === 0 ||
+    !/^(?:with|for|on|about|regarding)\b.*\bonly\b/i.test(scope.text.trim())
+  )
+    return [];
+
+  const rawInput = intent.actionGraph?.rawInput ?? intent.summary;
+  const scopeStart = rawInput.indexOf(scope.text);
+  const actionStart = rawInput.indexOf(
+    node.text,
+    scopeStart + scope.text.length,
+  );
+  if (scopeStart < 0 || actionStart < 0) return [];
+  const separator = rawInput.slice(scopeStart + scope.text.length, actionStart);
+  if (!/^[\s,;:–—-]*$/.test(separator)) return [];
+  return scope.targets;
+}
+
+function linkedCompensationClauses(
+  intent: PlayerIntent,
+  text: string,
+  target: NationId,
+) {
+  const actions = intent.actionGraph?.actions ?? [];
+  const sourceIndex = actions.findIndex(
+    (action) => action.text === text && action.targets.includes(target),
+  );
+  if (sourceIndex < 0) return [];
+  const linked: string[] = [];
+  for (const action of actions.slice(sourceIndex + 1)) {
+    if (action.targets.length) break;
+    if (
+      action.action !== 'offer' ||
+      !/\b(?:in return|in exchange|reciprocal|compensat|bundle)\b/i.test(
+        action.text,
+      ) ||
+      !/\b(?:infrastructure|investment|preferential access|energy|security support|subsid|aid|debt relief|loan|credit|market access)\b/i.test(
+        action.text,
+      )
+    )
+      break;
+    linked.push(action.text);
+  }
+  return linked;
+}
 
 function orderKind(
   text: string,
@@ -670,10 +723,14 @@ export function executePlayerAction(
         : node?.action === 'invade' && !/\binvade\b/i.test(order.text)
           ? `${order.text} (invade)`
           : order.text;
+    const explicitInfluenceReply =
+      /^(?:please\s+)?(accept|reject|decline|refuse|counter|counteroffer|delay|defer)\b/i
+        .exec(text)?.[1]
+        ?.toLocaleLowerCase();
     const conditionalDiplomacy =
       !!node &&
       node.conditions.length > 0 &&
-      node.targets.length > 0 &&
+      targetsFor(intent, node).length > 0 &&
       (['offer', 'communicate', 'guarantee', 'peace'].includes(node.action) ||
         isInfluenceProposal(text)) &&
       !node.conditions.some((condition) =>
@@ -702,6 +759,17 @@ export function executePlayerAction(
         commandTypes,
       });
     };
+    if (
+      node?.action === 'offer' &&
+      /^(?:compare|assess|evaluate|review|consider|weigh)\b/i.test(text) &&
+      !isInfluenceProposal(text)
+    ) {
+      record(
+        'DEFERRED',
+        'This is an internal comparison instruction; it does not authorize a diplomatic message.',
+      );
+      continue;
+    }
     const persistPlan = (plan: SemanticAction) => {
       if (
         !strategy.directives.some(
@@ -831,11 +899,15 @@ export function executePlayerAction(
       result.warnings.push(
         `${text}: the requested foreign forces are unavailable; the wording permits proceeding with the player's own forces.`,
       );
-    if (node && ['influence', 'disrupt'].includes(node.action)) {
+    if (
+      node &&
+      ['influence', 'disrupt'].includes(node.action) &&
+      !explicitInfluenceReply
+    ) {
       // Political influence has an existing diplomacy project. There is no
       // strategic disruption project; preserve that objective without invented effects.
-      if (node.action === 'influence' && targetsFor(node).length) {
-        for (const target of targetsFor(node))
+      if (node.action === 'influence' && targetsFor(intent, node).length) {
+        for (const target of targetsFor(intent, node))
           push(
             {
               type: 'START_INITIATIVE',
@@ -884,6 +956,10 @@ export function executePlayerAction(
     const namedTargets = order.targetNationIds.filter(
       (nationId) => nationId !== actor.id,
     );
+    if (node && node.targets.length === 0)
+      for (const target of targetsFor(intent, node))
+        if (target !== actor.id && !namedTargets.includes(target))
+          namedTargets.push(target);
     const lowerOrder = text.toLocaleLowerCase();
     const semanticOrganizationIds = new Set(node?.organizations ?? []);
     const mentionedOrganization = world.organizations.find(
@@ -958,6 +1034,136 @@ export function executePlayerAction(
               ...geographicSphereTargets,
             ]),
           ];
+
+    if (explicitInfluenceReply && targets.length) {
+      const target = targets[0]!;
+      const pending = world.negotiations.find(
+        (negotiation) =>
+          negotiation.kind === 'influence' &&
+          negotiation.status === 'open' &&
+          negotiation.recipientNationId === actor.id &&
+          negotiation.proposerNationId === target,
+      );
+      if (!pending) {
+        const explanation = `No open influence offer from ${world.nations.find((nation) => nation.id === target)!.name} is available to answer; no replacement offer was opened.`;
+        result.warnings.push(explanation);
+        record('DEFERRED', explanation);
+        continue;
+      }
+      if (node?.conditions.length) {
+        const explanation =
+          'The requested response is conditional; the government did not answer the live offer before its condition was met.';
+        result.warnings.push(explanation);
+        record('DEFERRED', explanation);
+        continue;
+      }
+
+      const requestedMove = explicitInfluenceReply;
+      const move = (
+        requestedMove === 'decline' || requestedMove === 'refuse'
+          ? 'reject'
+          : requestedMove === 'counteroffer'
+            ? 'counter'
+            : requestedMove === 'delay' || requestedMove === 'defer'
+              ? 'delay'
+              : requestedMove
+      ) as Extract<WorldCommand, { type: 'RESPOND_NEGOTIATION' }>['move'];
+      const command: Extract<WorldCommand, { type: 'RESPOND_NEGOTIATION' }> = {
+        type: 'RESPOND_NEGOTIATION',
+        negotiationId: pending.id,
+        nationId: actor.id,
+        move,
+        message:
+          move === 'accept'
+            ? 'Accepted the current structured influence terms.'
+            : move === 'reject'
+              ? 'Rejected the current structured influence terms.'
+              : move === 'delay'
+                ? 'Deferred a decision on the current structured influence terms.'
+                : 'Proposed a revised structured influence package for review.',
+      };
+      if (move === 'accept') {
+        const activeTreaty = world.treaties.find(
+          (treaty) =>
+            treaty.status === 'active' &&
+            treaty.kind === 'influence' &&
+            treaty.parties.includes(actor.id) &&
+            treaty.parties.includes(target),
+        );
+        command.treatyId = TreatyId.parse(
+          activeTreaty?.id ??
+            `treaty:${run}-player-influence-accept-${negotiationIndex++}`,
+        );
+      } else if (move === 'counter') {
+        const parties = influencePartiesForNegotiation(pending);
+        const parsedTerms = influenceTermsFromText(
+          world,
+          parties.patronNationId,
+          parties.subjectNationId,
+          text,
+        );
+        if (!parsedTerms.length) {
+          const explanation =
+            'A counteroffer needs at least one concrete structured influence term; no response was committed.';
+          result.warnings.push(explanation);
+          record('BLOCKED', explanation);
+          continue;
+        }
+        const replacement =
+          /\b(?:replace|instead of the current package|start over|only offer|only include)\b/i.test(
+            text,
+          );
+        const termKey = (term: InfluenceTerm) =>
+          `${term.kind}:${term.patronNationId}:${term.subjectNationId}`;
+        const revisedTerms = new Map<string, InfluenceTerm>();
+        if (!replacement)
+          for (const term of pending.influenceTerms)
+            revisedTerms.set(termKey(term), structuredClone(term));
+        for (const term of parsedTerms)
+          revisedTerms.set(
+            termKey(term),
+            InfluenceTerm.parse({
+              ...term,
+              patronNationId: parties.patronNationId,
+              subjectNationId: parties.subjectNationId,
+            }),
+          );
+        const explicitlyDefensiveOnly =
+          [...revisedTerms.values()].some(
+            (term) => term.kind === 'join-defensive-wars',
+          ) &&
+          /\b(?:only|limited to|no offensive|without offensive)\b.{0,40}\b(?:defensive wars|offensive wars|war obligation)\b/i.test(
+            text,
+          );
+        const counterInfluenceTerms = [...revisedTerms.values()].filter(
+          (term) =>
+            !(
+              explicitlyDefensiveOnly &&
+              term.kind === 'join-patron-wars' &&
+              term.patronNationId === parties.patronNationId &&
+              term.subjectNationId === parties.subjectNationId
+            ),
+        );
+        const labels = counterInfluenceTerms.map((term) =>
+          term.kind.replaceAll('-', ' '),
+        );
+        command.counterTerms = `Counteroffer: ${labels.join(', ')}.`;
+        command.counterObligations = [];
+        command.counterInfluenceTerms = counterInfluenceTerms;
+      }
+      push(command, `Player order: ${text}`);
+      result.implementation.push(
+        move === 'counter'
+          ? `Answered ${world.nations.find((nation) => nation.id === target)!.name}'s counteroffer with ${command.counterInfluenceTerms?.length ?? 0} revised structured influence terms.`
+          : `Recorded the player's ${move} decision on ${world.nations.find((nation) => nation.id === target)!.name}'s influence offer.`,
+      );
+      record(
+        'ATTEMPTED',
+        `Answered the current influence offer from ${world.nations.find((nation) => nation.id === target)!.name}; acceptance or rejection effects follow the negotiation rules.`,
+        ['RESPOND_NEGOTIATION'],
+      );
+      continue;
+    }
 
     if (sphereStrategy && targets.length) {
       const subjectNationIds = targets.filter((id) => id !== actor.id);
@@ -2961,6 +3167,7 @@ export function executePlayerAction(
         const proposalText = [
           ...new Set([
             text,
+            ...linkedCompensationClauses(intent, text, target),
             ...(intent.actionGraph?.actions
               .filter(
                 (action) =>
@@ -3151,6 +3358,93 @@ export function executePlayerAction(
     if (result.commands.length === commandCountBefore && order.persistent) {
       result.implementation.push(
         `Recorded the standing player policy: “${text}”.`,
+      );
+    }
+  }
+
+  const organizationInvitees = [
+    ...new Set(
+      result.commands.flatMap(({ command }) =>
+        command.type === 'INVITE_TO_ORGANIZATION' ? [command.nationId] : [],
+      ),
+    ),
+  ];
+  const collectiveBenefits = (intent.actionGraph?.actions ?? [])
+    .filter(
+      (action) =>
+        action.action === 'offer' &&
+        action.targets.length === 0 &&
+        /\b(?:economic integration|trade integration|energy|infrastructure|subsid|aid|financial support|support that .{1,60} can afford|affordable support)\b/i.test(
+          action.text,
+        ),
+    )
+    .map((action) => action.text);
+  const patron = world.nations.find(
+    (nation) => nation.id === intent.actorNationId,
+  );
+  if (organizationInvitees.length && collectiveBenefits.length && patron) {
+    const benefitText = [...new Set(collectiveBenefits)].join(' ');
+    const existingMonthlyCommitments = world.treaties
+      .filter(
+        (treaty) => treaty.status === 'active' && treaty.kind === 'influence',
+      )
+      .flatMap((treaty) => treaty.influenceTerms)
+      .filter(
+        (term) =>
+          term.status === 'active' &&
+          term.patronNationId === patron.id &&
+          ['subsidy', 'infrastructure-investment'].includes(term.kind),
+      )
+      .reduce((sum, term) => sum + term.amount, 0);
+    const monthlyBudget = Math.max(
+      0,
+      Math.floor(patron.stats.treasury / 36) - existingMonthlyCommitments,
+    );
+    for (const target of organizationInvitees) {
+      const terms = influenceTermsFromText(
+        world,
+        patron.id,
+        target,
+        benefitText,
+      );
+      const recurringCount = terms.filter((term) =>
+        ['subsidy', 'infrastructure-investment'].includes(term.kind),
+      ).length;
+      const monthlyPerTerm = recurringCount
+        ? Math.floor(
+            monthlyBudget / (organizationInvitees.length * recurringCount),
+          )
+        : 0;
+      const affordableTerms = terms.flatMap((term) => {
+        if (
+          term.kind !== 'subsidy' &&
+          term.kind !== 'infrastructure-investment'
+        )
+          return [term];
+        if (monthlyPerTerm < 1) return [];
+        return [{ ...term, amount: Math.min(term.amount, monthlyPerTerm) }];
+      });
+      if (!affordableTerms.length) continue;
+      const name = world.nations.find((nation) => nation.id === target)!.name;
+      result.commands.push({
+        command: {
+          type: 'OPEN_NEGOTIATION',
+          negotiation: Negotiation.parse({
+            id: `negotiation:${run}-organization-benefits-${key(target)}`,
+            proposerNationId: patron.id,
+            recipientNationId: target,
+            kind: 'influence',
+            topic: `Economic cooperation with ${name}`,
+            terms: `${benefitText} This optional economic package is offered to ${name} alongside the organization's voluntary invitation; acceptance is decided separately by its government.`,
+            createdDate: world.date,
+            expiresDate: later(world.date, 180),
+            influenceTerms: affordableTerms,
+          }),
+        },
+        reason: `Player order: ${benefitText}`,
+      });
+      result.implementation.push(
+        `Sent ${name} an optional typed economic support package alongside its organization invitation; the offer does not change autonomy unless accepted.`,
       );
     }
   }

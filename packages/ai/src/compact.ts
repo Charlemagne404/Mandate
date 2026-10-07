@@ -5,6 +5,8 @@ import { buildFormalizerPayload } from './perspective.js';
 import { z } from 'zod';
 import { buildContext } from '@mandate/memory';
 import {
+  assessInfluenceOffer,
+  buildInfluenceStrategyPlan,
   influenceProfile,
   resolveTurn,
   executionCapacity,
@@ -22,6 +24,8 @@ import {
   Conflict,
   Sanction,
   InfluenceTerm,
+  InfluenceDecision,
+  InfluencePortfolio,
   TurnId,
   WorldCommand as WorldCommandSchema,
 } from '@mandate/schemas';
@@ -41,8 +45,18 @@ import {
   scopeIntent,
 } from './perspective.js';
 import { selectRelevance, scheduleActors } from './scheduler.js';
-import { repetitionIssue } from './behavior.js';
+import { classifyImportance, repetitionIssue } from './behavior.js';
 import { auditMajorIntentClauses } from './player-executor.js';
+import {
+  buildInfluenceCounterOffers,
+  calibrateInfluenceResponse,
+  containsPrivateStrategicPlanningLanguage,
+  influenceDecisionRecord,
+  influencePartiesForNegotiation,
+  preferredPersistentInfluenceChoice,
+  repairOutOfScopeInfluenceRationale,
+  shouldRevisitDeferredInfluence,
+} from './influence-strategy.js';
 
 // Local inference proposes choices; these recipes are code-owned commands, never model code.
 // Consent is a separate government call. The sequential resolver remains authoritative.
@@ -53,6 +67,7 @@ export const CompactDecision = z.strictObject({
   message: z.string().max(260),
   counterTerms: z.string().max(300),
   counterInfluenceTerms: z.array(InfluenceTerm).max(32).default([]),
+  influenceDecision: InfluenceDecision.optional(),
 });
 const ClauseClassification = z.strictObject({
   kind: z.enum([
@@ -76,6 +91,90 @@ export type Candidate = {
   commands: WorldCommand[];
   family: string;
 };
+
+function influencePortfolioSnapshot(
+  world: WorldState,
+  patronNationId: NationId,
+  priorityTargetNationId: NationId | null,
+  plannedTerms: readonly WorldState['negotiations'][number]['influenceTerms'][number][] = [],
+) {
+  const patron = world.nations.find((nation) => nation.id === patronNationId)!;
+  const recurring = new Set([
+    'subsidy',
+    'infrastructure-investment',
+    'energy-supply',
+  ]);
+  const commitments = [
+    ...world.treaties
+      .filter(
+        (treaty) =>
+          treaty.status === 'active' &&
+          treaty.kind === 'influence' &&
+          treaty.parties.includes(patronNationId),
+      )
+      .flatMap((treaty) => treaty.influenceTerms),
+    ...world.negotiations
+      .filter(
+        (negotiation) =>
+          negotiation.kind === 'influence' &&
+          negotiation.status === 'open' &&
+          negotiation.proposerNationId === patronNationId,
+      )
+      .flatMap((negotiation) => negotiation.influenceTerms),
+  ];
+  const committedAnnualCost = commitments.reduce(
+    (sum, term) =>
+      sum +
+      (recurring.has(term.kind)
+        ? term.amount * 12
+        : term.kind === 'debt-relief'
+          ? term.amount
+          : 0),
+    0,
+  );
+  const arrears = world.treaties
+    .filter(
+      (treaty) =>
+        treaty.status === 'active' && treaty.parties.includes(patronNationId),
+    )
+    .flatMap((treaty) => treaty.breaches)
+    .filter(
+      (breach) =>
+        breach.status !== 'resolved' &&
+        breach.violatingNationId === patronNationId,
+    )
+    .reduce((sum, breach) => sum + breach.arrearsAmount, 0);
+  const availableTreasury = Math.max(
+    0,
+    patron.stats.treasury - committedAnnualCost - arrears,
+  );
+  const plannedAnnualCost = plannedTerms.reduce(
+    (sum, term) =>
+      sum +
+      (recurring.has(term.kind)
+        ? term.amount * 12
+        : term.kind === 'debt-relief' || term.kind === 'loan'
+          ? term.amount
+          : 0),
+    0,
+  );
+  const targetName = priorityTargetNationId
+    ? (world.nations.find((nation) => nation.id === priorityTargetNationId)
+        ?.name ?? priorityTargetNationId)
+    : 'no target';
+  return InfluencePortfolio.parse({
+    priorityTargetNationId,
+    reviewedDate: world.date,
+    availableTreasury: Math.min(1_000_000_000, availableTreasury),
+    committedAnnualCost: Math.min(1_000_000_000, committedAnnualCost + arrears),
+    plannedAnnualCost: Math.min(1_000_000_000, plannedAnnualCost),
+    executionCapacity: Math.min(1000, executionCapacity(world, patronNationId)),
+    rationale:
+      `National sphere priority: ${targetName}. Treasury ${patron.stats.treasury}; ` +
+      `${committedAnnualCost + arrears} annualized commitments and arrears; ` +
+      `${availableTreasury} remains before new terms. Target plans remain independent.`,
+  });
+}
 const later = (date: string, days: number) =>
   new Date(Date.parse(date) + days * 86400000).toISOString().slice(0, 10);
 function preview(w: WorldState, commands: WorldCommand[], run: string) {
@@ -238,11 +337,341 @@ function frontObjective(
     );
   return targets.sort((a, b) => a.id.localeCompare(b.id))[0];
 }
+
+function strategicInfluenceCandidate(
+  w: WorldState,
+  patronNationId: NationId,
+  subjectNationId: NationId,
+  run: string,
+) {
+  const patron = w.nations.find((nation) => nation.id === patronNationId);
+  const subject = w.nations.find((nation) => nation.id === subjectNationId);
+  if (!patron || !subject || patronNationId === subjectNationId) return null;
+  const previous = patron.strategy.influencePlans.find(
+    (plan) => plan.targetNationId === subjectNationId,
+  );
+  if (
+    !previous &&
+    patron.strategy.influencePlans.filter((plan) => plan.status === 'active')
+      .length >= 4
+  )
+    return null;
+  const desiredTier = previous?.desiredTier ?? 'SUBJECT STATE';
+  const plan = buildInfluenceStrategyPlan(
+    w,
+    patronNationId,
+    subjectNationId,
+    desiredTier,
+  );
+  if (plan.status !== 'active' || plan.nextStep.kind === 'wait') return null;
+  const open = w.negotiations.some(
+    (negotiation) =>
+      negotiation.kind === 'influence' &&
+      negotiation.status === 'open' &&
+      [negotiation.proposerNationId, negotiation.recipientNationId].includes(
+        patronNationId,
+      ) &&
+      [negotiation.proposerNationId, negotiation.recipientNationId].includes(
+        subjectNationId,
+      ),
+  );
+  if (open) return null;
+  const existingTerms = w.treaties
+    .filter(
+      (treaty) =>
+        treaty.kind === 'influence' &&
+        treaty.status === 'active' &&
+        treaty.parties.includes(patronNationId) &&
+        treaty.parties.includes(subjectNationId),
+    )
+    .flatMap((treaty) => treaty.influenceTerms)
+    .filter(
+      (term) =>
+        term.status === 'active' &&
+        term.patronNationId === patronNationId &&
+        term.subjectNationId === subjectNationId,
+    );
+  const missing = (kind: InfluenceTerm['kind']) =>
+    !existingTerms.some((term) => term.kind === kind);
+  const targetCapacity = Math.max(
+    12,
+    12 *
+      Math.max(
+        1,
+        Math.floor((subject.stats.economy + subject.stats.fiscal) / 25),
+      ),
+  );
+  const recentRejection = plan.rejectedObligations.at(-1);
+  const strongerCompensation =
+    recentRejection?.reasonCode === 'uncertain-benefit' ||
+    recentRejection?.reasonCode === 'inadequate-compensation' ||
+    recentRejection?.reasonCode === 'rival-offer' ||
+    recentRejection?.reasonCode === 'sovereignty-cost' ||
+    recentRejection?.reasonCode === 'insufficient-leverage' ||
+    recentRejection?.reasonCode === 'resistance' ||
+    recentRejection?.reasonCode === 'low-trust' ||
+    recentRejection?.reasonCode === 'patron-unreliable';
+  const terms: WorldState['negotiations'][number]['influenceTerms'] = [];
+  const add = (kind: InfluenceTerm['kind'], amount = 0) => {
+    if (!missing(kind) || terms.some((term) => term.kind === kind)) return;
+    terms.push(
+      InfluenceTerm.parse({
+        kind,
+        patronNationId,
+        subjectNationId,
+        amount,
+      }),
+    );
+  };
+  const needsEnergy = subject.stats.energyExposure >= 58;
+  const needsInvestment =
+    subject.stats.industrial < 75 || subject.stats.fiscal < 48;
+  const existingMonthlyCommitments = w.treaties
+    .filter(
+      (treaty) => treaty.status === 'active' && treaty.kind === 'influence',
+    )
+    .flatMap((treaty) => treaty.influenceTerms)
+    .filter(
+      (term) =>
+        term.status === 'active' &&
+        term.patronNationId === patronNationId &&
+        ['subsidy', 'infrastructure-investment', 'energy-supply'].includes(
+          term.kind,
+        ),
+    )
+    .reduce((sum, term) => sum + term.amount, 0);
+  const compensationRejections = plan.rejectedObligations.filter(
+    (rejection) =>
+      rejection.date >=
+        new Date(Date.parse(w.date) - 5 * 365 * 86_400_000)
+          .toISOString()
+          .slice(0, 10) &&
+      [
+        'uncertain-benefit',
+        'inadequate-compensation',
+        'rival-offer',
+        'sovereignty-cost',
+        'insufficient-leverage',
+        'resistance',
+        'low-trust',
+        'patron-unreliable',
+      ].includes(rejection.reasonCode),
+  ).length;
+  const debtReliefBudgetShare = strongerCompensation
+    ? Math.min(0.65, 0.2 + compensationRejections * 0.15)
+    : 0.1;
+  const debtRelief = Math.min(
+    subject.stats.debt,
+    Math.floor(patron.stats.treasury * debtReliefBudgetShare),
+  );
+  const maxAffordableMonthly = Math.max(
+    0,
+    Math.floor(
+      (patron.stats.treasury - existingMonthlyCommitments * 36 - debtRelief) /
+        36,
+    ),
+  );
+  const supportDemand = strongerCompensation
+    ? Math.max(
+        10,
+        Math.floor(targetCapacity * 0.15) *
+          (1 + Math.min(2, compensationRejections)),
+      )
+    : Math.max(1, Math.min(5, Math.floor(targetCapacity * 0.12)));
+  const affordableMonthlySupport = Math.min(
+    supportDemand,
+    maxAffordableMonthly,
+  );
+  const mayPayRecurring = affordableMonthlySupport > 0;
+  const authorityKinds = new Set<InfluenceTerm['kind']>([
+    'foreign-policy-consultation',
+    'foreign-policy-alignment',
+    'no-rival-alliance',
+    'foreign-policy-veto',
+    'join-defensive-wars',
+    'join-patron-wars',
+    'war-declaration-approval',
+    'no-war-against-patron',
+    'military-access',
+    'host-bases',
+    'military-planning',
+  ]);
+  const rejectedSupportKinds =
+    recentRejection &&
+    !recentRejection.requestedKinds.some((kind) => authorityKinds.has(kind)) &&
+    [
+      'uncertain-benefit',
+      'inadequate-compensation',
+      'rival-offer',
+      'sovereignty-cost',
+      'insufficient-leverage',
+      'resistance',
+      'low-trust',
+      'patron-unreliable',
+    ].includes(recentRejection.reasonCode)
+      ? new Set(recentRejection.requestedKinds)
+      : new Set<InfluenceTerm['kind']>();
+  const recurringSupportKinds = [
+    needsEnergy && !rejectedSupportKinds.has('energy-supply'),
+    needsInvestment && !rejectedSupportKinds.has('infrastructure-investment'),
+    (subject.stats.unrest >= 20 || (!needsEnergy && !needsInvestment)) &&
+      !rejectedSupportKinds.has('subsidy'),
+  ].filter(Boolean).length;
+  let supportBudgetRemainder =
+    affordableMonthlySupport % Math.max(1, recurringSupportKinds);
+  const perRecurringSupport = Math.floor(
+    affordableMonthlySupport / Math.max(1, recurringSupportKinds),
+  );
+  const recurringSupportAmount = () => {
+    const amount = perRecurringSupport + (supportBudgetRemainder > 0 ? 1 : 0);
+    supportBudgetRemainder = Math.max(0, supportBudgetRemainder - 1);
+    return Math.min(12, amount);
+  };
+  if (
+    needsEnergy &&
+    mayPayRecurring &&
+    missing('energy-supply') &&
+    !rejectedSupportKinds.has('energy-supply')
+  )
+    add('energy-supply', recurringSupportAmount());
+  if (
+    needsInvestment &&
+    mayPayRecurring &&
+    !rejectedSupportKinds.has('infrastructure-investment')
+  )
+    add('infrastructure-investment', recurringSupportAmount());
+  if (
+    subject.stats.debt >= 20 &&
+    debtRelief >= 10 &&
+    missing('debt-relief') &&
+    !rejectedSupportKinds.has('debt-relief')
+  )
+    add('debt-relief', debtRelief);
+  if (mayPayRecurring && (subject.stats.unrest >= 20 || !terms.length))
+    add('subsidy', recurringSupportAmount());
+  if (rejectedSupportKinds.size > 0 && missing('market-access-concession'))
+    add('market-access-concession');
+  if (
+    missing('preferential-trade') &&
+    terms.length < 4 &&
+    !rejectedSupportKinds.has('preferential-trade')
+  )
+    add('preferential-trade');
+  if (
+    subject.stats.military < patron.stats.military &&
+    missing('security-guarantee') &&
+    ['build-security-reliance', 'reduce-rival-options'].includes(
+      plan.nextStep.kind,
+    )
+  )
+    add('security-guarantee');
+  const rejectedSovereignty = plan.rejectedObligations.some(
+    (rejection) =>
+      ['sovereignty-cost', 'insufficient-leverage', 'resistance'].includes(
+        rejection.reasonCode,
+      ) &&
+      rejection.date >=
+        new Date(Date.parse(w.date) - 5 * 365 * 86_400_000)
+          .toISOString()
+          .slice(0, 10),
+  );
+  for (const kind of plan.nextStep.requestedTerms) {
+    if (
+      rejectedSovereignty &&
+      [
+        'foreign-policy-veto',
+        'foreign-policy-alignment',
+        'no-rival-alliance',
+      ].includes(kind)
+    )
+      continue;
+    add(kind);
+  }
+  const substantiveSupport = terms.some((term) =>
+    [
+      'subsidy',
+      'infrastructure-investment',
+      'debt-relief',
+      'energy-supply',
+      'security-guarantee',
+      'preferential-trade',
+      'market-access-concession',
+    ].includes(term.kind),
+  );
+  if (
+    plan.nextStep.requestedTerms.length > 0 &&
+    !substantiveSupport &&
+    missing('market-access-concession')
+  )
+    add('market-access-concession');
+  if (!terms.length) return null;
+  const supportClauses = terms
+    .filter((term) =>
+      [
+        'subsidy',
+        'infrastructure-investment',
+        'debt-relief',
+        'energy-supply',
+        'security-guarantee',
+        'preferential-trade',
+        'market-access-concession',
+      ].includes(term.kind),
+    )
+    .map((term) => term.kind.replaceAll('-', ' '));
+  const authorityClauses = terms
+    .filter((term) =>
+      [
+        'foreign-policy-consultation',
+        'foreign-policy-alignment',
+        'no-rival-alliance',
+        'foreign-policy-veto',
+        'join-defensive-wars',
+        'war-declaration-approval',
+      ].includes(term.kind),
+    )
+    .map((term) => term.kind.replaceAll('-', ' '));
+  const offerText = supportClauses.length
+    ? `The patron offers ${supportClauses.join(', ')}.`
+    : 'The patron offers a dependable continuation of existing economic and security cooperation.';
+  const requestText = authorityClauses.length
+    ? ` In return, the parties consider ${authorityClauses.join(', ')}; the target retains authority beyond these exact clauses.`
+    : ' No foreign-policy veto or alliance restriction is requested at this stage.';
+  const name = subject.name;
+  const negotiation = Negotiation.parse({
+    id: `negotiation:${run}-${patronNationId.slice(7)}-${subjectNationId.slice(7)}-sphere`,
+    proposerNationId: patronNationId,
+    recipientNationId: subjectNationId,
+    topic: `${name} strategic partnership`,
+    kind: 'influence',
+    terms: `${offerText}${requestText} This proposal reflects ${plan.nextStep.rationale}`,
+    createdDate: w.date,
+    expiresDate: later(w.date, 240),
+    influenceTerms: terms,
+  });
+  const strategy = {
+    ...patron.strategy,
+    influencePlans: [
+      ...patron.strategy.influencePlans.filter(
+        (candidate) => candidate.targetNationId !== subjectNationId,
+      ),
+      plan,
+    ].slice(-20),
+  };
+  return {
+    plan,
+    strategy,
+    negotiation,
+    id: `sphere-step-${subjectNationId.slice(7)}-${plan.nextStep.kind}`,
+    label: `Advance the ${name} sphere strategy: ${plan.nextStep.rationale} Offer ${offerText}${requestText}`,
+  };
+}
+
 export function compactCandidates(
   w: WorldState,
   actor: NationId,
   run: string,
   intent: PlayerIntent | null,
+  focusedInfluenceTargets: readonly NationId[] = [],
 ): Candidate[] {
   const own = w.nations.find((n) => n.id === actor)!;
   const player = intent?.actorNationId === actor;
@@ -292,6 +721,151 @@ export function compactCandidates(
     }
   };
   if (!player) {
+    // Persistent breaches are a decision docket for both sides. The injured
+    // government can escalate proportionately; the violator can offer a
+    // sourced renegotiation rather than waiting for the crisis to decay by
+    // itself.
+    for (const pact of w.treaties.filter(
+      (treaty) =>
+        treaty.kind === 'influence' &&
+        treaty.status === 'active' &&
+        treaty.parties.includes(actor),
+    )) {
+      for (const breach of pact.breaches.filter(
+        (entry) => entry.status !== 'resolved' && entry.severity >= 25,
+      )) {
+        if (breach.injuredNationId === actor) {
+          const peer = breach.violatingNationId;
+          const obligationIndex = breach.obligationKey
+            ? Number(/-term-(\d+)$/.exec(breach.obligationKey)?.[1])
+            : Number.NaN;
+          const obligation = Number.isFinite(obligationIndex)
+            ? pact.influenceTerms[obligationIndex]
+            : pact.influenceTerms.find(
+                (term) =>
+                  term.patronNationId !== term.subjectNationId &&
+                  [term.patronNationId, term.subjectNationId].includes(actor) &&
+                  [term.patronNationId, term.subjectNationId].includes(peer),
+              );
+          const shared = {
+            treatyId: pact.id,
+            breachId: breach.id,
+            patronNationId: obligation?.patronNationId ?? pact.parties[0]!,
+            subjectNationId: obligation?.subjectNationId ?? pact.parties[1]!,
+            actingNationId: actor,
+          };
+          const enforce = (
+            action: Extract<
+              WorldCommand,
+              { type: 'ENFORCE_TREATY_BREACH' }
+            >['action'],
+            label: string,
+            amount?: number,
+          ) =>
+            add(
+              `breach-${breach.id.slice(7)}-${action}`,
+              `${label} against ${w.nations.find((nation) => nation.id === peer)!.name} for ${breach.reason}. This episode is ${breach.durationMonths} months old, with ${breach.missedInstallments} missed installments, ${breach.arrearsAmount} arrears and severity ${breach.severity}/100.`,
+              [
+                {
+                  type: 'ENFORCE_TREATY_BREACH',
+                  ...shared,
+                  enforcementId: `enforcement:${run}-${breach.id.slice(7)}-${action}`,
+                  action,
+                  ...(amount ? { amount } : {}),
+                },
+              ],
+              'diplomacy',
+            );
+          if (
+            !breach.milestones.some((milestone) => milestone.key === 'demanded')
+          )
+            enforce('diplomatic-demand', 'Issue a formal compliance demand');
+          if (
+            breach.arrearsAmount > 0 &&
+            pact.influenceTerms.some(
+              (term) =>
+                term.status === 'active' &&
+                term.arrears > 0 &&
+                (breach.violatingNationId === term.patronNationId
+                  ? ['subsidy', 'infrastructure-investment'].includes(term.kind)
+                  : ['tribute', 'debt-repayment'].includes(term.kind)),
+            )
+          )
+            enforce('demand-arrears', 'Collect the overdue installments');
+          if (
+            !w.negotiations.some(
+              (negotiation) =>
+                negotiation.status === 'open' &&
+                negotiation.sourceBreachId === breach.id,
+            )
+          )
+            enforce('renegotiate', 'Open a breach settlement negotiation');
+          if (
+            breach.severity >= 50 &&
+            !pact.enforcements.some(
+              (entry) =>
+                entry.breachId === breach.id &&
+                entry.action === 'suspend-reciprocals',
+            ) &&
+            pact.influenceTerms.some(
+              (term) =>
+                term.status === 'active' &&
+                term.patronNationId === actor &&
+                term.subjectNationId === peer,
+            )
+          )
+            enforce('suspend-reciprocals', 'Suspend reciprocal obligations');
+          if (
+            breach.severity >= 60 &&
+            !pact.enforcements.some(
+              (entry) =>
+                entry.breachId === breach.id &&
+                entry.action === 'political-pressure',
+            )
+          )
+            enforce('political-pressure', 'Apply political pressure');
+          if (
+            breach.severity >= 75 &&
+            !pact.enforcements.some(
+              (entry) =>
+                entry.breachId === breach.id && entry.action === 'sanction',
+            )
+          )
+            enforce('sanction', 'Impose targeted trade sanctions');
+          if (breach.severity >= 85 && breach.durationMonths >= 12)
+            enforce('terminate', 'Terminate the breached agreement');
+          if (breach.severity <= 40)
+            enforce('waive', 'Waive this limited breach');
+        } else if (breach.violatingNationId === actor) {
+          const injured = breach.injuredNationId;
+          const openSettlement = w.negotiations.some(
+            (negotiation) =>
+              negotiation.status === 'open' &&
+              negotiation.sourceBreachId === breach.id,
+          );
+          if (!openSettlement) {
+            const negotiation = Negotiation.parse({
+              id: `negotiation:${run}-${breach.id.slice(7)}-settlement`,
+              proposerNationId: actor,
+              recipientNationId: injured,
+              kind: 'influence',
+              topic: `Settlement of ${pact.name} breach`,
+              terms: `Propose a reviewable settlement for ${breach.reason}; suspend the defaulted obligation while arrears, compensation or a feasible replacement schedule are negotiated.`,
+              createdDate: w.date,
+              expiresDate: later(w.date, 180),
+              sourceBreachId: breach.id,
+              influenceTerms: [],
+            });
+            add(
+              `offer-breach-settlement-${breach.id.slice(7)}`,
+              `Offer ${w.nations.find((nation) => nation.id === injured)!.name} a sourced renegotiation for this ${breach.durationMonths}-month breach, addressing ${breach.missedInstallments} missed installments and ${breach.arrearsAmount} arrears.`,
+              [{ type: 'OPEN_NEGOTIATION', negotiation }],
+              'diplomacy',
+            );
+          }
+        }
+      }
+    }
     for (const pact of w.treaties.filter(
       (treaty) =>
         treaty.kind === 'influence' &&
@@ -404,91 +978,245 @@ export function compactCandidates(
       return score(right) - score(left) || left.localeCompare(right);
     })
     .slice(0, 3);
-  if (!player && !urgentWar(w, actor) && cooperativeNeighbors.length) {
-    const target = cooperativeNeighbors.find((nationId) => {
-      const open = w.negotiations.some(
-        (negotiation) =>
-          negotiation.kind === 'influence' &&
-          negotiation.status === 'open' &&
-          [
-            negotiation.proposerNationId,
-            negotiation.recipientNationId,
-          ].includes(actor) &&
-          [
-            negotiation.proposerNationId,
-            negotiation.recipientNationId,
-          ].includes(nationId),
-      );
-      return !open;
-    });
-    if (target) {
-      const existingTerms = w.treaties
+  if (
+    !player &&
+    !urgentWar(w, actor) &&
+    (w.scenario.strategicActors?.includes(actor) ||
+      own.stats.economy + own.stats.military >= 125 ||
+      (own.stats.economy >= 35 && own.stats.military >= 55) ||
+      focusedInfluenceTargets.length > 0)
+  ) {
+    const directNeighbors = new Set(neighbors);
+    const relevantTargets = new Set<NationId>([
+      ...neighbors,
+      ...focusedInfluenceTargets,
+      ...own.strategy.influencePlans
+        .filter((plan) => plan.status === 'active')
+        .map((plan) => plan.targetNationId),
+      ...w.economicLinks
+        .filter((link) => link.dependentNationId !== actor)
+        .map((link) => link.dependentNationId),
+      ...w.organizations
         .filter(
-          (treaty) => treaty.kind === 'influence' && treaty.status === 'active',
+          (organization) =>
+            organization.status === 'active' &&
+            (organization.members.includes(actor) ||
+              organization.members.some((member) =>
+                directNeighbors.has(member),
+              )),
         )
-        .flatMap((treaty) => treaty.influenceTerms)
-        .filter(
-          (term) =>
-            term.patronNationId === actor && term.subjectNationId === target,
+        .flatMap((organization) => organization.members),
+    ]);
+    const sphereTargets = [...relevantTargets]
+      .filter(
+        (id) => id !== actor && w.nations.some((nation) => nation.id === id),
+      )
+      .map((id) => {
+        const targetNation = w.nations.find((nation) => nation.id === id)!;
+        const relation = w.relations.find(
+          (entry) =>
+            [entry.nationA, entry.nationB].includes(actor) &&
+            [entry.nationA, entry.nationB].includes(id),
         );
-      const missing = (kind: InfluenceTerm['kind']) =>
-        !existingTerms.some((term) => term.kind === kind);
-      const monthlySupport = Math.max(
-        1,
-        Math.min(5, Math.floor(own.stats.treasury * 0.01)),
-      );
-      const influenceTerms = [
-        ...(missing('subsidy') && own.stats.treasury >= monthlySupport * 40
-          ? [
-              InfluenceTerm.parse({
-                kind: 'subsidy',
-                patronNationId: actor,
-                subjectNationId: target,
-                amount: monthlySupport,
-              }),
-            ]
-          : []),
-        ...(missing('infrastructure-investment') &&
-        own.stats.treasury >= monthlySupport * 40
-          ? [
-              InfluenceTerm.parse({
-                kind: 'infrastructure-investment',
-                patronNationId: actor,
-                subjectNationId: target,
-                amount: monthlySupport,
-              }),
-            ]
-          : []),
-        ...(missing('preferential-trade')
-          ? [
-              InfluenceTerm.parse({
-                kind: 'preferential-trade',
-                patronNationId: actor,
-                subjectNationId: target,
-              }),
-            ]
-          : []),
-      ];
-      if (influenceTerms.length) {
-        const targetName = w.nations.find(
-          (nation) => nation.id === target,
-        )!.name;
-        const negotiation = Negotiation.parse({
-          id: `negotiation:${run}-${actor.slice(7)}-${target.slice(7)}-economic-influence`,
-          proposerNationId: actor,
-          recipientNationId: target,
-          kind: 'influence',
-          topic: `Regional economic partnership with ${targetName}`,
-          terms: `A voluntary trade and development package for ${targetName}: recurring support and preferential access are offered without transferring policy authority. Deeper coordination requires a separate accepted agreement.`,
-          createdDate: w.date,
-          expiresDate: later(w.date, 180),
-          influenceTerms,
-        });
+        const profile = influenceProfile(w, actor, id);
+        const rivalHasLeverage = w.nations.some(
+          (other) =>
+            other.id !== actor &&
+            influenceProfile(w, other.id, id).leverage >= profile.leverage + 8,
+        );
+        const need =
+          Math.max(0, 50 - targetNation.stats.fiscal) +
+          Math.max(0, targetNation.stats.unrest - 15) +
+          Math.max(0, targetNation.stats.energyExposure - 55);
+        const activePlan = own.strategy.influencePlans.some(
+          (plan) => plan.targetNationId === id && plan.status === 'active',
+        );
+        return {
+          id,
+          relevance:
+            (directNeighbors.has(id) ? 35 : 0) +
+            (focusedInfluenceTargets.includes(id) ? 100 : 0) +
+            (activePlan ? 80 : 0) +
+            (rivalHasLeverage ? 24 : 0) +
+            Math.min(30, need) +
+            (relation?.score ?? 0) * 0.25 +
+            (relation?.trust ?? 50) * 0.1,
+          relationScore: relation?.score ?? 0,
+          leverage: profile.leverage,
+        };
+      })
+      .filter(
+        (entry) =>
+          entry.relationScore >= -25 ||
+          entry.leverage > 0 ||
+          own.strategy.influencePlans.some(
+            (plan) =>
+              plan.targetNationId === entry.id && plan.status === 'active',
+          ),
+      )
+      .sort((a, b) => b.relevance - a.relevance || a.id.localeCompare(b.id))
+      .slice(0, 3);
+    for (const { id: target } of sphereTargets) {
+      const candidate = strategicInfluenceCandidate(w, actor, target, run);
+      if (candidate) {
         add(
-          `offer-economic-influence-${target.slice(7)}`,
-          `Offer ${targetName} a modest recurring development grant and preferential trade terms. ${influenceTerms.length} typed economic clauses; acceptance is optional and political authority is not included.`,
-          [{ type: 'OPEN_NEGOTIATION', negotiation }],
+          candidate.id,
+          candidate.label,
+          [
+            {
+              type: 'SET_STRATEGY',
+              nationId: actor,
+              strategy: candidate.strategy,
+            },
+            { type: 'OPEN_NEGOTIATION', negotiation: candidate.negotiation },
+          ],
           'diplomacy',
+        );
+      } else {
+        const priorPlan = own.strategy.influencePlans.find(
+          (plan) => plan.targetNationId === target,
+        );
+        if (
+          !priorPlan &&
+          own.strategy.influencePlans.filter((plan) => plan.status === 'active')
+            .length >= 4
+        )
+          continue;
+        const plan = buildInfluenceStrategyPlan(
+          w,
+          actor,
+          target,
+          priorPlan?.desiredTier ?? 'SUBJECT STATE',
+        );
+        const agedReview =
+          !priorPlan ||
+          later(priorPlan.reviewedDate, 180) <= w.date ||
+          priorPlan.currentTier !== plan.currentTier ||
+          priorPlan.nextStep.kind !== plan.nextStep.kind ||
+          priorPlan.status !== plan.status;
+        const alreadyNegotiating = w.negotiations.some(
+          (negotiation) =>
+            negotiation.kind === 'influence' &&
+            negotiation.status === 'open' &&
+            [
+              negotiation.proposerNationId,
+              negotiation.recipientNationId,
+            ].includes(actor) &&
+            [
+              negotiation.proposerNationId,
+              negotiation.recipientNationId,
+            ].includes(target),
+        );
+        if (!agedReview || alreadyNegotiating) continue;
+        const strategy = {
+          ...own.strategy,
+          influencePlans: [
+            ...own.strategy.influencePlans.filter(
+              (entry) => entry.targetNationId !== target,
+            ),
+            plan,
+          ].slice(-20),
+        };
+        add(
+          `review-sphere-${target.slice(7)}`,
+          `Review the ${w.nations.find((nation) => nation.id === target)!.name} sphere plan. Current tier ${plan.currentTier}; leverage ${plan.leverage}/100; resistance ${plan.resistance}/100; patron reliability ${plan.patronReliability}/100. Next realistic step: ${plan.nextStep.rationale}`,
+          [{ type: 'SET_STRATEGY', nationId: actor, strategy }],
+          'diplomacy',
+        );
+      }
+    }
+
+    // A dependent government may spend scarce capacity on domestic substitutes
+    // when one patron dominates a material channel or has become unreliable.
+    const subjectPatrons = [
+      ...new Set(
+        w.treaties
+          .filter(
+            (treaty) =>
+              treaty.kind === 'influence' &&
+              treaty.status === 'active' &&
+              treaty.parties.includes(actor),
+          )
+          .flatMap((treaty) =>
+            treaty.influenceTerms
+              .filter(
+                (term) =>
+                  term.status === 'active' && term.subjectNationId === actor,
+              )
+              .map((term) => term.patronNationId),
+          ),
+      ),
+    ];
+    const principalPatron = subjectPatrons
+      .map((patron) => ({
+        patron,
+        profile: influenceProfile(w, patron, actor),
+      }))
+      .sort((left, right) => right.profile.leverage - left.profile.leverage)[0];
+    if (
+      principalPatron &&
+      principalPatron.profile.leverage >= 25 &&
+      (principalPatron.profile.reliability < 60 ||
+        Math.max(
+          principalPatron.profile.dependency.energy,
+          principalPatron.profile.dependency.trade,
+          principalPatron.profile.dependency.finance,
+        ) >= 55)
+    ) {
+      const kind: 'energy' | 'industry' =
+        principalPatron.profile.dependency.energy >= 45 ||
+        own.stats.energyExposure >= 58
+          ? 'energy'
+          : 'industry';
+      const lastDiversification = w.initiatives
+        .filter(
+          (initiative) =>
+            initiative.nationId === actor &&
+            initiative.name.startsWith('Strategic autonomy:') &&
+            initiative.status !== 'cancelled',
+        )
+        .sort((left, right) =>
+          right.startDate.localeCompare(left.startDate),
+        )[0];
+      const coolingOff =
+        !lastDiversification ||
+        lastDiversification.startDate <= later(w.date, -730);
+      const activeSameProject = w.initiatives.some(
+        (initiative) =>
+          initiative.nationId === actor &&
+          initiative.kind === kind &&
+          initiative.name.startsWith('Strategic autonomy:') &&
+          initiative.status === 'active',
+      );
+      if (
+        coolingOff &&
+        !activeSameProject &&
+        own.stats.stability >= 35 &&
+        own.stats.treasury >= 24
+      ) {
+        const projectName =
+          kind === 'energy'
+            ? 'Strategic autonomy: domestic energy substitution'
+            : 'Strategic autonomy: domestic industrial alternatives';
+        add(
+          `autonomy-diversification-${kind}`,
+          `Invest in ${kind === 'energy' ? 'energy substitution' : 'domestic industrial capacity'} to preserve policy options while retaining useful patron benefits. The leading patron has ${principalPatron.profile.leverage}/100 leverage and ${principalPatron.profile.reliability}/100 delivery reliability.`,
+          [
+            {
+              type: 'START_INITIATIVE',
+              initiative: Initiative.parse({
+                id: `initiative:${run}-${actor.slice(7)}-autonomy-${kind}`,
+                nationId: actor,
+                name: projectName,
+                kind,
+                effort: 2,
+                startDate: w.date,
+                durationDays: 360,
+                visibility: 'public',
+              }),
+            },
+          ],
+          'project',
         );
       }
     }
@@ -1685,6 +2413,49 @@ export function compactFacts(
   return {
     date: w.date,
     own,
+    influenceStrategy: own.strategy.influencePlans,
+    influenceRelationships: w.treaties
+      .filter(
+        (treaty) =>
+          treaty.kind === 'influence' && treaty.parties.includes(actor),
+      )
+      .flatMap((treaty) =>
+        treaty.breaches
+          .filter((breach) => breach.status !== 'resolved')
+          .map((breach) => ({
+            treaty: treaty.name,
+            breachId: breach.id,
+            violatingNationId: breach.violatingNationId,
+            injuredNationId: breach.injuredNationId,
+            reason: breach.reason,
+            firstMissedDate: breach.firstMissedDate,
+            lastMissedDate: breach.lastMissedDate,
+            missedInstallments: breach.missedInstallments,
+            arrearsAmount: breach.arrearsAmount,
+            durationMonths: breach.durationMonths,
+            severity: breach.severity,
+          })),
+      )
+      .slice(0, 8),
+    competingInfluenceOffers: w.negotiations
+      .filter(
+        (negotiation) =>
+          negotiation.kind === 'influence' &&
+          negotiation.status === 'open' &&
+          negotiation.recipientNationId === actor,
+      )
+      .sort((a, b) => a.createdDate.localeCompare(b.createdDate))
+      .slice(0, 5)
+      .map((negotiation) => ({
+        id: negotiation.id,
+        proposerNationId: negotiation.proposerNationId,
+        terms: negotiation.terms,
+        clauses: negotiation.influenceTerms.map((term) => ({
+          kind: term.kind,
+          amount: term.amount,
+        })),
+        profile: influenceProfile(w, negotiation.proposerNationId, actor),
+      })),
     goals: context.canonical.goals
       .filter((g) => g.nationId === actor)
       .map((g) => ({
@@ -1793,6 +2564,455 @@ export function compactFacts(
       'Foreign private strategy, treasury and readiness are unknown. Proposals are wishes, not outcomes.',
   };
 }
+
+export function influenceResponseDossier(
+  world: WorldState,
+  negotiation: WorldState['negotiations'][number],
+  decidingActorNationId: NationId,
+) {
+  if (negotiation.kind !== 'influence') return null;
+  const { patronNationId, subjectNationId } =
+    influencePartiesForNegotiation(negotiation);
+  const patronDeciding = decidingActorNationId === patronNationId;
+  const subjectDeciding = decidingActorNationId === subjectNationId;
+  const counterpartNationId = patronDeciding ? subjectNationId : patronNationId;
+  const offerAssessment = assessInfluenceOffer(
+    world,
+    patronNationId,
+    subjectNationId,
+    negotiation.influenceTerms,
+  );
+  const profile = influenceProfile(world, patronNationId, subjectNationId);
+  const subject = world.nations.find((nation) => nation.id === subjectNationId);
+  const decidingActor = world.nations.find(
+    (nation) => nation.id === decidingActorNationId,
+  );
+  const targetPlan = decidingActor?.strategy.influencePlans.find(
+    (plan) => plan.targetNationId === counterpartNationId,
+  );
+  const activeTerms = profile.activeTerms.map((term) => ({
+    kind: term.kind,
+    amount: term.amount,
+    ratePercent: term.ratePercent,
+  }));
+  const rejectedOffers = world.negotiations
+    .filter(
+      (candidate) =>
+        candidate.kind === 'influence' &&
+        influencePartiesForNegotiation(candidate).patronNationId ===
+          patronNationId &&
+        influencePartiesForNegotiation(candidate).subjectNationId ===
+          subjectNationId &&
+        candidate.responses.some(
+          (response) =>
+            response.nationId === decidingActorNationId &&
+            ['reject', 'counter'].includes(response.move),
+        ),
+    )
+    .sort((a, b) => a.createdDate.localeCompare(b.createdDate))
+    .slice(-4);
+  const lastRejected = rejectedOffers.at(-1);
+  const lastRejectedResponse = [...(lastRejected?.responses ?? [])]
+    .reverse()
+    .find(
+      (entry) =>
+        entry.nationId === decidingActorNationId &&
+        ['reject', 'counter'].includes(entry.move),
+    );
+  const previousAssessment =
+    lastRejectedResponse?.influenceDecision?.assessment;
+  const termsKey = (
+    terms: readonly WorldState['negotiations'][number]['influenceTerms'][number][],
+  ) =>
+    terms
+      .map(
+        (term) =>
+          `${term.kind}:${term.amount}:${term.ratePercent}:${term.patronNationId}:${term.subjectNationId}`,
+      )
+      .sort()
+      .join('|');
+  return {
+    decisionScope: {
+      decidingActor: {
+        id: decidingActorNationId,
+        name: decidingActor?.name ?? decidingActorNationId,
+        role: subjectDeciding ? 'target' : patronDeciding ? 'patron' : 'other',
+      },
+      counterpart: {
+        id: counterpartNationId,
+        name:
+          world.nations.find((nation) => nation.id === counterpartNationId)
+            ?.name ?? counterpartNationId,
+        role: patronDeciding ? 'target' : subjectDeciding ? 'patron' : 'other',
+      },
+      responseMode:
+        patronDeciding && negotiation.proposerNationId === subjectNationId
+          ? 'patron-reviewing-target-counteroffer'
+          : subjectDeciding && negotiation.proposerNationId === patronNationId
+            ? 'target-evaluating-patron-offer'
+            : 'reviewing-influence-terms',
+      decision: negotiation.id,
+      relevantRival:
+        patronDeciding ||
+        offerAssessment.factors.alternatives.rivalNationId === null
+          ? null
+          : {
+              id: offerAssessment.factors.alternatives.rivalNationId,
+              name:
+                world.nations.find(
+                  (nation) =>
+                    nation.id ===
+                    offerAssessment.factors.alternatives.rivalNationId,
+                )?.name ?? offerAssessment.factors.alternatives.rivalNationId,
+              leverage: offerAssessment.factors.alternatives.rivalLeverage,
+              offerScore: offerAssessment.factors.alternatives.rivalOfferScore,
+            },
+    },
+    proposalTerms: negotiation.influenceTerms.map((term) => ({
+      kind: term.kind,
+      patron: term.patronNationId,
+      subject: term.subjectNationId,
+      amount: term.amount,
+      ratePercent: term.ratePercent,
+    })),
+    negotiationMemory: negotiation.responses.slice(-3).map((response) => {
+      const communicatedTerms = response.influenceTerms ?? [];
+      const counterTerms = response.counterInfluenceTerms ?? [];
+      const sameTerm = (
+        left: (typeof communicatedTerms)[number],
+        right: (typeof counterTerms)[number],
+      ) =>
+        left.kind === right.kind &&
+        left.amount === right.amount &&
+        left.ratePercent === right.ratePercent;
+      return {
+        date: response.date,
+        actor:
+          world.nations.find((nation) => nation.id === response.nationId)
+            ?.name ?? response.nationId,
+        result: response.move,
+        communicatedTerms: communicatedTerms.map((term) => ({
+          kind: term.kind,
+          amount: term.amount,
+          ratePercent: term.ratePercent,
+        })),
+        counterTerms: counterTerms.map((term) => ({
+          kind: term.kind,
+          amount: term.amount,
+          ratePercent: term.ratePercent,
+        })),
+        removedTerms:
+          response.move === 'counter'
+            ? communicatedTerms
+                .filter(
+                  (term) =>
+                    !counterTerms.some((counterTerm) =>
+                      sameTerm(term, counterTerm),
+                    ),
+                )
+                .map((term) => term.kind)
+            : [],
+        addedTerms:
+          response.move === 'counter'
+            ? counterTerms
+                .filter(
+                  (term) =>
+                    !communicatedTerms.some((priorTerm) =>
+                      sameTerm(priorTerm, term),
+                    ),
+                )
+                .map((term) => term.kind)
+            : [],
+        publicReason: containsPrivateStrategicPlanningLanguage(response.message)
+          ? null
+          : response.message.slice(0, 240),
+      };
+    }),
+    communicatedProposalText: negotiation.terms,
+    currentTier: profile.tier,
+    leverage: subjectDeciding ? profile.leverage : null,
+    resistance: subjectDeciding ? profile.resistance : null,
+    reliability: subjectDeciding ? profile.reliability : null,
+    autonomy: subjectDeciding ? profile.autonomy : null,
+    decidingActorPriorities: {
+      orientation: decidingActor?.strategy.orientation,
+      riskTolerance: decidingActor?.strategy.riskTolerance,
+      goals: world.goals
+        .filter(
+          (goal) =>
+            goal.nationId === decidingActorNationId &&
+            !['achieved', 'failed', 'abandoned', 'superseded'].includes(
+              goal.status,
+            ),
+        )
+        .sort((a, b) => b.priority - a.priority)
+        .slice(0, 4)
+        .map((goal) => ({ title: goal.title, priority: goal.priority })),
+      targetPlan: targetPlan
+        ? {
+            desiredTier: targetPlan.desiredTier,
+            status: targetPlan.status,
+            priority: targetPlan.priority,
+            nextStep: targetPlan.nextStep.kind,
+            requestedTerms: targetPlan.nextStep.requestedTerms,
+            rationale: targetPlan.nextStep.rationale,
+            blockers: targetPlan.blockers.slice(0, 4),
+          }
+        : null,
+    },
+    targetNeeds:
+      subject && subjectDeciding
+        ? {
+            debt: subject.stats.debt,
+            energyExposure: subject.stats.energyExposure,
+            industrial: subject.stats.industrial,
+            fiscal: subject.stats.fiscal,
+            treasury: subject.stats.treasury,
+            unrest: subject.stats.unrest,
+            economy: subject.stats.economy,
+            military: subject.stats.military,
+            preferences: {
+              orientation: subject.strategy.orientation,
+              riskTolerance: subject.strategy.riskTolerance,
+              redLines: subject.strategy.redLines.slice(0, 5),
+            },
+            goals: world.goals
+              .filter(
+                (goal) =>
+                  goal.nationId === subjectNationId &&
+                  !['achieved', 'failed', 'abandoned', 'superseded'].includes(
+                    goal.status,
+                  ),
+              )
+              .sort((a, b) => b.priority - a.priority)
+              .slice(0, 5)
+              .map((goal) => ({ title: goal.title, priority: goal.priority })),
+            threats: world.conflicts
+              .filter(
+                (conflict) =>
+                  conflict.status === 'active' &&
+                  [...conflict.attackers, ...conflict.defenders].includes(
+                    subjectNationId,
+                  ),
+              )
+              .slice(0, 3)
+              .map((conflict) => ({
+                name: conflict.name,
+                opponents: [...conflict.attackers, ...conflict.defenders]
+                  .filter((nationId) => nationId !== subjectNationId)
+                  .slice(0, 3)
+                  .map(
+                    (nationId) =>
+                      world.nations.find((nation) => nation.id === nationId)
+                        ?.name ?? nationId,
+                  ),
+              })),
+          }
+        : null,
+    offeredSupport: {
+      monthlyPayments: negotiation.influenceTerms
+        .filter(
+          (term) =>
+            term.kind === 'subsidy' ||
+            term.kind === 'infrastructure-investment',
+        )
+        .reduce((sum, term) => sum + term.amount, 0),
+      oneTimeDebtRelief: negotiation.influenceTerms
+        .filter((term) => term.kind === 'debt-relief')
+        .reduce((sum, term) => sum + term.amount, 0),
+      oneTimeLoans: negotiation.influenceTerms
+        .filter((term) => term.kind === 'loan')
+        .reduce((sum, term) => sum + term.amount, 0),
+    },
+    trust:
+      world.relations.find(
+        (relation) =>
+          [relation.nationA, relation.nationB].includes(patronNationId) &&
+          [relation.nationA, relation.nationB].includes(subjectNationId),
+      )?.trust ?? 50,
+    activeTerms,
+    unmetPuppetRequirements: profile.puppetRequirements
+      .filter((requirement) => !requirement.fulfilled)
+      .map((requirement) => requirement.key),
+    availableLimitedCounterTerms: [
+      'foreign-policy-consultation',
+      'support-diplomatic-initiatives',
+      'war-declaration-approval',
+      'join-defensive-wars',
+      'military-planning',
+    ].filter((kind) => !profile.activeTerms.some((term) => term.kind === kind)),
+    decisionEnvelope: subjectDeciding
+      ? {
+          recommendationZone: offerAssessment.recommendationZone,
+          score: offerAssessment.score,
+          benefits: offerAssessment.factors.benefits,
+          costs: {
+            sovereignty: offerAssessment.factors.costs.sovereignty,
+            fiscal: offerAssessment.factors.costs.fiscal,
+            militaryObligation:
+              offerAssessment.factors.costs.militaryObligation,
+            diplomaticRestriction:
+              offerAssessment.factors.costs.diplomaticRestriction,
+          },
+          relationship: offerAssessment.factors.relationship,
+          alternatives: {
+            rivalLeverage: offerAssessment.factors.alternatives.rivalLeverage,
+            rivalOfferScore:
+              offerAssessment.factors.alternatives.rivalOfferScore,
+            outsideOption: offerAssessment.factors.alternatives.outsideOption,
+            switchingCost: offerAssessment.factors.alternatives.switchingCost,
+          },
+          strategicFit: offerAssessment.factors.strategicFit,
+        }
+      : {
+          perspective: 'patron-reviewing-target-counteroffer',
+          targetPrivateFactors: 'withheld',
+          instruction:
+            'Assess the exact communicated terms against this actor’s own target plan. Counterpart private needs, red lines, goals, resistance, reliability, alternatives and internal assessment are not shared.',
+        },
+    rejectedOffers: rejectedOffers.map((candidate) => {
+      const response = [...candidate.responses]
+        .reverse()
+        .find(
+          (entry) =>
+            entry.nationId === decidingActorNationId &&
+            ['reject', 'counter'].includes(entry.move),
+        );
+      return {
+        date: response?.date ?? candidate.createdDate,
+        result: response?.move ?? 'unknown',
+        reasonCode: response?.influenceDecision?.reasonCode ?? null,
+        statedReason: response?.message,
+        terms: (response?.influenceTerms ?? candidate.influenceTerms).map(
+          (term) => ({
+            kind: term.kind,
+            amount: term.amount,
+            ratePercent: term.ratePercent,
+          }),
+        ),
+        counterTerms: response?.counterInfluenceTerms?.map((term) => ({
+          kind: term.kind,
+          amount: term.amount,
+          ratePercent: term.ratePercent,
+        })),
+      };
+    }),
+    exactRepeatOfLastRejectedTerms: Boolean(
+      lastRejected &&
+      termsKey(
+        lastRejectedResponse?.influenceTerms ?? lastRejected.influenceTerms,
+      ) === termsKey(negotiation.influenceTerms),
+    ),
+    changesSinceLastObjection: previousAssessment
+      ? {
+          priorDate: lastRejectedResponse?.date,
+          priorMove: lastRejectedResponse?.move,
+          priorReason:
+            lastRejectedResponse &&
+            !containsPrivateStrategicPlanningLanguage(
+              lastRejectedResponse.message,
+            )
+              ? lastRejectedResponse.message
+              : null,
+          benefitChange:
+            offerAssessment.factors.benefits.total -
+            previousAssessment.benefits.total,
+          sovereigntyCostChange:
+            offerAssessment.factors.costs.sovereignty -
+            previousAssessment.costs.sovereignty,
+          leverageChange:
+            offerAssessment.factors.relationship.leverage -
+            previousAssessment.relationship.leverage,
+          resistanceChange:
+            offerAssessment.factors.relationship.resistance -
+            previousAssessment.relationship.resistance,
+          reliabilityChange:
+            offerAssessment.factors.relationship.reliability -
+            previousAssessment.relationship.reliability,
+          trustChange:
+            offerAssessment.factors.relationship.trust -
+            previousAssessment.relationship.trust,
+        }
+      : null,
+  };
+}
+
+export function playerInfluenceStrategyUpdate(
+  world: WorldState,
+  intent: PlayerIntent | null,
+  text: string,
+  commands: Array<{ command: WorldCommand; reason: string }>,
+) {
+  if (!intent) return null;
+  const actor = intent.actorNationId;
+  const patron = world.nations.find((nation) => nation.id === actor);
+  if (!patron) return null;
+  const targets = new Set(
+    commands.flatMap(({ command }) =>
+      command.type === 'OPEN_NEGOTIATION' &&
+      command.negotiation.kind === 'influence' &&
+      command.negotiation.proposerNationId === actor
+        ? [command.negotiation.recipientNationId]
+        : [],
+    ),
+  );
+  if (
+    /sphere|patron|puppet|protectorate|client state|dependency|dependence|influence|under our control/i.test(
+      text,
+    )
+  )
+    for (const target of intent.targetNationIds)
+      if (target !== actor) targets.add(target);
+  if (!targets.size) return null;
+  const requestsPuppet = /puppet|full control|under our control/i.test(text);
+  const requestedTier = requestsPuppet ? 'PUPPET STATE' : 'SUBJECT STATE';
+  const plans = [...targets].map((target) =>
+    buildInfluenceStrategyPlan(
+      world,
+      actor,
+      target,
+      requestsPuppet
+        ? requestedTier
+        : (patron.strategy.influencePlans.find(
+            (plan) => plan.targetNationId === target,
+          )?.desiredTier ?? requestedTier),
+    ),
+  );
+  const strategy = {
+    ...patron.strategy,
+    influencePlans: [
+      ...patron.strategy.influencePlans.filter(
+        (plan) => !targets.has(plan.targetNationId),
+      ),
+      ...plans,
+    ].slice(-20),
+    influencePortfolio: influencePortfolioSnapshot(
+      world,
+      actor,
+      plans[0]?.targetNationId ?? null,
+      commands.flatMap(({ command }) =>
+        command.type === 'OPEN_NEGOTIATION' &&
+        command.negotiation.kind === 'influence' &&
+        command.negotiation.proposerNationId === actor
+          ? command.negotiation.influenceTerms
+          : [],
+      ),
+    ),
+  };
+  const names = plans.map(
+    (plan) =>
+      world.nations.find((nation) => nation.id === plan.targetNationId)!.name,
+  );
+  return {
+    command: WorldCommandSchema.parse({
+      type: 'SET_STRATEGY',
+      nationId: actor,
+      strategy,
+    }),
+    reason: `Persist influence strategy for ${names.join(', ')}: ${plans.map((plan) => plan.nextStep.rationale).join(' ')}`,
+  };
+}
+
 type Call = <T>(
   role: Role,
   schema: z.ZodType<T>,
@@ -1807,6 +3027,10 @@ export async function compactPrepare(
   generate: Call,
 ) {
   const { world: w, signal } = input;
+  if (input.action.source === 'player')
+    trace.importance = classifyImportance(w, input.action.text, [
+      input.action.actorNationId,
+    ]);
   let repairCalls = 0;
   const call: Call = async (role, schema, payload, refs, attempt = 0) => {
     try {
@@ -1918,6 +3142,14 @@ export async function compactPrepare(
     input.action.source === 'player' ? trace.intent : null,
     trace.id,
   );
+  const influenceStrategyUpdate = playerInfluenceStrategyUpdate(
+    w,
+    input.action.source === 'player' ? trace.intent : null,
+    input.action.text,
+    trace.playerExecution?.commands ?? [],
+  );
+  if (influenceStrategyUpdate)
+    trace.playerExecution?.commands.push(influenceStrategyUpdate);
   trace.relevance = selectRelevance(w, trace.intent);
   const required = [
     ...new Set([
@@ -2048,6 +3280,11 @@ export async function compactPrepare(
         const activation = (id: NationId) =>
           scheduled.find((entry) => entry.nationId === id);
         const urgent = (id: NationId) =>
+          scheduled
+            .find((activation) => activation.nationId === id)
+            ?.reasons.includes(
+              'Due review of a persistent influence strategy',
+            ) ||
           w.conflicts.some(
             (conflict) =>
               conflict.status === 'active' &&
@@ -2086,6 +3323,11 @@ export async function compactPrepare(
       .slice(0, capacity)
       .map((a) => a.nationId),
   ];
+  trace.importance = classifyImportance(
+    w,
+    input.action.source === 'player' ? input.action.text : '',
+    actors,
+  );
   trace.activations = actors.map((nationId) => ({
     nationId,
     score: 100,
@@ -2137,6 +3379,10 @@ export async function compactPrepare(
         (n) =>
           n.status === 'open' &&
           n.recipientNationId === actor &&
+          !(
+            n.kind === 'influence' &&
+            !shouldRevisitDeferredInfluence(working, n)
+          ) &&
           !playerCounteredNegotiationIds.has(n.id) &&
           (w.observerMode || actor !== w.playerNationId),
       )
@@ -2157,11 +3403,23 @@ export async function compactPrepare(
     );
     try {
       const scoped = trace.intent ? scopeIntent(trace.intent, actor) : null;
-      const candidates = compactCandidates(working, actor, trace.id, scoped);
+      const activation = scheduled.find((entry) => entry.nationId === actor);
+      const influenceOpportunityTargets =
+        activation?.influenceOpportunityTargetIds ?? [];
+      const candidates = compactCandidates(
+        working,
+        actor,
+        trace.id,
+        scoped,
+        influenceOpportunityTargets,
+      );
       // A directly addressed foreign government first answers the persisted proposal.
       // It never independently adopts the player's domestic directive as its own.
       const isPlayer = scoped?.actorNationId === actor;
       let decision: z.infer<typeof CompactDecision>;
+      let plannerReason: string | undefined;
+      let plannerChoice: string | undefined;
+      let sphereTargetNationId: NationId | null = null;
       if (pending.length) {
         const n = pending[0]!;
         const duplicate =
@@ -2177,30 +3435,125 @@ export async function compactPrepare(
         const options = duplicate
           ? ['reject', 'counter', 'delay', 'ignore']
           : ['accept', 'reject', 'counter', 'delay', 'ignore'];
-        decision = await call(
-          'diplomat',
-          CompactDecision.extend({ choice: z.enum(options) }),
-          {
-            facts: compactFacts(working, actor, [n.proposerNationId, actor]),
-            proposal: {
-              id: n.id,
-              kind: n.kind,
-              terms: n.terms,
-              obligations: n.obligations,
-              influenceTerms: n.influenceTerms,
-              peaceTerms: n.peaceTerms,
-              history: n.responses.slice(-4),
-            },
-            options,
-            mechanicalConstraint: duplicate
-              ? 'An active equivalent treaty already covers these parties. A duplicate cannot create another agreement. Explain this if declining; consent to a replacement cannot be mechanically executed in this turn.'
-              : null,
-            responseStyle:
-              'One sentence each for reason and message, at most 25 words.',
-            task: 'Answer the actual terms as this government. Weigh benefits against alternatives, domestic resistance and sovereignty cost. Beneficial low-cost cooperation may be accepted; sovereignty demands may be rejected or narrowed. A counteroffer for an influence agreement must provide typed counterInfluenceTerms. Consultation does not grant a veto. Do not invent agreement or restrictions outside the named scope.',
-          },
-          [n.id],
-        );
+        let calibratedInfluenceDecision: ReturnType<
+          typeof calibrateInfluenceResponse
+        > | null = null;
+        let influenceCounterOffers: ReturnType<
+          typeof buildInfluenceCounterOffers
+        > = [];
+        const previousImportance = trace.importance;
+        if (n.kind === 'influence') trace.importance = 'high';
+        try {
+          if (n.kind === 'influence') {
+            influenceCounterOffers = buildInfluenceCounterOffers(working, n);
+            const ids = influenceCounterOffers.map((candidate) => candidate.id);
+            const counterOfferIdSchema = ids.length
+              ? z
+                  .enum(ids as [string, ...string[]])
+                  .nullable()
+                  .default(null)
+              : z.null().default(null);
+            const rawDecision = await call(
+              'diplomat',
+              z.strictObject({
+                decisionActorId: z.literal(actor),
+                counterpartNationId: z.literal(n.proposerNationId),
+                choice: z.enum(['accept', 'reject', 'counter', 'delay']),
+                reason: z.string().min(1).max(180),
+                message: z.string().max(260),
+                counterOfferId: counterOfferIdSchema,
+                reconsiderationConditions: z
+                  .array(z.string().min(1).max(240))
+                  .max(4)
+                  .default([]),
+              }),
+              {
+                dossier: influenceResponseDossier(working, n, actor),
+                counterOffers: influenceCounterOffers.map((candidate) => ({
+                  id: candidate.id,
+                  label: candidate.label,
+                  terms: candidate.terms.map((term) => ({
+                    kind: term.kind,
+                    amount: term.amount,
+                    ratePercent: term.ratePercent,
+                  })),
+                  termsText: candidate.termsText,
+                })),
+                choices: ['accept', 'reject', 'counter', 'delay'],
+                lockedDecisionIds: {
+                  decisionActorId: actor,
+                  counterpartNationId: n.proposerNationId,
+                },
+                responseStyle:
+                  'Echo both locked IDs exactly. Return one concise institutional reason, one public message, and a counteroffer ID only when choosing counter.',
+                task: `DECIDING ACTOR: ${working.nations.find((nation) => nation.id === actor)?.name ?? actor} (${actor}). COUNTERPART: ${working.nations.find((nation) => nation.id === n.proposerNationId)?.name ?? n.proposerNationId} (${n.proposerNationId}). DECISION: this proposal only. Echo decisionActorId=${actor} and counterpartNationId=${n.proposerNationId}. Make one political willingness judgment. The deterministic envelope records benefits, costs, relationship, alternatives, target needs, and a recommendation zone; use those canonical facts, but make your own decision. Choose accept, reject, counter, or delay. If one or two clauses exceed what this government will grant, counter with the listed package that edits these exact structured terms. Never invent counterterms. Use delay for a genuine not-yet position and name what should change. Review negotiationMemory as the exact public before-and-after term history. Compare the current counteroffer with the terms previously communicated; do not misstate which clauses were removed or retained. The deciding actor's target-specific plan is private: it may shape the judgment but must never appear in the reason or public message. A counterpart's prior message is an objection, not your own reason; address it from the deciding actor's interests or explain why the requested change cannot be made. The sovereignty cost in the envelope belongs to the subject government, not the patron. Do not cite it as the patron's own sovereignty cost. The public message may refer only to terms already communicated in this negotiation and public facts. Do not disclose internal goals, plan labels, private reasoning, or internal numeric scores. When reviewing a target counteroffer, reason from the patron's own interests and do not answer as if you were the target. Mention the relevant rival only if it appears in this dossier. Do not assess national strategy or unrelated countries.`,
+              },
+              [n.id],
+            );
+            decision = {
+              choice: rawDecision.choice,
+              additionalChoices: [],
+              reason: rawDecision.reason,
+              message: rawDecision.message,
+              counterTerms: '',
+              counterInfluenceTerms: [],
+            };
+            calibratedInfluenceDecision = calibrateInfluenceResponse(
+              working,
+              n,
+              rawDecision.choice,
+              `${rawDecision.reason} ${rawDecision.message}`,
+              {
+                explanation: rawDecision.reason,
+                reconsiderationConditions:
+                  rawDecision.reconsiderationConditions,
+              },
+              influenceCounterOffers,
+              rawDecision.counterOfferId ?? undefined,
+              [],
+              actor,
+            );
+            decision.choice = calibratedInfluenceDecision.move;
+            decision.message = calibratedInfluenceDecision.message;
+            decision.counterTerms =
+              calibratedInfluenceDecision.counterOffer?.termsText ?? '';
+            decision.counterInfluenceTerms =
+              calibratedInfluenceDecision.counterOffer?.terms ?? [];
+          } else {
+            decision = await call(
+              'diplomat',
+              CompactDecision.extend({ choice: z.enum(options) }),
+              {
+                facts: compactFacts(working, actor, [
+                  n.proposerNationId,
+                  actor,
+                ]),
+                proposal: {
+                  id: n.id,
+                  kind: n.kind,
+                  terms: n.terms,
+                  obligations: n.obligations,
+                  influenceTerms: n.influenceTerms,
+                  peaceTerms: n.peaceTerms,
+                  history: n.responses.slice(-4),
+                },
+                competingOffers: [],
+                options,
+                mechanicalConstraint: duplicate
+                  ? 'An active equivalent treaty already covers these parties. A duplicate cannot create another agreement. Explain this if declining; consent to a replacement cannot be mechanically executed in this turn.'
+                  : null,
+                responseStyle:
+                  'One sentence each for reason and message, at most 25 words.',
+                task: n.sourceBreachId
+                  ? 'This is a sourced settlement of an existing treaty breach. Review the recorded missed installments, arrears, duration, severity, prior demands and reciprocal obligations. Decide whether to accept a feasible settlement that suspends or cures the default, counter with specific compensation or a payment schedule, reject, or wait for a material reason. Acceptance resolves only this canonical breach episode; it does not imply trust is fully restored. Do not issue war as the default response.'
+                  : 'Answer as this government about this proposal. Explain your government’s interests in a short reason and message.',
+              },
+              [n.id],
+            );
+          }
+        } finally {
+          trace.importance = previousImportance;
+        }
         if (
           !options.includes(decision.choice) ||
           (decision.choice === 'counter' && !decision.counterTerms.trim())
@@ -2210,6 +3563,48 @@ export async function compactPrepare(
           );
         const move = decision.choice as
           'accept' | 'reject' | 'counter' | 'delay' | 'ignore';
+        const decisionMessage =
+          calibratedInfluenceDecision?.message ||
+          (n.kind === 'influence' && decision.influenceDecision?.explanation) ||
+          decision.message ||
+          decision.reason;
+        const influenceDecision =
+          n.kind === 'influence'
+            ? influenceDecisionRecord(
+                working,
+                actor,
+                n.id,
+                move,
+                decisionMessage,
+                decision.influenceDecision,
+                calibratedInfluenceDecision
+                  ? {
+                      modelRationale:
+                        calibratedInfluenceDecision.modelRationale,
+                      displayRationale:
+                        calibratedInfluenceDecision.displayRationale,
+                      reconsiderationConditions:
+                        calibratedInfluenceDecision.reconsiderationConditions,
+                      repairNotes: calibratedInfluenceDecision.repairNotes,
+                      rawDisposition:
+                        calibratedInfluenceDecision.rawMove === 'delay'
+                          ? 'defer'
+                          : calibratedInfluenceDecision.rawMove,
+                      counterOfferAvailable: influenceCounterOffers.length > 0,
+                      counterOfferIds: influenceCounterOffers.map(
+                        (candidate) => candidate.id,
+                      ),
+                      counterOfferCandidates: influenceCounterOffers,
+                      ...(calibratedInfluenceDecision.counterOffer
+                        ? {
+                            counterOfferId:
+                              calibratedInfluenceDecision.counterOffer.id,
+                          }
+                        : {}),
+                    }
+                  : {},
+              )
+            : undefined;
         const counterPeaceTerms =
           move === 'counter' && n.kind === 'peace'
             ? n.peaceTerms
@@ -2240,7 +3635,7 @@ export async function compactPrepare(
             recipientNationId: n.proposerNationId,
             negotiationId: n.id,
             move,
-            message: decision.message || decision.reason,
+            message: decisionMessage,
             terms: move === 'counter' ? decision.counterTerms : n.terms,
             visibility: n.visibility,
             obligations: move === 'counter' ? [] : n.obligations,
@@ -2248,6 +3643,7 @@ export async function compactPrepare(
               move === 'counter'
                 ? decision.counterInfluenceTerms
                 : n.influenceTerms,
+            ...(influenceDecision ? { influenceDecision } : {}),
             peaceTerms: move === 'counter' ? counterPeaceTerms : n.peaceTerms,
           }),
         );
@@ -2257,7 +3653,8 @@ export async function compactPrepare(
             negotiationId: n.id,
             nationId: actor,
             move,
-            message: decision.message || decision.reason,
+            message: decisionMessage,
+            ...(influenceDecision ? { influenceDecision } : {}),
             ...(move === 'counter'
               ? {
                   counterTerms: decision.counterTerms,
@@ -2289,6 +3686,169 @@ export async function compactPrepare(
           commands.push({ command, reason: decision.reason });
         }
       } else {
+        const plannerPlans =
+          w.nations.find((nation) => nation.id === actor)?.strategy
+            .influencePlans ?? [];
+        const reviewablePlans = plannerPlans
+          .filter((plan) => plan.status === 'active')
+          .filter((plan) => plan.nextStep.kind !== 'wait')
+          .filter(
+            (plan) =>
+              Date.parse(w.date) - Date.parse(plan.reviewedDate) >=
+              180 * 86_400_000,
+          )
+          .filter(
+            (plan) =>
+              !w.negotiations.some(
+                (negotiation) =>
+                  negotiation.kind === 'influence' &&
+                  negotiation.status === 'open' &&
+                  [
+                    negotiation.proposerNationId,
+                    negotiation.recipientNationId,
+                  ].includes(actor) &&
+                  [
+                    negotiation.proposerNationId,
+                    negotiation.recipientNationId,
+                  ].includes(plan.targetNationId),
+              ),
+          );
+        const candidatePlans = [
+          ...reviewablePlans,
+          ...plannerPlans.filter(
+            (plan) =>
+              plan.status === 'active' &&
+              !reviewablePlans.some(
+                (eligible) => eligible.targetNationId === plan.targetNationId,
+              ),
+          ),
+        ].sort(
+          (a, b) =>
+            b.priority - a.priority ||
+            a.reviewedDate.localeCompare(b.reviewedDate),
+        );
+        const persistentPlan = candidatePlans.find((plan) =>
+          candidates.some(
+            (candidate) =>
+              candidate.id.startsWith(
+                `sphere-step-${plan.targetNationId.slice(7)}-`,
+              ) ||
+              candidate.id === `review-sphere-${plan.targetNationId.slice(7)}`,
+          ),
+        );
+        const persistentPlanCandidate = persistentPlan
+          ? candidates.find(
+              (candidate) =>
+                candidate.id.startsWith(
+                  `sphere-step-${persistentPlan.targetNationId.slice(7)}-`,
+                ) ||
+                candidate.id ===
+                  `review-sphere-${persistentPlan.targetNationId.slice(7)}`,
+            )
+          : undefined;
+        const strategicInfluenceOpportunityTarget =
+          influenceOpportunityTargets.find((targetId) =>
+            candidates.some((candidate) =>
+              candidate.id.startsWith(`sphere-step-${targetId.slice(7)}-`),
+            ),
+          );
+        const strategicInfluenceOpportunityCandidate =
+          strategicInfluenceOpportunityTarget
+            ? candidates.find((candidate) =>
+                candidate.id.startsWith(
+                  `sphere-step-${strategicInfluenceOpportunityTarget.slice(7)}-`,
+                ),
+              )
+            : undefined;
+        const planReviewDue =
+          persistentPlan !== undefined &&
+          reviewablePlans.some(
+            (plan) => plan.targetNationId === persistentPlan.targetNationId,
+          );
+        const portfolioTargetNationId =
+          persistentPlan?.targetNationId ??
+          strategicInfluenceOpportunityTarget ??
+          w.nations.find((nation) => nation.id === actor)?.strategy
+            .influencePortfolio?.priorityTargetNationId ??
+          null;
+        const portfolioOfferTerms = candidates.flatMap((candidate) =>
+          candidate.commands.flatMap((command) =>
+            command.type === 'OPEN_NEGOTIATION' &&
+            command.negotiation.kind === 'influence' &&
+            command.negotiation.proposerNationId === actor &&
+            command.negotiation.recipientNationId === portfolioTargetNationId
+              ? command.negotiation.influenceTerms
+              : [],
+          ),
+        );
+        const nationalPortfolio = influencePortfolioSnapshot(
+          working,
+          actor,
+          portfolioTargetNationId,
+          portfolioOfferTerms,
+        );
+        const portfolioPlans = candidatePlans.slice(0, 4);
+        if (
+          persistentPlan &&
+          !portfolioPlans.some(
+            (plan) => plan.targetNationId === persistentPlan.targetNationId,
+          )
+        )
+          portfolioPlans.push(persistentPlan);
+        const targetPlanPortfolio = portfolioPlans.map((plan) => ({
+          target:
+            w.nations.find((nation) => nation.id === plan.targetNationId)
+              ?.name ?? plan.targetNationId,
+          priority: plan.priority,
+          desiredTier: plan.desiredTier,
+          currentTier: plan.currentTier,
+          nextStep: plan.nextStep,
+          blockers: plan.blockers.slice(0, 3),
+          latestResponse: plan.rejectedObligations.at(-1)
+            ? {
+                reasonCode: plan.rejectedObligations.at(-1)!.reasonCode,
+                explanation: plan.rejectedObligations.at(-1)!.explanation,
+              }
+            : null,
+        }));
+        const sphereAllocations = candidates.flatMap((candidate) =>
+          candidate.commands.flatMap((command) => {
+            if (
+              command.type !== 'OPEN_NEGOTIATION' ||
+              command.negotiation.kind !== 'influence' ||
+              command.negotiation.proposerNationId !== actor
+            )
+              return [];
+            const terms = command.negotiation.influenceTerms;
+            const annualizedCost = terms.reduce(
+              (sum, term) =>
+                sum +
+                ([
+                  'subsidy',
+                  'infrastructure-investment',
+                  'energy-supply',
+                ].includes(term.kind)
+                  ? term.amount * 12
+                  : term.kind === 'debt-relief' || term.kind === 'loan'
+                    ? term.amount
+                    : 0),
+              0,
+            );
+            return [
+              {
+                candidateId: candidate.id,
+                target:
+                  w.nations.find(
+                    (nation) =>
+                      nation.id === command.negotiation.recipientNationId,
+                  )?.name ?? command.negotiation.recipientNationId,
+                annualizedCost,
+                affordable:
+                  annualizedCost <= nationalPortfolio.availableTreasury,
+              },
+            ];
+          }),
+        );
         const directlyCoerced =
           trace.intent?.policyOrders.some(
             (order) =>
@@ -2324,6 +3884,39 @@ export async function compactPrepare(
                 ?.neighbors ?? []),
             ]),
             intent: isPlayer ? scoped : null,
+            persistentInfluencePlan: persistentPlan
+              ? {
+                  candidateId: persistentPlanCandidate?.id,
+                  target: w.nations.find(
+                    (nation) => nation.id === persistentPlan.targetNationId,
+                  )?.name,
+                  desiredTier: persistentPlan.desiredTier,
+                  currentTier: persistentPlan.currentTier,
+                  rejectedObligations:
+                    persistentPlan.rejectedObligations.slice(-4),
+                  blockers: persistentPlan.blockers,
+                  nextStep: persistentPlan.nextStep,
+                  reviewDue: planReviewDue,
+                }
+              : null,
+            strategicInfluenceOpportunity:
+              strategicInfluenceOpportunityCandidate
+                ? {
+                    candidateId: strategicInfluenceOpportunityCandidate.id,
+                    target: w.nations.find(
+                      (nation) =>
+                        nation.id === strategicInfluenceOpportunityTarget,
+                    )?.name,
+                    explanation: strategicInfluenceOpportunityCandidate.label,
+                  }
+                : null,
+            nationalSphereStrategy: {
+              portfolio: nationalPortfolio,
+              targetPlans: targetPlanPortfolio,
+              candidateAllocations: sphereAllocations,
+              instruction:
+                'Choose one national priority from the independent target plans. Account for available treasury, current commitments and arrears, annualized proposed cost, and execution capacity. Delay lower-priority targets when the portfolio cannot support them.',
+            },
             candidates: candidates.map((c) => ({
               id: c.id,
               label: c.label,
@@ -2333,13 +3926,37 @@ export async function compactPrepare(
               'Reason is one institutional sentence, at most 25 words. message and counterTerms must be empty. No emoji, hashtags or repetition.',
             task: isPlayer
               ? 'Choose supplied code-authored actions that implement the actual player request. Put the primary ID in choice, and up to two other needed actions in additionalChoices; otherwise emit an empty additionalChoices array. The chosen command set will pass sequential domain validation before commit; do not invent a treasury threshold to reject an affordable player instruction. Respect negations, conditionality and private framing. If unsupported choose wait and explain the limitation; do not silently substitute a different policy. Long-term directives preserve the exact player wording.'
-              : 'What problem deserves action now? War sustainability, homeland threat, exhaustion, sanctions, broken promises and crises outrank routine investment. Identify actual partners. Waiting or continuing policy is valid. A project is not a default. Choose ONE candidate ID, additionalChoices must be empty; explain the material tradeoff.',
+              : 'What problem deserves action now? War sustainability, homeland threat, exhaustion, sanctions, broken promises and crises outrank routine investment. The national sphere portfolio selects one resource priority; each target plan remains independent and its next step must stay on that target. Account for current commitments, arrears, available treasury, proposal cost and execution capacity. If a priority target plan is due, take its exact candidate unless an urgent conflict, breach or active negotiation supersedes it. Do not switch targets merely to avoid a rejection. Waiting or continuing policy is valid. Choose ONE candidate ID, additionalChoices must be empty; explain the material tradeoff.',
           },
           [actor],
         );
+        const proposedCandidates = [
+          decision.choice,
+          ...(isPlayer ? decision.additionalChoices : []),
+        ]
+          .map((id) => candidates.find((candidate) => candidate.id === id))
+          .filter((candidate): candidate is Candidate => !!candidate);
+        const supersedingUrgentAction = proposedCandidates.some(
+          (candidate) =>
+            candidate.family === 'war' ||
+            candidate.commands.some(
+              (command) =>
+                command.type === 'ENFORCE_TREATY_BREACH' ||
+                command.type === 'RESPOND_NEGOTIATION',
+            ),
+        );
+        const focusedChoice = preferredPersistentInfluenceChoice(
+          decision.choice,
+          persistentPlanCandidate?.id ??
+            strategicInfluenceOpportunityCandidate?.id,
+          persistentPlanCandidate !== undefined ||
+            strategicInfluenceOpportunityCandidate !== undefined,
+          supersedingUrgentAction,
+        );
+        plannerChoice = focusedChoice;
         const selectedIds = [
           ...new Set([
-            decision.choice,
+            focusedChoice,
             ...(isPlayer ? decision.additionalChoices : []),
           ]),
         ];
@@ -2348,6 +3965,63 @@ export async function compactPrepare(
         );
         if (selected.some((c) => !c))
           throw new Error('Government selected an unknown action');
+        const selectedSphereCandidate = !isPlayer
+          ? selected.find(
+              (candidate) =>
+                candidate?.id.startsWith('sphere-step-') ||
+                candidate?.id.startsWith('review-sphere-'),
+            )
+          : undefined;
+        sphereTargetNationId = selectedSphereCandidate
+          ? (w.nations.find(
+              (nation) =>
+                selectedSphereCandidate.id ===
+                  `review-sphere-${nation.id.slice(7)}` ||
+                selectedSphereCandidate.id.startsWith(
+                  `sphere-step-${nation.id.slice(7)}-`,
+                ),
+            )?.id ?? null)
+          : null;
+        const selectedTargetPlan =
+          sphereTargetNationId && selectedSphereCandidate
+            ? selectedSphereCandidate.commands
+                .flatMap((command) =>
+                  command.type === 'SET_STRATEGY'
+                    ? command.strategy.influencePlans
+                    : [],
+                )
+                .find((plan) => plan.targetNationId === sphereTargetNationId)
+            : undefined;
+        plannerReason = decision.reason;
+        if (sphereTargetNationId) {
+          const actorName =
+            w.nations.find((nation) => nation.id === actor)?.name ?? actor;
+          const targetName =
+            w.nations.find((nation) => nation.id === sphereTargetNationId)
+              ?.name ?? sphereTargetNationId;
+          const relevantRivalNames =
+            selectedTargetPlan?.rivalInfluence.flatMap((rival) => {
+              const rivalName = w.nations.find(
+                (nation) => nation.id === rival.patronNationId,
+              )?.name;
+              return rivalName ? [rivalName] : [];
+            }) ?? [];
+          const fallback = selectedTargetPlan
+            ? `${actorName}'s target plan for ${targetName}: ${selectedTargetPlan.nextStep.rationale}`
+            : `${actorName} selected the ${targetName} sphere plan for its next target-specific step.`;
+          const repaired = repairOutOfScopeInfluenceRationale(
+            plannerReason,
+            w.nations.map((nation) => nation.name),
+            [actorName, targetName, ...relevantRivalNames],
+            fallback,
+          );
+          if (repaired.outOfScopeNames.length) {
+            plannerReason = repaired.reason;
+            trace.validatorResults.push(
+              `Repaired planner rationale for ${actorName} → ${targetName}; it referenced out-of-scope ${repaired.outOfScopeNames.join(', ')}.`,
+            );
+          }
+        }
         const seen = new Set<string>();
         const selectedCommands = selected
           .flatMap((c) => c!.commands)
@@ -2371,6 +4045,48 @@ export async function compactPrepare(
               ? { ...c, message: decision.message || decision.reason }
               : c,
           );
+        if (!isPlayer) {
+          const selectedSphere = selectedSphereCandidate;
+          const sphereTarget = sphereTargetNationId;
+          if (sphereTarget) {
+            const offerTerms = selectedSphere!.commands.flatMap((command) =>
+              command.type === 'OPEN_NEGOTIATION' &&
+              command.negotiation.kind === 'influence' &&
+              command.negotiation.recipientNationId === sphereTarget
+                ? command.negotiation.influenceTerms
+                : [],
+            );
+            const portfolio = influencePortfolioSnapshot(
+              working,
+              actor,
+              sphereTarget,
+              offerTerms,
+            );
+            const strategyCommand = selectedCommands.find(
+              (command) =>
+                command.type === 'SET_STRATEGY' &&
+                command.nationId === actor &&
+                command.strategy.influencePlans.some(
+                  (plan) => plan.targetNationId === sphereTarget,
+                ),
+            );
+            if (strategyCommand?.type === 'SET_STRATEGY') {
+              strategyCommand.strategy = {
+                ...strategyCommand.strategy,
+                influencePortfolio: portfolio,
+              };
+            } else {
+              selectedCommands.push({
+                type: 'SET_STRATEGY',
+                nationId: actor,
+                strategy: {
+                  ...w.nations.find((nation) => nation.id === actor)!.strategy,
+                  influencePortfolio: portfolio,
+                },
+              });
+            }
+          }
+        }
         working = preview(
           w,
           [...commands.map((c) => c.command), ...selectedCommands],
@@ -2379,34 +4095,38 @@ export async function compactPrepare(
         commands.push(
           ...selectedCommands.map((command) => ({
             command,
-            reason: decision.reason,
+            reason: plannerReason ?? decision.reason,
           })),
         );
       }
+      const effectiveChoice = plannerChoice ?? decision.choice;
+      const effectiveReason = plannerReason ?? decision.reason;
       trace.plans.push(
         NationPlan.parse({
           version: 1,
           nationId: actor,
           stance: 'independent',
-          priorities: [decision.reason],
-          intentions: [decision.choice],
+          priorities: [effectiveReason],
+          intentions: [effectiveChoice],
           publicStatement: decision.message,
-          explanation: decision.reason,
+          explanation: effectiveReason,
           decisionFactors: [
             {
               factor:
-                decision.choice.includes('war') ||
-                decision.choice.includes('peace')
+                effectiveChoice.includes('war') ||
+                effectiveChoice.includes('peace')
                   ? 'military-risk'
-                  : decision.choice.includes('project') ||
-                      decision.choice.includes('trade') ||
-                      decision.choice.includes('sanction')
+                  : effectiveChoice.includes('project') ||
+                      effectiveChoice.includes('trade') ||
+                      effectiveChoice.includes('sanction')
                     ? 'economy'
-                    : decision.choice.includes('consultation')
+                    : effectiveChoice.includes('consultation')
                       ? 'trust'
                       : 'urgency',
-              assessment: decision.reason,
-              references: [actor],
+              assessment: effectiveReason,
+              references: sphereTargetNationId
+                ? [actor, sphereTargetNationId]
+                : [actor],
             },
           ],
         }),

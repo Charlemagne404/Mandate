@@ -47,6 +47,8 @@ function commandIssuedBy(command: WorldCommand, nationId: NationId): boolean {
       return command.negotiation.proposerNationId === nationId;
     case 'ISSUE_PATRON_DIRECTIVE':
       return command.patronNationId === nationId;
+    case 'ENFORCE_TREATY_BREACH':
+      return (command.actingNationId ?? command.patronNationId) === nationId;
     case 'START_CONFLICT':
       return command.conflict.attackers.includes(nationId);
     case 'OPEN_CRISIS':

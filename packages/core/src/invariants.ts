@@ -131,15 +131,17 @@ export function assertWorld(input: unknown): asserts input is World {
       check(
         term.kind === 'tribute'
           ? term.amount > 0 !== term.ratePercent > 0
-          : [
-                'subsidy',
-                'infrastructure-investment',
-                'debt-repayment',
-                'loan',
-                'debt-relief',
-              ].includes(term.kind)
-            ? term.amount > 0 && term.ratePercent === 0
-            : term.amount === 0 && term.ratePercent === 0,
+          : term.kind === 'energy-supply'
+            ? term.amount <= 100 && term.ratePercent === 0
+            : [
+                  'subsidy',
+                  'infrastructure-investment',
+                  'debt-repayment',
+                  'loan',
+                  'debt-relief',
+                ].includes(term.kind)
+              ? term.amount > 0 && term.ratePercent === 0
+              : term.amount === 0 && term.ratePercent === 0,
         `Invalid influence payment fields for ${term.kind}`,
       );
       check(

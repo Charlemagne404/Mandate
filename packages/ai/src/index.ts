@@ -13,3 +13,4 @@ export * from './player-executor.js';
 export * from './agency-evaluation.js';
 
 export * from './semantic.js';
+export * from './influence-strategy.js';

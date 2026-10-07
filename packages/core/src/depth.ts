@@ -122,7 +122,9 @@ export function validateInfluenceTerms(w: WorldState, n: Negotiation) {
           : term.kind === 'tribute'
             ? (term.amount > 0 || term.ratePercent > 0) &&
               !(term.amount > 0 && term.ratePercent > 0)
-            : term.amount === 0 && term.ratePercent === 0,
+            : term.kind === 'energy-supply'
+              ? term.amount <= 100 && term.ratePercent === 0
+              : term.amount === 0 && term.ratePercent === 0,
       `Invalid payment fields for ${term.kind}`,
     );
     requireDomain(

@@ -18,6 +18,7 @@ export { executionCapacity } from './depth.js';
 export {
   influenceProfile,
   assessInfluenceOffer,
+  buildInfluenceStrategyPlan,
   dependencyDimensions,
 } from './influence.js';
 export type {

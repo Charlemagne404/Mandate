@@ -46,6 +46,16 @@ export function demandFulfilled(w: WorldState, d: Crisis['demands'][number]) {
         w.negotiations.find((n) => n.id === condition.negotiationId)?.status ===
         'accepted'
       );
+    case 'treaty-breach': {
+      const treaty = w.treaties.find(
+        (entry) => entry.id === condition.treatyId,
+      );
+      return (
+        treaty?.status === 'ended' ||
+        treaty?.breaches.find((breach) => breach.id === condition.breachId)
+          ?.status === 'resolved'
+      );
+    }
   }
 }
 function recordCrisis(

@@ -112,6 +112,43 @@ test('shows the selected country sphere and colors the map by derived relationsh
   await expect(view).toContainText('Political resistance');
   await expect(view).toContainText(/modeled index \d+\/100/);
 });
+test('persists a player sphere objective and displays its next strategic step', async ({
+  page,
+}) => {
+  const before = await (await page.request.get('/api/world')).json();
+  const response = await page.request.post('/api/play', {
+    data: {
+      expectedRevision: before.world.revision,
+      expectedHash: before.hash,
+      text: 'Build a long-term sphere strategy for Finland. Offer dependable energy and infrastructure support and aim for a durable subject relationship over time. Do not request a foreign-policy veto yet.',
+      days: 30,
+      quality: 'balanced',
+    },
+  });
+  expect(response.ok()).toBe(true);
+  const after = await response.json();
+  const sweden = after.world.nations.find(
+    (nation: { id: string }) => nation.id === 'nation:swe',
+  );
+  expect(sweden.strategy.influencePlans).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        targetNationId: 'nation:fin',
+        desiredTier: 'SUBJECT STATE',
+      }),
+    ]),
+  );
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Sphere', exact: true }).click();
+  const view = page.getByRole('region', { name: 'Sphere of influence' });
+  const finland = view
+    .locator('.influence-card')
+    .filter({ has: page.getByRole('button', { name: 'Finland' }) });
+  await expect(finland).toContainText('Sphere strategy');
+  await expect(finland).toContainText('Target: SUBJECT STATE');
+  await expect(finland).toContainText('Next realistic step:');
+});
 test('shows a player annexation as an order, an attempted implementation, and an unresolved outcome', async ({
   page,
 }) => {

@@ -1,4 +1,5 @@
 import type { NationId, WorldState } from '@mandate/schemas';
+import { influenceProfile } from '@mandate/core';
 import type { PlayerIntent, RelevanceSelection } from './contracts.js';
 
 export function selectRelevance(
@@ -98,6 +99,7 @@ export interface ActorActivation {
   score: number;
   reasons: string[];
   background: boolean;
+  influenceOpportunityTargetIds?: NationId[];
 }
 /** A deterministic rotating slot prevents even low-salience countries from starving. */
 export function scheduleActors(
@@ -230,6 +232,149 @@ export function scheduleActors(
         .slice(0, 8)
         .map((entry) => entry.id),
   );
+  const influenceOpportunityTargets = new Map<
+    NationId,
+    Map<NationId, number>
+  >();
+  const player = world.nations.find(
+    (nation) => nation.id === world.playerNationId,
+  );
+  if (player) {
+    const targetRelevance = new Map<NationId, number>();
+    for (const plan of player.strategy.influencePlans)
+      if (plan.status === 'active')
+        targetRelevance.set(
+          plan.targetNationId,
+          (targetRelevance.get(plan.targetNationId) ?? 0) + 30,
+        );
+    for (const organization of world.organizations)
+      if (
+        organization.status === 'active' &&
+        organization.founders.includes(player.id)
+      )
+        for (const member of organization.members)
+          if (member !== player.id)
+            targetRelevance.set(
+              member,
+              (targetRelevance.get(member) ?? 0) +
+                25 +
+                Math.min(15, organization.development.length * 5),
+            );
+    for (const treaty of world.treaties)
+      if (
+        treaty.status === 'active' &&
+        treaty.kind === 'influence' &&
+        treaty.parties.includes(player.id)
+      )
+        for (const term of treaty.influenceTerms)
+          if (term.patronNationId === player.id)
+            targetRelevance.set(
+              term.subjectNationId,
+              (targetRelevance.get(term.subjectNationId) ?? 0) + 30,
+            );
+
+    for (const [targetId, focus] of targetRelevance) {
+      const target = world.nations.find((nation) => nation.id === targetId);
+      if (!target) continue;
+      const targetNeighbors = new Set(
+        world.scenario.neighborhoods?.find(
+          (entry) => entry.nationId === targetId,
+        )?.neighbors ?? [],
+      );
+      const playerLeverage = influenceProfile(
+        world,
+        player.id,
+        targetId,
+      ).leverage;
+      const need =
+        Math.max(0, 50 - target.stats.fiscal) +
+        Math.max(0, target.stats.unrest - 15) +
+        Math.max(0, target.stats.energyExposure - 55);
+      for (const rival of world.nations) {
+        if (
+          rival.id === player.id ||
+          rival.id === targetId ||
+          !targetNeighbors.has(rival.id) ||
+          rival.stats.economy < 40 ||
+          rival.stats.economy + rival.stats.military < 90 ||
+          rival.strategy.influencePlans.some(
+            (plan) =>
+              plan.targetNationId === targetId && plan.status === 'active',
+          )
+        )
+          continue;
+        const openOffer = world.negotiations.some(
+          (negotiation) =>
+            negotiation.kind === 'influence' &&
+            negotiation.status === 'open' &&
+            negotiation.proposerNationId === rival.id &&
+            negotiation.recipientNationId === targetId,
+        );
+        const recentOffer = world.negotiations.some(
+          (negotiation) =>
+            negotiation.kind === 'influence' &&
+            negotiation.proposerNationId === rival.id &&
+            negotiation.recipientNationId === targetId &&
+            Date.parse(world.date) - Date.parse(negotiation.createdDate) <
+              180 * 86_400_000,
+        );
+        if (openOffer || recentOffer) continue;
+        const rivalLeverage = influenceProfile(
+          world,
+          rival.id,
+          targetId,
+        ).leverage;
+        const relation = world.relations.find(
+          (entry) =>
+            [entry.nationA, entry.nationB].includes(rival.id) &&
+            [entry.nationA, entry.nationB].includes(targetId),
+        );
+        const score =
+          75 +
+          focus +
+          Math.min(25, need) +
+          (playerLeverage > rivalLeverage ? 15 : 0) +
+          Math.max(-15, Math.min(15, (relation?.score ?? 0) / 5)) +
+          (importantPowers.has(rival.id) ? 12 : 0);
+        const rivals = influenceOpportunityTargets.get(rival.id) ?? new Map();
+        rivals.set(targetId, score);
+        influenceOpportunityTargets.set(rival.id, rivals);
+      }
+    }
+  }
+  const getInfluenceOpportunityTargetIds = (nationId: NationId) =>
+    [...(influenceOpportunityTargets.get(nationId)?.entries() ?? [])]
+      .sort((left, right) => right[1] - left[1])
+      .map(([targetId]) => targetId);
+  const influencePlanPriority = new Map<NationId, number>();
+  for (const patron of world.nations)
+    for (const plan of patron.strategy.influencePlans) {
+      const hasOpenTalks = world.negotiations.some(
+        (negotiation) =>
+          negotiation.kind === 'influence' &&
+          negotiation.status === 'open' &&
+          [
+            negotiation.proposerNationId,
+            negotiation.recipientNationId,
+          ].includes(patron.id) &&
+          [
+            negotiation.proposerNationId,
+            negotiation.recipientNationId,
+          ].includes(plan.targetNationId),
+      );
+      if (
+        plan.status !== 'active' ||
+        plan.nextStep.kind === 'wait' ||
+        hasOpenTalks ||
+        Date.parse(world.date) - Date.parse(plan.reviewedDate) <
+          180 * 86_400_000
+      )
+        continue;
+      influencePlanPriority.set(
+        patron.id,
+        Math.max(influencePlanPriority.get(patron.id) ?? 0, plan.priority),
+      );
+    }
   const ranked = sorted.map((n): ActorActivation => {
     const goals = world.goals.filter(
       (g) =>
@@ -246,6 +391,7 @@ export function scheduleActors(
       .some((c) => JSON.stringify(c.command).includes(`"${n.id}"`));
     return {
       nationId: n.id,
+      influenceOpportunityTargetIds: getInfluenceOpportunityTargetIds(n.id),
       background: !direct.has(n.id),
       score:
         n.stats.military / 5 +
@@ -257,6 +403,13 @@ export function scheduleActors(
         (severeSanctions.has(n.id) ? 90 : 0) +
         (brokenPromises.has(n.id) ? 85 : 0) +
         (stalledGoals.has(n.id) ? 60 : 0) +
+        (influencePlanPriority.has(n.id)
+          ? 75 + (influencePlanPriority.get(n.id) ?? 0) * 20
+          : 0) +
+        Math.max(
+          0,
+          ...[...(influenceOpportunityTargets.get(n.id)?.values() ?? [])],
+        ) +
         (recentGovernmentChanges.has(n.id) ? 70 : 0) +
         (recentWarDevelopments.has(n.id) ? 45 : 0) +
         (secondOrderReactions.has(n.id) ? 40 : 0) +
@@ -276,6 +429,12 @@ export function scheduleActors(
           ? ['Broken commitment needs a response']
           : []),
         ...(stalledGoals.has(n.id) ? ['Stalled strategic goal'] : []),
+        ...(influencePlanPriority.has(n.id)
+          ? ['Due review of a persistent influence strategy']
+          : []),
+        ...(influenceOpportunityTargets.has(n.id)
+          ? ['Strategic counter-influence opportunity']
+          : []),
         ...(recentGovernmentChanges.has(n.id)
           ? ['Recent government change']
           : []),
@@ -309,6 +468,8 @@ export function scheduleActors(
     ...severeSanctions,
     ...brokenPromises,
     ...stalledGoals,
+    ...influencePlanPriority.keys(),
+    ...influenceOpportunityTargets.keys(),
     ...recentGovernmentChanges,
     ...secondOrderReactions,
   ]);

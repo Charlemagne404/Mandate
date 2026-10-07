@@ -377,7 +377,7 @@ describe('decision context and autonomy contracts', () => {
       action: {
         actorNationId: w.playerNationId,
         source: 'player',
-        text: 'Propose a defense alliance with Finland',
+        text: 'Build a multi-year sphere of influence over Finland and negotiate foreign-policy coordination',
       },
       quality: 'balanced',
       runId: 'route-model',
@@ -391,6 +391,57 @@ describe('decision context and autonomy contracts', () => {
         .every((c) => c.model === 'strong'),
     ).toBe(true);
     expect(calls.some((c) => c.role === 'critic')).toBe(true);
+  });
+  it('gives high-importance local decisions an 8k token context by default', async () => {
+    const fake = new FakeProvider();
+    const calls: Array<{
+      role: string;
+      model: string;
+      contextTokens?: number;
+    }> = [];
+    const provider = {
+      id: 'ollama',
+      health: () => fake.health(),
+      generateStructured: async (
+        r: Parameters<FakeProvider['generateStructured']>[0],
+      ) => {
+        calls.push({
+          role: r.role,
+          model: r.model,
+          ...(r.contextTokens === undefined
+            ? {}
+            : { contextTokens: r.contextTokens }),
+        });
+        return fake.generateStructured(r);
+      },
+    };
+    const w = fixture();
+    await createOrchestrator(provider, {
+      kind: 'ollama',
+      model: 'small',
+      highImportanceModel: 'strong',
+    }).prepare({
+      world: w,
+      expectedHash: '0'.repeat(64),
+      action: {
+        actorNationId: w.playerNationId,
+        source: 'player',
+        text: 'Build a multi-year sphere of influence over Finland and negotiate foreign-policy coordination',
+      },
+      quality: 'balanced',
+      runId: 'route-context-window',
+    });
+    expect(calls.some((call) => call.role === 'planner')).toBe(true);
+    expect(
+      calls
+        .filter((call) =>
+          ['planner', 'diplomat', 'resolver', 'critic'].includes(call.role),
+        )
+        .every(
+          (call) => call.model === 'strong' && call.contextTokens === 8192,
+        ),
+      JSON.stringify(calls),
+    ).toBe(true);
   });
   it('persistent multi-year player action creates goal without immediate completion', async () => {
     const w = fixture();

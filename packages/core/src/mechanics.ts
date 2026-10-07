@@ -3,13 +3,13 @@ import type {
   InfluencePressure,
   InfluenceTerm,
   NationId,
-  Negotiation,
   WorldCommand,
   WorldState,
 } from '@mandate/schemas';
 import {
   Crisis,
   CrisisId,
+  Negotiation,
   Sanction,
   TreatyBreach,
   TreatyEnforcement,
@@ -279,8 +279,15 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
         move: c.move,
         message: c.message,
         offeredTerms: oldTerms,
+        ...(c.counterTerms ? { counterTerms: c.counterTerms } : {}),
+        ...(c.influenceDecision
+          ? { influenceDecision: structuredClone(c.influenceDecision) }
+          : {}),
         obligations: oldObligations,
         influenceTerms: structuredClone(n.influenceTerms),
+        ...(c.counterInfluenceTerms
+          ? { counterInfluenceTerms: structuredClone(c.counterInfluenceTerms) }
+          : {}),
         peaceTerms: structuredClone(n.peaceTerms),
       });
       if (c.move === 'accept') {
@@ -382,6 +389,33 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
                 : [],
           });
           n.treatyId = c.treatyId!;
+        }
+        if (n.sourceBreachId) {
+          const amendedTreaty = w.treaties.find(
+            (candidate) => candidate.id === n.treatyId,
+          );
+          const breach = amendedTreaty?.breaches.find(
+            (candidate) => candidate.id === n.sourceBreachId,
+          );
+          requireDomain(
+            amendedTreaty?.kind === 'influence' && breach,
+            'Breach renegotiation must refer to its active influence episode',
+          );
+          const obligationIndex = breach.obligationKey
+            ? /-term-(\d+)$/.exec(breach.obligationKey)?.[1]
+            : undefined;
+          if (obligationIndex !== undefined) {
+            const defaultedTerm =
+              amendedTreaty.influenceTerms[Number(obligationIndex)];
+            if (defaultedTerm) defaultedTerm.status = 'suspended';
+          }
+          resolveInfluenceBreach(
+            w,
+            amendedTreaty,
+            breach,
+            'Bilateral renegotiation amended the influence agreement.',
+            'renegotiated',
+          );
         }
         const backlashWeight: Partial<Record<InfluenceTerm['kind'], number>> = {
           'join-defensive-wars': 12,
@@ -557,6 +591,9 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
         validateSettlementOffer(w, n);
         validateObligations(w, n);
         validateInfluenceTerms(w, n);
+        n.expiresDate = new Date(Date.parse(w.date) + 180 * 86_400_000)
+          .toISOString()
+          .slice(0, 10);
         [n.proposerNationId, n.recipientNationId] = [
           n.recipientNationId,
           n.proposerNationId,
@@ -821,17 +858,26 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
         (candidate) =>
           candidate.id === c.breachId &&
           candidate.status !== 'resolved' &&
-          candidate.violatingNationId === c.subjectNationId &&
-          candidate.injuredNationId === c.patronNationId,
+          [candidate.violatingNationId, candidate.injuredNationId].includes(
+            c.patronNationId,
+          ) &&
+          [candidate.violatingNationId, candidate.injuredNationId].includes(
+            c.subjectNationId,
+          ),
       );
       requireDomain(
         breach,
-        'Enforcement requires an open subject breach against the patron',
+        'Enforcement requires an active breach between these treaty parties',
       );
       requireDomain(
         treaty.parties.includes(c.patronNationId) &&
           treaty.parties.includes(c.subjectNationId),
         'Enforcement parties must belong to the treaty',
+      );
+      const actingNationId = c.actingNationId ?? c.patronNationId;
+      requireDomain(
+        actingNationId === breach.injuredNationId,
+        'Only the government injured by this breach may enforce it',
       );
       const patron = nation(c.patronNationId);
       const subject = nation(c.subjectNationId);
@@ -846,17 +892,20 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
       if (action === 'diplomatic-demand') {
         const crisis = w.crises.find(
           (candidate) =>
-            candidate.participants.includes(c.patronNationId) &&
-            candidate.participants.includes(c.subjectNationId) &&
             candidate.type === 'commitment' &&
-            candidate.status !== 'resolved',
+            candidate.demands.some(
+              (demand) =>
+                demand.condition.kind === 'treaty-breach' &&
+                demand.condition.treatyId === treaty.id &&
+                demand.condition.breachId === breach.id,
+            ),
         );
         if (crisis) {
           const demand = crisis.demands.find(
-            (candidate) => candidate.nationId === c.subjectNationId,
+            (candidate) => candidate.nationId === breach.violatingNationId,
           );
           if (demand)
-            demand.text = `Formal demand: cure the treaty breach and comply with ${treaty.name}.`;
+            demand.text = `Formal demand: cure this breach and comply with ${treaty.name}.`;
           crisis.status = 'active';
           crisis.rhetoric = clamp(crisis.rhetoric + 5);
           crisis.diplomaticBreakdown = clamp(crisis.diplomaticBreakdown + 2);
@@ -869,6 +918,8 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
         result =
           'Formal diplomatic demand issued; the breach remains active pending compliance.';
         breach.status = 'enforced';
+        if (!breach.milestones.some((entry) => entry.key === 'demanded'))
+          breach.milestones.push({ key: 'demanded', date: w.date });
       } else if (action === 'suspend-subsidy') {
         const support = terms.filter((term) => term.kind === 'subsidy');
         requireDomain(
@@ -926,18 +977,26 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
         );
       } else if (action === 'demand-arrears') {
         let collected = 0;
-        const arrearTerms = terms.filter(
-          (term) =>
-            ['tribute', 'debt-repayment'].includes(term.kind) &&
-            term.arrears > 0,
+        const patronDefault = breach.violatingNationId === c.patronNationId;
+        const arrearTerms = treaty.influenceTerms.filter((term) =>
+          patronDefault
+            ? term.patronNationId === c.patronNationId &&
+              term.subjectNationId === c.subjectNationId &&
+              ['subsidy', 'infrastructure-investment'].includes(term.kind) &&
+              term.arrears > 0
+            : term.patronNationId === c.patronNationId &&
+              term.subjectNationId === c.subjectNationId &&
+              ['tribute', 'debt-repayment'].includes(term.kind) &&
+              term.arrears > 0,
         );
         requireDomain(
           arrearTerms.length > 0,
-          'No outstanding tribute or debt-repayment arrears can be demanded',
+          'No collectible missed treaty installments remain',
         );
         for (const term of arrearTerms) {
-          const monthly =
-            term.kind === 'tribute'
+          const monthly = patronDefault
+            ? term.amount
+            : term.kind === 'tribute'
               ? Math.max(
                   0,
                   Math.floor(
@@ -946,10 +1005,12 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
                     (term.ratePercent / 100),
                 )
               : term.amount;
+          const payer = patronDefault ? patron : subject;
+          const receiver = patronDefault ? subject : patron;
           while (
             term.arrears > 0 &&
             monthly > 0 &&
-            subject.stats.treasury >= monthly &&
+            payer.stats.treasury >= monthly &&
             (c.amount === undefined || c.amount === 0 || collected < c.amount)
           ) {
             const payment =
@@ -957,25 +1018,32 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
                 ? Math.min(monthly, c.amount - collected)
                 : monthly;
             if (payment < monthly) break;
-            subject.stats.treasury -= payment;
-            patron.stats.treasury = Math.min(
+            payer.stats.treasury -= payment;
+            receiver.stats.treasury = Math.min(
               1_000_000_000,
-              patron.stats.treasury + payment,
+              receiver.stats.treasury + payment,
             );
             term.arrears -= 1;
             term.paidAmount += payment;
             term.paymentsMade += 1;
             collected += payment;
+            breach.arrearsAmount = Math.max(0, breach.arrearsAmount - payment);
           }
         }
         result = collected
           ? `Collected ${collected} treasury units against treaty arrears.`
-          : 'Arrears were formally demanded, but the subject could not pay a full installment.';
+          : `Arrears were formally demanded, but ${nation(breach.violatingNationId).name} could not pay a full installment.`;
         if (arrearTerms.every((term) => term.arrears === 0))
-          breach.status = 'resolved';
+          resolveInfluenceBreach(
+            w,
+            treaty,
+            breach,
+            'All collected treaty arrears were paid.',
+          );
       } else if (action === 'political-pressure') {
-        subject.stats.legitimacy = clamp(subject.stats.legitimacy - 2);
-        subject.stats.unrest = clamp(subject.stats.unrest + 2);
+        const violator = nation(breach.violatingNationId);
+        violator.stats.legitimacy = clamp(violator.stats.legitimacy - 2);
+        violator.stats.unrest = clamp(violator.stats.unrest + 2);
         result =
           'Political pressure applied; domestic legitimacy and stability costs recorded.';
         breach.status = 'enforced';
@@ -1000,10 +1068,12 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
           treaty.id,
         );
       } else if (action === 'sanction') {
+        const injured = nation(actingNationId);
+        const violator = nation(breach.violatingNationId);
         const existingSanction = w.sanctions.find(
           (sanction) =>
-            sanction.issuer === c.patronNationId &&
-            sanction.target === c.subjectNationId &&
+            sanction.issuer === actingNationId &&
+            sanction.target === breach.violatingNationId &&
             sanction.sector === 'trade' &&
             sanction.status === 'active',
         );
@@ -1013,31 +1083,93 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
           w.sanctions.push(
             Sanction.parse({
               id: `sanction:breach-${treaty.id.slice(7)}-${w.date}-${w.revision}`,
-              issuer: c.patronNationId,
-              target: c.subjectNationId,
+              issuer: actingNationId,
+              target: breach.violatingNationId,
               sector: 'trade',
               intensity: 25,
               startDate: w.date,
               reason: `Enforcement for treaty breach: ${breach.reason}`,
             }),
           );
-        subject.stats.economy = clamp(subject.stats.economy - 1);
+        violator.stats.economy = clamp(violator.stats.economy - 1);
+        void injured;
         result = 'Trade sanctions imposed for the recorded treaty breach.';
         breach.status = 'enforced';
       } else if (action === 'renegotiate') {
-        result =
-          'Renegotiation demanded; the existing treaty remains in force until both governments amend or end it.';
-      } else {
-        treaty.status = 'ended';
+        const existingRenegotiation = w.negotiations.find(
+          (negotiation) =>
+            negotiation.status === 'open' &&
+            negotiation.sourceBreachId === breach.id,
+        );
+        if (!existingRenegotiation) {
+          const negotiation = Negotiation.parse({
+            id: `negotiation:breach-${breach.id.slice(7)}-${w.revision}-${w.negotiations.length}`,
+            proposerNationId: actingNationId,
+            recipientNationId: breach.violatingNationId,
+            topic: `Breach settlement: ${treaty.name}`,
+            kind: 'influence',
+            terms:
+              c.terms ??
+              `Renegotiate ${treaty.name} to cure this breach, compensate the injured party, or suspend terms that have become unsustainable.`,
+            createdDate: w.date,
+            expiresDate: new Date(Date.parse(w.date) + 180 * 86_400_000)
+              .toISOString()
+              .slice(0, 10),
+            sourceBreachId: breach.id,
+            influenceTerms: c.influenceTerms ?? [],
+          });
+          validateInfluenceTerms(w, negotiation);
+          w.negotiations.push(negotiation);
+        }
         breach.status = 'enforced';
         result =
-          'The influence treaty was terminated in response to the subject breach.';
+          'Bilateral renegotiation opened; the breach remains active until the injured party accepts and the terms are amended.';
+      } else if (action === 'suspend-reciprocals') {
+        const reciprocal = treaty.influenceTerms.filter(
+          (term) =>
+            term.status === 'active' &&
+            term.patronNationId === c.subjectNationId &&
+            term.subjectNationId === c.patronNationId,
+        );
+        requireDomain(
+          reciprocal.length > 0,
+          'No reciprocal subject obligations can be suspended',
+        );
+        for (const term of reciprocal) term.status = 'suspended';
+        breach.status = 'enforced';
+        if (!breach.milestones.some((entry) => entry.key === 'suspended'))
+          breach.milestones.push({ key: 'suspended', date: w.date });
+        result =
+          'Reciprocal obligations suspended until the patron cures or renegotiates its breach.';
+      } else if (action === 'waive') {
+        resolveInfluenceBreach(
+          w,
+          treaty,
+          breach,
+          `${nation(actingNationId).name} waived the outstanding breach.`,
+        );
+        result =
+          'The injured government waived this breach and closed its crisis demand.';
+      } else {
+        treaty.status = 'ended';
+        for (const openBreach of treaty.breaches)
+          if (openBreach.status !== 'resolved')
+            resolveInfluenceBreach(
+              w,
+              treaty,
+              openBreach,
+              'The parties terminated the influence treaty; its active obligations no longer apply.',
+            );
+        result =
+          'The influence treaty was terminated; its open breach crises were resolved by ending the obligations.';
       }
       if (
         ![
           'suspend-subsidy',
           'cancel-market-access',
           'withdraw-guarantee',
+          'waive',
+          'suspend-reciprocals',
         ].includes(action)
       )
         relationshipEffect(
@@ -1046,7 +1178,7 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
           c.subjectNationId,
           -3,
           -5,
-          `Patron enforcement action: ${action}`,
+          `${nation(actingNationId).name} enforcement action: ${action}`,
           treaty.visibility,
         );
       treaty.enforcements = [
@@ -1057,6 +1189,7 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
           breachId: c.breachId,
           patronNationId: c.patronNationId,
           subjectNationId: c.subjectNationId,
+          actingNationId,
           action,
           amount: c.amount ?? 0,
           result,
@@ -1607,6 +1740,66 @@ export function applyAlphaCommand(w: WorldState, c: WorldCommand): boolean {
   }
 }
 
+export function resolveInfluenceBreach(
+  world: WorldState,
+  treaty: WorldState['treaties'][number],
+  breach: WorldState['treaties'][number]['breaches'][number],
+  reason: string,
+  milestone: 'resolved' | 'renegotiated' = 'resolved',
+) {
+  breach.status = 'resolved';
+  if (!breach.milestones.some((entry) => entry.key === milestone))
+    breach.milestones.push({ key: milestone, date: world.date });
+  if (
+    milestone !== 'resolved' &&
+    !breach.milestones.some((entry) => entry.key === 'resolved')
+  )
+    breach.milestones.push({ key: 'resolved', date: world.date });
+  const crisis = world.crises.find(
+    (candidate) =>
+      candidate.type === 'commitment' &&
+      candidate.participants.includes(breach.violatingNationId) &&
+      candidate.participants.includes(breach.injuredNationId) &&
+      candidate.demands.some(
+        (demand) =>
+          demand.condition.kind === 'treaty-breach' &&
+          demand.condition.treatyId === treaty.id &&
+          demand.condition.breachId === breach.id,
+      ),
+  );
+  if (!crisis) return;
+  for (const demand of crisis.demands)
+    if (
+      demand.condition.kind === 'treaty-breach' &&
+      demand.condition.treatyId === treaty.id &&
+      demand.condition.breachId === breach.id
+    )
+      demand.satisfied = true;
+  const outstanding = treaty.breaches.some(
+    (candidate) => candidate.status !== 'resolved',
+  );
+  if (!outstanding && crisis.demands.every((demand) => demand.satisfied)) {
+    crisis.status = 'resolved';
+    crisis.diplomaticBreakdown = clamp(crisis.diplomaticBreakdown - 20);
+    crisis.rhetoric = clamp(crisis.rhetoric - 15);
+  } else {
+    crisis.status = 'de-escalating';
+    crisis.diplomaticBreakdown = clamp(crisis.diplomaticBreakdown - 8);
+  }
+  crisis.severity = Math.round(
+    crisis.militaryPosture * 0.5 +
+      crisis.rhetoric * 0.2 +
+      crisis.diplomaticBreakdown * 0.3,
+  );
+  crisis.history.push({
+    date: world.date,
+    nationId: breach.injuredNationId,
+    action: `${reason} ${milestone === 'renegotiated' ? 'Breach renegotiated.' : 'Breach resolved.'}`,
+    severity: crisis.severity,
+  });
+  crisis.history = crisis.history.slice(-100);
+}
+
 function recordInfluenceCrisis(
   world: WorldState,
   treaty: WorldState['treaties'][number],
@@ -1614,14 +1807,23 @@ function recordInfluenceCrisis(
   subjectNationId: NationId,
   violatingNationId: NationId,
   reason: string,
+  breachId: string,
+  baseSeverity: number,
 ) {
+  const sortedParties = [patronNationId, subjectNationId].sort();
+  const firstParty = sortedParties[0]!;
+  const secondParty = sortedParties[1]!;
   const crisisId = CrisisId.parse(
-    `crisis:influence-${patronNationId.slice(7)}-${subjectNationId.slice(7)}`,
+    `crisis:influence-${firstParty.slice(7)}-${secondParty.slice(7)}`,
   );
   const prior = world.crises.find((crisis) => crisis.id === crisisId);
   if (prior) {
-    prior.diplomaticBreakdown = clamp(prior.diplomaticBreakdown + 8);
-    prior.rhetoric = clamp(prior.rhetoric + 3);
+    prior.diplomaticBreakdown = clamp(
+      Math.max(prior.diplomaticBreakdown, 20 + Math.round(baseSeverity * 0.4)),
+    );
+    prior.rhetoric = clamp(
+      Math.max(prior.rhetoric, 30 + Math.round(baseSeverity * 0.25)),
+    );
     prior.severity = Math.round(
       prior.militaryPosture * 0.5 +
         prior.rhetoric * 0.2 +
@@ -1629,19 +1831,38 @@ function recordInfluenceCrisis(
     );
     prior.status = prior.severity >= 60 ? 'escalating' : 'active';
     prior.issues = [...new Set([...prior.issues, reason])].slice(-12);
-    prior.demands[0]!.text = `Address the treaty breach: ${reason}`;
-    prior.history.push({
-      date: world.date,
-      nationId: violatingNationId,
-      action: reason,
-      severity: prior.severity,
-    });
-    prior.history = prior.history.slice(-100);
+    const hasDemand = prior.demands.some(
+      (demand) =>
+        demand.condition.kind === 'treaty-breach' &&
+        demand.condition.treatyId === treaty.id &&
+        demand.condition.breachId === breachId,
+    );
+    if (!hasDemand && prior.demands.length < 20) {
+      prior.demands.push({
+        nationId: violatingNationId,
+        text: `Address treaty breach ${breachId}: ${reason}`,
+        condition: { kind: 'treaty-breach', treatyId: treaty.id, breachId },
+        satisfied: false,
+      });
+      prior.history.push({
+        date: world.date,
+        nationId: violatingNationId,
+        action: reason,
+        severity: prior.severity,
+      });
+      prior.history = prior.history.slice(-100);
+    }
     return;
   }
 
-  const rhetoric = 30;
-  const diplomaticBreakdown = 20;
+  const rhetoric = Math.max(
+    20,
+    Math.min(70, 18 + Math.round(baseSeverity * 0.35)),
+  );
+  const diplomaticBreakdown = Math.max(
+    12,
+    Math.min(65, 12 + Math.round(baseSeverity * 0.3)),
+  );
   const severity = Math.round(rhetoric * 0.2 + diplomaticBreakdown * 0.3);
   world.crises.push(
     Crisis.parse({
@@ -1659,8 +1880,8 @@ function recordInfluenceCrisis(
       demands: [
         {
           nationId: violatingNationId,
-          text: `Address the treaty breach: ${reason}`,
-          condition: { kind: 'acknowledgment' },
+          text: `Address treaty breach ${breachId}: ${reason}`,
+          condition: { kind: 'treaty-breach', treatyId: treaty.id, breachId },
         },
       ],
       redLines: [],
@@ -1690,6 +1911,8 @@ export function recordInfluenceBreach(
   reason: string,
   violatingNationId: NationId = subjectNationId,
   treatyId?: string,
+  obligationKey?: string,
+  arrearsAmount = 0,
 ) {
   const treaty = world.treaties.find(
     (entry) =>
@@ -1701,49 +1924,103 @@ export function recordInfluenceBreach(
   );
   const injuredNationId =
     violatingNationId === patronNationId ? subjectNationId : patronNationId;
+  let created = false;
+  let milestoneReached = false;
   if (treaty) {
-    const sequence =
-      world.revision * 1000 +
-      world.commands.length +
-      treaty.breaches.length +
-      1;
-    treaty.breaches = [
-      ...treaty.breaches,
-      TreatyBreach.parse({
+    const existing = obligationKey
+      ? treaty.breaches.find(
+          (breach) =>
+            breach.obligationKey === obligationKey &&
+            breach.violatingNationId === violatingNationId &&
+            breach.injuredNationId === injuredNationId &&
+            breach.status !== 'resolved',
+        )
+      : undefined;
+    let breach = existing;
+    if (breach) {
+      if (breach.lastMissedDate !== world.date)
+        breach.missedInstallments = Math.min(
+          100_000,
+          breach.missedInstallments + 1,
+        );
+      breach.lastMissedDate = world.date;
+      breach.arrearsAmount = Math.max(breach.arrearsAmount, arrearsAmount);
+      breach.durationMonths = Math.max(
+        0,
+        Math.floor(
+          (Date.parse(world.date) -
+            Date.parse(breach.firstMissedDate ?? breach.date)) /
+            (30.4375 * 86_400_000),
+        ),
+      );
+      breach.severity = clamp(
+        25 +
+          Math.min(55, breach.missedInstallments * 7) +
+          Math.min(20, Math.floor(breach.arrearsAmount / 10)),
+      );
+      if (
+        breach.severity >= 60 &&
+        !breach.milestones.some((entry) => entry.key === 'arrears-severe')
+      ) {
+        breach.milestones.push({ key: 'arrears-severe', date: world.date });
+        milestoneReached = true;
+      }
+    } else {
+      const sequence =
+        world.revision * 1000 +
+        world.commands.length +
+        treaty.breaches.length +
+        1;
+      breach = TreatyBreach.parse({
         id: `breach:${treaty.id.slice(7)}-${world.date}-${sequence}`,
         date: world.date,
+        obligationKey: obligationKey ?? null,
+        firstMissedDate: obligationKey ? world.date : null,
+        lastMissedDate: obligationKey ? world.date : null,
+        missedInstallments: obligationKey ? 1 : 0,
+        arrearsAmount,
+        severity: obligationKey ? 32 : 25,
+        milestones: obligationKey
+          ? [{ key: 'first-missed', date: world.date }]
+          : [],
         violatingNationId,
         injuredNationId,
         reason,
         status: 'open',
-      }),
-    ].slice(-200);
-    recordInfluenceCrisis(
-      world,
-      treaty,
-      patronNationId,
-      subjectNationId,
-      violatingNationId,
-      reason,
-    );
+      });
+      treaty.breaches = [...treaty.breaches, breach].slice(-200);
+      created = true;
+    }
+    if (created || milestoneReached)
+      recordInfluenceCrisis(
+        world,
+        treaty,
+        patronNationId,
+        subjectNationId,
+        violatingNationId,
+        reason,
+        breach.id,
+        breach.severity,
+      );
   }
   const subject = world.nations.find((nation) => nation.id === subjectNationId);
-  if (violatingNationId === subjectNationId && subject) {
+  if (created && violatingNationId === subjectNationId && subject) {
     subject.stats.legitimacy = clamp(subject.stats.legitimacy - 2);
     subject.stats.unrest = clamp(subject.stats.unrest + 5);
-  } else if (violatingNationId === patronNationId && subject) {
+  } else if (created && violatingNationId === patronNationId && subject) {
     subject.stats.legitimacy = clamp(subject.stats.legitimacy - 1);
     subject.stats.unrest = clamp(subject.stats.unrest + 4);
   }
-  relationshipEffect(
-    world,
-    patronNationId,
-    subjectNationId,
-    violatingNationId === subjectNationId ? -8 : -6,
-    -12,
-    `Treaty breach by ${violatingNationId}: ${reason}`,
-    treaty?.visibility ?? 'public',
-  );
+  if (created || milestoneReached)
+    relationshipEffect(
+      world,
+      patronNationId,
+      subjectNationId,
+      created ? (violatingNationId === subjectNationId ? -8 : -6) : -2,
+      created ? -12 : -3,
+      `${created ? 'Treaty breach' : 'Treaty breach escalated'} by ${violatingNationId}: ${reason}`,
+      treaty?.visibility ?? 'public',
+    );
 }
 
 function applyConditionalPressure(

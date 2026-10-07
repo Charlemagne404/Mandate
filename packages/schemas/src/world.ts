@@ -65,6 +65,216 @@ export const Stats = z.strictObject({
   unrest: z.number().int().min(0).max(100).default(10),
 });
 export const Government = z.strictObject({ type: Name, ideology: Name });
+export const InfluenceTermKind = z.enum([
+  'join-defensive-wars',
+  'join-patron-wars',
+  'war-declaration-approval',
+  'no-war-against-patron',
+  'military-access',
+  'host-bases',
+  'military-planning',
+  'foreign-policy-consultation',
+  'foreign-policy-alignment',
+  'no-rival-alliance',
+  'support-diplomatic-initiatives',
+  'foreign-policy-veto',
+  'economic-policy-approval',
+  'tribute',
+  'preferential-trade',
+  'market-access-concession',
+  'energy-supply',
+  'exclusive-market-access',
+  'customs-alignment',
+  'common-economic-rules',
+  'mandatory-procurement',
+  'debt-repayment',
+  'loan',
+  'debt-relief',
+  'subsidy',
+  'infrastructure-investment',
+  'security-guarantee',
+  'government-security-arrangement',
+]);
+export type InfluenceTermKind = z.infer<typeof InfluenceTermKind>;
+export const InfluenceChannel = z.enum([
+  'trade',
+  'finance',
+  'aid',
+  'debt',
+  'energy',
+  'infrastructure',
+  'security',
+  'marketAccess',
+  'organization',
+  'diplomatic',
+]);
+export const InfluenceTier = z.enum([
+  'INDEPENDENT',
+  'PARTNER',
+  'DEPENDENT PARTNER',
+  'CLIENT STATE',
+  'PROTECTORATE',
+  'SUBJECT STATE',
+  'PUPPET STATE',
+]);
+export const InfluenceRejectionReason = z.enum([
+  'sovereignty-cost',
+  'insufficient-leverage',
+  'rival-offer',
+  'low-trust',
+  'resistance',
+  'inadequate-compensation',
+  'incompatible-preferences',
+  'patron-unreliable',
+  'fiscal-risk',
+  'uncertain-benefit',
+  'acceptable-balanced-offer',
+  'best-rival-offer',
+  'autonomy-protected',
+  'timing-not-ready',
+]);
+export const InfluenceRecommendationZone = z.enum([
+  'strongly-favorable',
+  'favorable',
+  'negotiable',
+  'unfavorable',
+  'strongly-unfavorable',
+]);
+export const InfluenceAssessment = z.strictObject({
+  recommendationZone: InfluenceRecommendationZone,
+  score: z.number().int().min(-100).max(100),
+  benefits: z.strictObject({
+    economic: z.number().int().min(0).max(100),
+    security: z.number().int().min(0).max(100),
+    debtAndAid: z.number().int().min(0).max(100),
+    infrastructure: z.number().int().min(0).max(100),
+    marketAccess: z.number().int().min(0).max(100),
+    organization: z.number().int().min(0).max(100),
+    total: z.number().int().min(0).max(100),
+  }),
+  costs: z.strictObject({
+    sovereignty: z.number().int().min(0).max(100),
+    fiscal: z.number().int().min(0).max(100),
+    militaryObligation: z.number().int().min(0).max(100),
+    diplomaticRestriction: z.number().int().min(0).max(100),
+    patronBudget: z.number().int().min(0).max(100).optional(),
+  }),
+  relationship: z.strictObject({
+    trust: z.number().int().min(0).max(100),
+    reliability: z.number().int().min(0).max(100),
+    leverage: z.number().int().min(0).max(100),
+    resistance: z.number().int().min(0).max(100),
+    existingDependence: z.number().int().min(0).max(100),
+    obligations: z.number().int().min(0).max(100),
+    grievance: z.number().int().min(0).max(100),
+  }),
+  alternatives: z.strictObject({
+    rivalNationId: NationId.nullable(),
+    rivalLeverage: z.number().int().min(0).max(100),
+    rivalOfferScore: z.number().int().min(-100).max(100).nullable(),
+    outsideOption: z.number().int().min(0).max(100),
+    switchingCost: z.number().int().min(0).max(100),
+  }),
+  strategicFit: z.strictObject({
+    targetThreat: z.number().int().min(0).max(100),
+    economicPressure: z.number().int().min(0).max(100),
+    alignedGoals: z.number().int().min(0).max(100),
+    preferenceFit: z.number().int().min(0).max(100),
+  }),
+});
+export type InfluenceAssessment = z.infer<typeof InfluenceAssessment>;
+export const InfluenceStrategyPlan = z.strictObject({
+  targetNationId: NationId,
+  desiredTier: InfluenceTier,
+  currentTier: InfluenceTier,
+  status: z
+    .enum(['active', 'achieved', 'paused', 'abandoned'])
+    .default('active'),
+  priority: z.number().int().min(1).max(5).default(3),
+  createdDate: SimulationDate,
+  reviewedDate: SimulationDate,
+  rationale: Text,
+  strongestChannels: z.array(InfluenceChannel).max(3).default([]),
+  weakestChannels: z.array(InfluenceChannel).max(3).default([]),
+  leverage: z.number().int().min(0).max(100).default(0),
+  resistance: z.number().int().min(0).max(100).default(0),
+  patronReliability: z.number().int().min(0).max(100).default(65),
+  rivalInfluence: z
+    .array(
+      z.strictObject({
+        patronNationId: NationId,
+        tier: InfluenceTier,
+        leverage: z.number().int().min(0).max(100),
+        reliability: z.number().int().min(0).max(100),
+      }),
+    )
+    .max(5)
+    .default([]),
+  blockers: z.array(Text).max(8).default([]),
+  acceptedObligations: z
+    .array(
+      z.strictObject({
+        kind: InfluenceTermKind,
+        treatyId: TreatyId,
+        date: SimulationDate,
+      }),
+    )
+    .max(40)
+    .default([]),
+  rejectedObligations: z
+    .array(
+      z.strictObject({
+        negotiationId: NegotiationId,
+        date: SimulationDate,
+        reasonCode: InfluenceRejectionReason,
+        requestedKinds: z.array(InfluenceTermKind).max(32),
+        explanation: Text,
+      }),
+    )
+    .max(20)
+    .default([]),
+  recentCounteroffers: z
+    .array(
+      z.strictObject({
+        negotiationId: NegotiationId,
+        date: SimulationDate,
+        requestedKinds: z.array(InfluenceTermKind).max(32),
+        counterKinds: z.array(InfluenceTermKind).max(32),
+        explanation: Text,
+      }),
+    )
+    .max(10)
+    .default([]),
+  nextStep: z.strictObject({
+    kind: z.enum([
+      'build-economic-dependence',
+      'build-security-reliance',
+      'improve-trust',
+      'reduce-rival-options',
+      'seek-consultation',
+      'seek-coordination',
+      'seek-policy-authority',
+      'renegotiate',
+      'enforce',
+      'wait',
+      'diversify',
+    ]),
+    rationale: Text,
+    proposedBenefits: Text.nullable().default(null),
+    requestedTerms: z.array(InfluenceTermKind).max(8).default([]),
+  }),
+});
+export type InfluenceStrategyPlan = z.infer<typeof InfluenceStrategyPlan>;
+export const InfluencePortfolio = z.strictObject({
+  priorityTargetNationId: NationId.nullable(),
+  reviewedDate: SimulationDate,
+  availableTreasury: z.number().int().min(0).max(1_000_000_000),
+  committedAnnualCost: z.number().int().min(0).max(1_000_000_000),
+  plannedAnnualCost: z.number().int().min(0).max(1_000_000_000),
+  executionCapacity: z.number().int().min(0).max(1000),
+  rationale: Text,
+});
+export type InfluencePortfolio = z.infer<typeof InfluencePortfolio>;
 export const Strategy = z
   .strictObject({
     riskTolerance: z.number().int().min(0).max(100).default(40),
@@ -76,6 +286,8 @@ export const Strategy = z
       .enum(['security', 'economic', 'diplomatic', 'domestic'])
       .default('security'),
     redLines: z.array(Text).max(8).default([]),
+    influencePlans: z.array(InfluenceStrategyPlan).max(20).default([]),
+    influencePortfolio: InfluencePortfolio.nullable().default(null),
     directives: z
       .array(
         z.strictObject({
@@ -98,6 +310,8 @@ export const Strategy = z
     orientation: 'security',
     redLines: [],
     directives: [],
+    influencePlans: [],
+    influencePortfolio: null,
   });
 export const Nation = z.strictObject({
   id: NationId,
@@ -139,37 +353,6 @@ export const Relation = z.strictObject({
     .max(40)
     .default([]),
 });
-export const InfluenceTermKind = z.enum([
-  'join-defensive-wars',
-  'join-patron-wars',
-  'war-declaration-approval',
-  'no-war-against-patron',
-  'military-access',
-  'host-bases',
-  'military-planning',
-  'foreign-policy-consultation',
-  'foreign-policy-alignment',
-  'no-rival-alliance',
-  'support-diplomatic-initiatives',
-  'foreign-policy-veto',
-  'economic-policy-approval',
-  'tribute',
-  'preferential-trade',
-  'market-access-concession',
-  'energy-supply',
-  'exclusive-market-access',
-  'customs-alignment',
-  'common-economic-rules',
-  'mandatory-procurement',
-  'debt-repayment',
-  'loan',
-  'debt-relief',
-  'subsidy',
-  'infrastructure-investment',
-  'security-guarantee',
-  'government-security-arrangement',
-]);
-export type InfluenceTermKind = z.infer<typeof InfluenceTermKind>;
 export const InfluenceTerm = z.strictObject({
   kind: InfluenceTermKind,
   patronNationId: NationId,
@@ -177,6 +360,7 @@ export const InfluenceTerm = z.strictObject({
   status: z
     .enum(['active', 'suspended', 'withdrawn', 'breached'])
     .default('active'),
+  // For energy-supply, amount is in-kind delivery units; other term kinds use it as a payment amount.
   amount: z.number().int().min(0).max(1_000_000_000).default(0),
   ratePercent: z.number().int().min(0).max(100).default(0),
   paidAmount: z.number().int().min(0).max(1_000_000_000).default(0),
@@ -186,6 +370,44 @@ export const InfluenceTerm = z.strictObject({
   lastPaymentDate: SimulationDate.nullable().default(null),
 });
 export type InfluenceTerm = z.infer<typeof InfluenceTerm>;
+export const InfluenceOfferComparison = z.strictObject({
+  negotiationId: NegotiationId,
+  patronNationId: NationId,
+  economicValue: z.number().int().min(0).max(100),
+  securityValue: z.number().int().min(0).max(100),
+  sovereigntyCost: z.number().int().min(0).max(100),
+  reliability: z.number().int().min(0).max(100),
+  switchingCost: z.number().int().min(0).max(100),
+  netScore: z.number().int().min(-100).max(100),
+  selected: z.boolean(),
+});
+export const InfluenceCounterOfferSummary = z.strictObject({
+  id: z.string().trim().min(1).max(120),
+  label: Text,
+  terms: z.array(InfluenceTerm).max(16),
+  termsText: z.string().max(600),
+});
+export const InfluenceDecision = z.strictObject({
+  reasonCode: InfluenceRejectionReason,
+  explanation: Text,
+  comparison: z.array(InfluenceOfferComparison).max(5).default([]),
+  possibleLeverage: z.array(Text).max(4).default([]),
+  assessment: InfluenceAssessment.optional(),
+  disposition: z.enum(['accept', 'counter', 'reject', 'defer']).optional(),
+  rawDisposition: z.enum(['accept', 'counter', 'reject', 'defer']).optional(),
+  decisionPerspective: z.enum(['target', 'patron']).optional(),
+  modelRationale: Text.optional(),
+  reconsiderationConditions: z.array(Text).max(4).optional(),
+  repairNotes: z.array(Text).max(4).optional(),
+  counterOfferAvailable: z.boolean().optional(),
+  counterOfferIds: z.array(z.string().trim().min(1).max(120)).max(3).optional(),
+  counterOfferCandidates: z
+    .array(InfluenceCounterOfferSummary)
+    .max(3)
+    .optional(),
+  counterOfferId: z.string().trim().min(1).max(120).optional(),
+});
+export type InfluenceDecision = z.infer<typeof InfluenceDecision>;
 export const InfluencePressure = z.strictObject({
   patronNationId: NationId,
   subjectNationId: NationId,
@@ -212,6 +434,29 @@ export type InfluencePressure = z.infer<typeof InfluencePressure>;
 export const TreatyBreach = z.strictObject({
   id: z.string().regex(/^breach:[a-z0-9._-]+$/),
   date: SimulationDate,
+  obligationKey: z.string().trim().min(1).max(160).nullable().default(null),
+  firstMissedDate: SimulationDate.nullable().default(null),
+  lastMissedDate: SimulationDate.nullable().default(null),
+  missedInstallments: z.number().int().min(0).max(100000).default(0),
+  arrearsAmount: z.number().int().min(0).max(1_000_000_000).default(0),
+  durationMonths: z.number().int().min(0).max(100000).default(0),
+  severity: z.number().int().min(0).max(100).default(25),
+  milestones: z
+    .array(
+      z.strictObject({
+        key: z.enum([
+          'first-missed',
+          'arrears-severe',
+          'demanded',
+          'suspended',
+          'renegotiated',
+          'resolved',
+        ]),
+        date: SimulationDate,
+      }),
+    )
+    .max(12)
+    .default([]),
   violatingNationId: NationId,
   injuredNationId: NationId,
   reason: Text,
@@ -232,6 +477,8 @@ export const TreatyEnforcementAction = z.enum([
   'withdraw-guarantee',
   'sanction',
   'renegotiate',
+  'suspend-reciprocals',
+  'waive',
   'terminate',
 ]);
 export const TreatyEnforcement = z.strictObject({
@@ -240,6 +487,7 @@ export const TreatyEnforcement = z.strictObject({
   breachId: z.string().regex(/^breach:[a-z0-9._-]+$/),
   patronNationId: NationId,
   subjectNationId: NationId,
+  actingNationId: NationId.optional(),
   action: TreatyEnforcementAction,
   amount: z.number().int().min(0).max(1_000_000_000).default(0),
   result: Text,
@@ -671,9 +919,12 @@ export const NegotiationResponse = z.strictObject({
   move: z.enum(['accept', 'reject', 'counter', 'delay', 'withdraw', 'ignore']),
   message: Text,
   offeredTerms: Text.optional(),
+  counterTerms: Text.optional(),
+  influenceDecision: InfluenceDecision.optional(),
   peaceTerms: z.array(PeaceTerm).max(8).optional(),
   obligations: z.array(CommitmentTerms).max(8).optional(),
   influenceTerms: z.array(InfluenceTerm).max(32).optional(),
+  counterInfluenceTerms: z.array(InfluenceTerm).max(32).optional(),
 });
 export const Negotiation = z.strictObject({
   id: NegotiationId,
@@ -698,6 +949,11 @@ export const Negotiation = z.strictObject({
   obligations: z.array(CommitmentTerms).max(8).default([]),
   influenceTerms: z.array(InfluenceTerm).max(32).default([]),
   conditionalPressure: InfluencePressure.nullable().default(null),
+  sourceBreachId: z
+    .string()
+    .regex(/^breach:[a-z0-9._-]+$/)
+    .nullable()
+    .optional(),
   initialTerms: Text.optional(),
   peaceTerms: z.array(PeaceTerm).max(8).default([]),
   createdDate: SimulationDate,

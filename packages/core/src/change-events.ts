@@ -100,26 +100,58 @@ export function changeEvents(
       );
   }
   for (const treaty of after.treaties) {
-    const oldIds = new Set(
+    const oldBreaches = new Map(
       before.treaties
         .find((entry) => entry.id === treaty.id)
-        ?.breaches.map((breach) => breach.id) ?? [],
+        ?.breaches.map((breach) => [breach.id, breach] as const) ?? [],
     );
     for (const breach of treaty.breaches) {
-      if (oldIds.has(breach.id)) continue;
-      add(
-        `Treaty breach by ${name(breach.violatingNationId)}: ${breach.reason}`,
-        [breach.violatingNationId, breach.injuredNationId],
-        treaty.visibility,
-        'TREATY_BREACH',
-        82,
-        [],
-        [],
-        'consequence',
-        `treaty-breach:${breach.id}`,
-        null,
-        [treaty.id],
+      const old = oldBreaches.get(breach.id);
+      if (!old) {
+        add(
+          breach.obligationKey
+            ? `FIRST PAYMENT MISSED: ${name(breach.violatingNationId)} fails ${breach.reason}`
+            : `Treaty breach by ${name(breach.violatingNationId)}: ${breach.reason}`,
+          [breach.violatingNationId, breach.injuredNationId],
+          treaty.visibility,
+          'TREATY_BREACH',
+          82,
+          [],
+          [],
+          'consequence',
+          `treaty-breach:${breach.id}`,
+          null,
+          [treaty.id],
+        );
+        continue;
+      }
+      const newMilestones = breach.milestones.filter(
+        (milestone) =>
+          !old.milestones.some((prior) => prior.key === milestone.key),
       );
+      for (const milestone of newMilestones) {
+        const title = {
+          'first-missed': `FIRST PAYMENT MISSED: ${name(breach.violatingNationId)} fails ${breach.reason}`,
+          'arrears-severe': `ARREARS BECOME SEVERE: ${name(breach.violatingNationId)} now owes ${breach.arrearsAmount} treasury units under a treaty obligation.`,
+          demanded: `${name(breach.injuredNationId)} DEMANDS PAYMENT: treaty breach entered formal enforcement.`,
+          suspended: `${name(breach.injuredNationId)} SUSPENDS RECIPROCAL OBLIGATIONS over the unresolved treaty breach.`,
+          renegotiated: `${name(breach.injuredNationId)} and ${name(breach.violatingNationId)} RENEGOTIATE the breached agreement.`,
+          resolved: `TREATY BREACH RESOLVED between ${name(breach.injuredNationId)} and ${name(breach.violatingNationId)}.`,
+        }[milestone.key];
+        add(
+          title,
+          [breach.violatingNationId, breach.injuredNationId],
+          treaty.visibility,
+          'TREATY_BREACH_MILESTONE',
+          breach.severity >= 60 ? 88 : 78,
+          [],
+          [],
+          milestone.key === 'resolved' ? 'milestone' : 'consequence',
+          `treaty-breach:${breach.id}:${milestone.key}`,
+          null,
+          [treaty.id],
+        );
+      }
     }
   }
   for (const t of after.tenures) {

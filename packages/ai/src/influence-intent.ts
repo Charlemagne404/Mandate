@@ -14,7 +14,7 @@ const monthlyAmount = (text: string, treasury: number) => {
   if (explicit) return Math.max(1, Number(explicit[1]));
   if (/\bmajor|large|substantial\b/i.test(text))
     return Math.max(1, Math.min(25, Math.floor(treasury * 0.05)));
-  if (/\bmodest|small\b/i.test(text))
+  if (/\baffordable|modest|small\b/i.test(text))
     return Math.max(1, Math.min(5, Math.floor(treasury * 0.02)));
   return Math.max(1, Math.min(10, Math.floor(treasury * 0.03)));
 };
@@ -96,7 +96,18 @@ export function influenceTermsFromText(
   )
     add('infrastructure-investment', { amount });
   if (
-    /\b(?:subsid\w*|aid|financial support|development grant)\b/i.test(text) &&
+    /\b(?:preferential|preferred|priority)\s+access\b/i.test(text) &&
+    !/\b(?:market|trade)\s+access\b/i.test(text)
+  )
+    add('preferential-trade');
+  if (/\b(?:trade(?: and energy)?|economic) integration\b/i.test(text)) {
+    add('preferential-trade');
+    add('common-economic-rules');
+  }
+  if (
+    /\b(?:subsid\w*|aid|financial support|development grant|support that .{1,60} can afford|affordable support)\b/i.test(
+      text,
+    ) &&
     !threatens('subsid\\w*|aid|financial support|development grant')
   )
     add('subsidy', { amount });
@@ -147,10 +158,10 @@ export function influenceTermsFromText(
 
   if (
     /\benergy|fuel|electricity supply\b/i.test(text) &&
-    /\bdepend|supply|secure|provide\b/i.test(text) &&
+    /\bdepend|supply|secure|provide|cooperat|integrat|support\b/i.test(text) &&
     !threatens('energy|fuel|electricity')
   )
-    add('energy-supply');
+    add('energy-supply', { amount });
   if (
     /\bpreferential|preferred|priority\b.{0,40}\b(?:market|trade) access\b/i.test(
       text,
@@ -190,6 +201,8 @@ export function influenceTermsFromText(
     )
   )
     add('security-guarantee');
+  if (/\bsecurity (?:support|cooperation|assistance)\b/i.test(text))
+    add('security-guarantee');
   if (/\bmilitary access\b/i.test(text)) add('military-access');
   if (
     /\b(?:base|basing) rights\b|host.{0,20}base\b|allow.{0,60}\b(?:aircraft|forces|troops|military)\b.{0,30}\b(?:use|access to)\b.{0,20}\bbases?\b/i.test(
@@ -202,7 +215,7 @@ export function influenceTermsFromText(
   )
     add('military-planning');
   if (
-    /\bjoin.{0,30}defensive wars|mutual defense|mutual defence|defend(?:ive)? wars|support each other.{0,35}defensive wars\b/i.test(
+    /\bjoin.{0,30}defensive wars|\b(?:add(?:ing)?|include|including|require(?:ment)? to join).{0,30}defensive wars\b|mutual defense|mutual defence|defend(?:ive)? wars|support each other.{0,35}defensive wars\b/i.test(
       text,
     )
   ) {

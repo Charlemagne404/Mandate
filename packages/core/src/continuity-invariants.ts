@@ -195,6 +195,21 @@ export function continuityProblems(w: WorldState): string[] {
           ),
           'Crisis condition requires related agreement',
         );
+      if (condition.kind === 'treaty-breach')
+        check(
+          w.treaties.some(
+            (treaty) =>
+              treaty.id === condition.treatyId &&
+              treaty.kind === 'influence' &&
+              treaty.breaches.some(
+                (breach) =>
+                  breach.id === condition.breachId &&
+                  c.participants.includes(breach.violatingNationId) &&
+                  c.participants.includes(breach.injuredNationId),
+              ),
+          ),
+          'Crisis condition requires a related influence breach',
+        );
       if (condition.kind !== 'acknowledgment' && demand.satisfied)
         check(
           demandFulfilled(w, demand),

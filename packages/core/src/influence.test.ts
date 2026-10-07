@@ -5,13 +5,19 @@ import {
   InfluenceTerm,
   NationId,
   Negotiation,
+  Relation,
   Treaty,
 } from '@mandate/schemas';
 import type {
   InfluenceTerm as InfluenceTermShape,
   WorldState,
 } from '@mandate/schemas';
-import { assessInfluenceOffer, influenceProfile } from './influence.js';
+import {
+  assessInfluenceOffer,
+  buildInfluenceStrategyPlan,
+  influenceProfile,
+} from './influence.js';
+import { recordInfluenceBreach } from './mechanics.js';
 import { resolveTurn } from './index.js';
 import { context, fixture, request } from '../../../tests/fixtures/world.js';
 const swe = NationId.parse('nation:swe');
@@ -42,6 +48,105 @@ const offer = (world: WorldState, terms: InfluenceTermShape[]) =>
   });
 
 describe('derived sphere-of-influence relationships', () => {
+  it('aggregates recurring missed installments into one breach and crisis episode', () => {
+    const world = fixture();
+    const treaty = Treaty.parse({
+      id: 'treaty:recurring-subsidy',
+      name: 'Economic partnership',
+      kind: 'influence',
+      parties: [swe, fin],
+      status: 'active',
+      terms: 'Monthly infrastructure installments.',
+      influenceTerms: [
+        term('infrastructure-investment', swe, fin, { amount: 6 }),
+      ],
+    });
+    world.treaties.push(treaty);
+    const obligationKey = 'obligation:recurring-subsidy-term-0';
+    const firstDate = world.date;
+
+    for (let installment = 1; installment <= 7; installment++) {
+      if (installment > 1) world.date = addDays(world.date, 30);
+      recordInfluenceBreach(
+        world,
+        swe,
+        fin,
+        'Missed infrastructure installment under Economic partnership',
+        swe,
+        treaty.id,
+        obligationKey,
+        installment * 6,
+      );
+    }
+
+    const episode = treaty.breaches[0]!;
+    expect(treaty.breaches).toHaveLength(1);
+    expect(episode).toMatchObject({
+      obligationKey,
+      firstMissedDate: firstDate,
+      lastMissedDate: world.date,
+      missedInstallments: 7,
+      arrearsAmount: 42,
+      severity: expect.any(Number),
+      status: 'open',
+    });
+    expect(episode.durationMonths).toBeGreaterThanOrEqual(5);
+    expect(episode.milestones.map((entry) => entry.key)).toEqual(
+      expect.arrayContaining(['first-missed', 'arrears-severe']),
+    );
+    const crisis = world.crises.find((entry) => entry.type === 'commitment')!;
+    expect(crisis.demands).toHaveLength(1);
+    expect(crisis.demands[0]?.condition).toEqual({
+      kind: 'treaty-breach',
+      treatyId: treaty.id,
+      breachId: episode.id,
+    });
+  });
+
+  it('makes a patron’s repeated real payment failures reduce its derived reliability', () => {
+    const world = fixture();
+    const overduePromise = term('infrastructure-investment', swe, fin, {
+      amount: 8,
+    });
+    overduePromise.arrears = 7;
+    const guarantee = Treaty.parse({
+      id: 'treaty:reliability-record',
+      name: 'Infrastructure and subsidy pact',
+      kind: 'influence',
+      parties: [swe, fin],
+      status: 'active',
+      terms: 'Recurring, binding infrastructure installments.',
+      influenceTerms: [overduePromise],
+      breaches: [
+        {
+          id: 'breach:reliability-record',
+          date: world.date,
+          obligationKey: 'obligation:reliability-record-term-0',
+          firstMissedDate: addDays(world.date, -210),
+          lastMissedDate: world.date,
+          missedInstallments: 7,
+          arrearsAmount: 56,
+          durationMonths: 7,
+          severity: 75,
+          milestones: [
+            { key: 'first-missed', date: addDays(world.date, -210) },
+          ],
+          violatingNationId: swe,
+          injuredNationId: fin,
+          reason: 'Seven infrastructure installments were missed.',
+          status: 'open',
+        },
+      ],
+    });
+    world.treaties.push(guarantee);
+
+    const result = influenceProfile(world, swe, fin);
+    expect(result.reliability).toBeLessThan(25);
+    expect(result.sources).toContain(
+      'Open patron grievance: 1 unaddressed promise breach',
+    );
+  });
+
   it('keeps modeled economic dependence directional', () => {
     const world = fixture();
     world.economicLinks.push(
@@ -58,7 +163,6 @@ describe('derived sphere-of-influence relationships', () => {
         alternatives: 0,
       }),
     );
-
     const FinlandOnSweden = influenceProfile(world, swe, fin);
     const SwedenOnFinland = influenceProfile(world, fin, swe);
     expect(FinlandOnSweden.dependency.trade).toBe(64);
@@ -500,6 +604,53 @@ describe('derived sphere-of-influence relationships', () => {
     ).toBeGreaterThan(unrestBefore);
   });
 
+  it('validates and delivers quantified in-kind energy support at its promised rate', () => {
+    const world = fixture();
+    const negotiation = offer(world, [
+      term('energy-supply', swe, fin, { amount: 9 }),
+    ]);
+    const accepted = run(world, [
+      { type: 'OPEN_NEGOTIATION', negotiation },
+      {
+        type: 'RESPOND_NEGOTIATION',
+        negotiationId: negotiation.id,
+        nationId: fin,
+        move: 'accept',
+        message: 'The quantified energy delivery is acceptable.',
+        treatyId: 'treaty:quantified-energy',
+      },
+    ]);
+    const controlMonth = run(world, [
+      { type: 'ADVANCE_DATE', date: addDays(world.date, 30) },
+    ]);
+    const delivered = run(accepted, [
+      { type: 'ADVANCE_DATE', date: addDays(accepted.date, 30) },
+    ]);
+    const treaty = delivered.treaties.find(
+      (entry) => entry.kind === 'influence' && entry.parties.includes(fin),
+    )!;
+    const energyTerm = treaty.influenceTerms.find(
+      (entry) => entry.kind === 'energy-supply',
+    )!;
+
+    expect(
+      delivered.economicLinks.find(
+        (link) =>
+          link.dependentNationId === fin && link.partnerNationId === swe,
+      )?.energy,
+    ).toBe(9);
+    expect(
+      controlMonth.nations.find((nation) => nation.id === swe)!.stats.treasury -
+        delivered.nations.find((nation) => nation.id === swe)!.stats.treasury,
+    ).toBe(9);
+    expect(energyTerm).toMatchObject({
+      amount: 9,
+      paidAmount: 9,
+      paymentsMade: 1,
+      lastPaymentDate: delivered.date,
+    });
+  });
+
   it('records an accepted rival defense pact as a breach of a no-rival clause', () => {
     let world = fixture();
     world.treaties.push(
@@ -824,6 +975,313 @@ describe('derived sphere-of-influence relationships', () => {
     ]);
     expect(['accept', 'counter']).toContain(materialPackage.move);
     expect(materialPackage.move).not.toBe('reject');
+  });
+
+  it('keeps target rejection and counter history after negotiator roles reverse', () => {
+    const world = fixture();
+    const requested = term('foreign-policy-alignment');
+    const counterTerms = [
+      term('infrastructure-investment', swe, fin, { amount: 12 }),
+    ];
+    world.negotiations.push(
+      Negotiation.parse({
+        id: 'negotiation:reversed-target-counter',
+        proposerNationId: fin,
+        recipientNationId: swe,
+        topic: 'Honduras economic counteroffer',
+        kind: 'influence',
+        terms: 'Honduras counters with a targeted infrastructure package.',
+        status: 'open',
+        createdDate: world.date,
+        expiresDate: addDays(world.date, 180),
+        influenceTerms: counterTerms,
+        responses: [
+          {
+            nationId: fin,
+            date: world.date,
+            move: 'counter',
+            message:
+              'Honduras declines broad alignment and requests funded infrastructure.',
+            influenceTerms: [requested],
+            counterInfluenceTerms: counterTerms,
+            influenceDecision: {
+              reasonCode: 'inadequate-compensation',
+              explanation:
+                'The requested alignment exceeds the offered compensation.',
+              decisionPerspective: 'target',
+            },
+          },
+        ],
+      }),
+    );
+
+    const plan = buildInfluenceStrategyPlan(world, swe, fin, 'SUBJECT STATE');
+
+    expect(plan.rejectedObligations.at(-1)).toMatchObject({
+      negotiationId: 'negotiation:reversed-target-counter',
+      reasonCode: 'sovereignty-cost',
+      requestedKinds: ['foreign-policy-alignment'],
+    });
+    expect(plan.recentCounteroffers.at(-1)).toMatchObject({
+      negotiationId: 'negotiation:reversed-target-counter',
+      requestedKinds: ['foreign-policy-alignment'],
+      counterKinds: ['infrastructure-investment'],
+    });
+  });
+
+  it('records a countered authority clause and avoids repeating it without improved compensation', () => {
+    const world = fixture();
+    const consultation = term('foreign-policy-consultation');
+    const support = term('energy-supply', swe, fin, { amount: 8 });
+    world.negotiations.push(
+      Negotiation.parse({
+        id: 'negotiation:consultation-counter-memory',
+        proposerNationId: swe,
+        recipientNationId: fin,
+        topic: 'Energy partnership and consultation',
+        kind: 'influence',
+        terms: 'Energy support with foreign-policy consultation.',
+        status: 'open',
+        createdDate: world.date,
+        expiresDate: addDays(world.date, 180),
+        influenceTerms: [support],
+        responses: [
+          {
+            nationId: fin,
+            date: world.date,
+            move: 'counter',
+            message:
+              'Consultation lacks safeguards for Honduras foreign-policy autonomy.',
+            influenceTerms: [support, consultation],
+            counterInfluenceTerms: [support],
+            influenceDecision: {
+              reasonCode: 'uncertain-benefit',
+              explanation:
+                'Consultation conflicts with Honduras sovereignty and should be removed.',
+              decisionPerspective: 'target',
+            },
+          },
+        ],
+      }),
+    );
+
+    const plan = buildInfluenceStrategyPlan(world, swe, fin, 'SUBJECT STATE');
+    expect(plan.rejectedObligations.at(-1)).toMatchObject({
+      reasonCode: 'sovereignty-cost',
+      requestedKinds: ['energy-supply', 'foreign-policy-consultation'],
+    });
+    expect(plan.nextStep.requestedTerms).not.toContain(
+      'foreign-policy-consultation',
+    );
+  });
+
+  it('sequences final authority clauses and adapts after a sovereignty rejection', () => {
+    const world = fixture();
+    world.treaties.push(
+      Treaty.parse({
+        id: 'treaty:staged-puppet-approach',
+        name: 'A mature strategic partnership',
+        kind: 'influence',
+        parties: [swe, fin],
+        status: 'active',
+        ratifiedDate: world.date,
+        terms:
+          'An established but revisable political, military and economic partnership.',
+        influenceTerms: [
+          'foreign-policy-consultation',
+          'foreign-policy-alignment',
+          'support-diplomatic-initiatives',
+          'no-rival-alliance',
+          'security-guarantee',
+          'join-defensive-wars',
+          'military-planning',
+          'war-declaration-approval',
+          'no-war-against-patron',
+          'military-access',
+          'preferential-trade',
+        ].map((kind) => term(kind as InfluenceTermShape['kind'])),
+      }),
+    );
+    world.economicLinks.push(
+      EconomicLink.parse({
+        id: 'economic:fin-swe-staged-puppet',
+        dependentNationId: fin,
+        partnerNationId: swe,
+        imports: 100,
+        exports: 95,
+        energy: 100,
+        strategicGoods: 95,
+        finance: 100,
+        infrastructure: 100,
+        alternatives: 0,
+      }),
+    );
+    const target = world.nations.find((nation) => nation.id === fin)!;
+    target.stats.stability = 20;
+    target.stats.legitimacy = 20;
+    target.stats.military = 20;
+    target.stats.unrest = 0;
+    const pair = [swe, fin].sort() as [NationId, NationId];
+    const relation = world.relations.find(
+      (candidate) =>
+        candidate.nationA === pair[0] && candidate.nationB === pair[1],
+    );
+    if (relation) {
+      relation.score = 90;
+      relation.trust = 90;
+    } else
+      world.relations.push(
+        Relation.parse({
+          nationA: pair[0],
+          nationB: pair[1],
+          score: 90,
+          trust: 90,
+        }),
+      );
+
+    expect(influenceProfile(world, swe, fin).tier).toBe('SUBJECT STATE');
+    const firstPlan = buildInfluenceStrategyPlan(
+      world,
+      swe,
+      fin,
+      'PUPPET STATE',
+    );
+    expect(firstPlan.leverage).toBeGreaterThanOrEqual(60);
+    expect(firstPlan.resistance).toBeLessThanOrEqual(40);
+    expect(firstPlan.patronReliability).toBeGreaterThanOrEqual(65);
+    expect(firstPlan.nextStep.kind).toBe('seek-policy-authority');
+    expect(firstPlan.nextStep.requestedTerms).toEqual(['foreign-policy-veto']);
+
+    const veto = term('foreign-policy-veto');
+    world.negotiations.push(
+      Negotiation.parse({
+        id: 'negotiation:staged-puppet-rejection',
+        proposerNationId: swe,
+        recipientNationId: fin,
+        topic: 'Foreign-policy authority',
+        kind: 'influence',
+        terms:
+          'Dependable infrastructure in exchange for a foreign-policy veto.',
+        status: 'rejected',
+        createdDate: world.date,
+        expiresDate: world.date,
+        influenceTerms: [
+          term('infrastructure-investment', swe, fin, { amount: 8 }),
+          veto,
+        ],
+        responses: [
+          {
+            nationId: fin,
+            date: world.date,
+            move: 'reject',
+            message: 'The veto would surrender too much sovereignty.',
+            influenceTerms: [veto],
+          },
+        ],
+      }),
+    );
+    world.date = addDays(world.date, 181);
+    const adaptedPlan = buildInfluenceStrategyPlan(
+      world,
+      swe,
+      fin,
+      'PUPPET STATE',
+    );
+    expect(adaptedPlan.rejectedObligations.at(-1)?.reasonCode).toBe(
+      'sovereignty-cost',
+    );
+    expect(adaptedPlan.nextStep.requestedTerms).toEqual(['join-patron-wars']);
+    expect(adaptedPlan.nextStep.rationale).toContain(
+      'one remaining authority clause at a time',
+    );
+    world.treaties[0]!.influenceTerms.push(veto);
+
+    const patronWars = term('join-patron-wars');
+    world.negotiations.push(
+      Negotiation.parse({
+        id: 'negotiation:staged-patron-wars-rejection',
+        proposerNationId: swe,
+        recipientNationId: fin,
+        topic: 'Patron war obligations',
+        kind: 'influence',
+        terms: 'Infrastructure and debt relief in exchange for joining wars.',
+        status: 'rejected',
+        createdDate: world.date,
+        expiresDate: world.date,
+        influenceTerms: [
+          term('infrastructure-investment', swe, fin, { amount: 8 }),
+          term('debt-relief', swe, fin, { amount: 40 }),
+          patronWars,
+        ],
+        responses: [
+          {
+            nationId: fin,
+            date: world.date,
+            move: 'reject',
+            message: 'The war obligation costs too much sovereignty.',
+            influenceTerms: [patronWars],
+            influenceDecision: {
+              reasonCode: 'sovereignty-cost',
+              explanation:
+                'The requested authority exceeds what this package compensates for.',
+              comparison: [],
+              possibleLeverage: [
+                'Deliver more value before asking for the authority again.',
+              ],
+            },
+          },
+        ],
+      }),
+    );
+    world.date = addDays(world.date, 181);
+    const pauseAuthorityPlan = buildInfluenceStrategyPlan(
+      world,
+      swe,
+      fin,
+      'PUPPET STATE',
+    );
+    expect(pauseAuthorityPlan.nextStep.kind).toBe('build-economic-dependence');
+    expect(pauseAuthorityPlan.nextStep.requestedTerms).toEqual([]);
+    expect(pauseAuthorityPlan.nextStep.rationale).toContain(
+      'pause the sovereignty request',
+    );
+
+    world.negotiations.push(
+      Negotiation.parse({
+        id: 'negotiation:compensation-accepted-after-rejection',
+        proposerNationId: swe,
+        recipientNationId: fin,
+        topic: 'Expanded infrastructure support',
+        kind: 'influence',
+        terms: 'Additional infrastructure and debt relief.',
+        status: 'accepted',
+        createdDate: world.date,
+        expiresDate: addDays(world.date, 180),
+        influenceTerms: [
+          term('infrastructure-investment', swe, fin, { amount: 10 }),
+          term('debt-relief', swe, fin, { amount: 50 }),
+        ],
+        responses: [
+          {
+            nationId: fin,
+            date: world.date,
+            move: 'accept',
+            message: 'The stronger support meets immediate needs.',
+          },
+        ],
+      }),
+    );
+    world.date = addDays(world.date, 181);
+    const reassessedPlan = buildInfluenceStrategyPlan(
+      world,
+      swe,
+      fin,
+      'PUPPET STATE',
+    );
+    expect(reassessedPlan.nextStep.kind).toBe('seek-policy-authority');
+    expect(reassessedPlan.nextStep.requestedTerms).toEqual([
+      'join-patron-wars',
+    ]);
   });
 
   it('makes accumulated dependence improve leverage without guaranteeing acceptance', () => {

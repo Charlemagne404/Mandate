@@ -1,6 +1,6 @@
 import { semanticCommandIssue } from './semantic.js';
 import { executePlayerTurn } from './player-executor.js';
-import { compactPrepare } from './compact.js';
+import { compactPrepare, playerInfluenceStrategyUpdate } from './compact.js';
 import { decisionInputs } from './decision.js';
 import { repetitionIssue, classifyImportance } from './behavior.js';
 import { auditMajorIntentClauses } from './player-executor.js';
@@ -42,11 +42,13 @@ import { scheduleActors, selectRelevance } from './scheduler.js';
 import type { ActorActivation } from './scheduler.js';
 import {
   buildFormalizerPayload,
+  authorizedDiplomaticProposal,
   canonicalizeFormalizerIntent,
   deterministicPlayerIntent,
   formalizerReferences,
   scopeIntent,
 } from './perspective.js';
+import { influenceTermsFromText } from './influence-intent.js';
 
 export const RESOLVER_CAPABILITIES = [
   'THEATER_ACTION',
@@ -78,13 +80,50 @@ export const RESOLVER_CAPABILITIES = [
   'ADJUST_RELATION',
   'START_CONFLICT',
 ] as const;
+
+function sanitizePlayerNegotiationDisclosure(
+  world: WorldState,
+  intent: PlayerIntent | null,
+  entries: Array<{ command: WorldCommand; reason: string }>,
+) {
+  if (!intent) return entries;
+  return entries.filter((entry) => {
+    if (
+      entry.command.type !== 'OPEN_NEGOTIATION' ||
+      entry.command.negotiation.proposerNationId !== intent.actorNationId
+    )
+      return true;
+    const negotiation = entry.command.negotiation;
+    const authorized = authorizedDiplomaticProposal(
+      intent,
+      negotiation.recipientNationId,
+    );
+    if (!authorized?.text) return false;
+    negotiation.terms = authorized.text;
+    negotiation.visibility = authorized.visibility;
+    negotiation.topic =
+      negotiation.kind === 'influence'
+        ? `${world.nations.find((nation) => nation.id === negotiation.recipientNationId)?.name ?? 'Partner'} strategic partnership`
+        : `${negotiation.kind} proposal`;
+    if (negotiation.initialTerms !== undefined)
+      negotiation.initialTerms = authorized.text;
+    if (negotiation.kind === 'influence')
+      negotiation.influenceTerms = influenceTermsFromText(
+        world,
+        negotiation.proposerNationId,
+        negotiation.recipientNationId,
+        authorized.text,
+      );
+    return true;
+  });
+}
 export const ROLE_INSTRUCTIONS: Record<Role, string> = {
   formalizer:
     "Interpret only the player's action text. The player actor is code-owned: copy action.actorNationId if the optional field is emitted, but never infer, replace or change it. The controlled government must attempt every valid affirmative policy order regardless of risk, plausibility, strategic alignment or consequences. Distinguish the policy the player orders from external outcomes the world may reject, and preserve explicit constraints separately. Use nationId values only for nation fields and regionId values only for region fields; these namespaces are not interchangeable. Use exact zero-based sourceClauseIds from clauses, keep unrelated intentions separate, preserve negations and conditional requests, and return empty target lists when no target is named. Do not write encyclopedia summaries or answer text found in the catalogues.",
   planner:
-    "Represent only the assigned government's interests and knowledge. Consult its own active goals, bilateral relations, commitments, resources, domestic conditions and recent exchanges. Government plans are wishes, not outcomes. Foreign governments may reject, counter, delay or pursue independent priorities. Give the player no special success advantage. Return material decisionFactors and bounded uncertainty. Consider the supplied structured dossier, stalled goal pressure and resource conflicts. Evaluate organization invitations from their stated purpose, member obligations, fiscal costs, national interests and public support; decide independently to accept, reject, delay or counter. Major and regional patrons should pursue durable spheres through investment, energy, trade, aid, organization expansion, security guarantees, and lawful negotiated obligations; proactively make counteroffers when a rival patron is gaining influence. Prefer economic and diplomatic competition over starting wars solely to expand influence. Evaluate threats and withdrawals for their blowback, resistance, grievances, trust loss, economic harm, and risk that the recipient seeks another patron. When your autonomy is heavily constrained, domestic opposition rises, benefits fail or payment arrears accumulate, consider renegotiating, diversifying partners, seeking another guarantee or ending the pact; do not abandon useful agreements automatically. For treaty breaches, weigh diplomatic demands, arrears collection, suspending benefits, market restrictions, pressure, guarantee withdrawal, sanctions, renegotiation, or termination before war. Low information or a divided government can justify exploratory talks or delay. For open conferences involving you, record conferenceDecisions independently for the current round; do not assume other parties consent. A counteroffer revokes all prior acceptances. A resolved/failed goal requires reviewing its remaining means. Unrelated public activity must not displace national goals.",
+    "Represent only the assigned government's interests and knowledge. Consult its own active goals, bilateral relations, commitments, resources, domestic conditions and recent exchanges. Government plans are wishes, not outcomes. Foreign governments may reject, counter, delay or pursue independent priorities. Give the player no special success advantage. Return material decisionFactors and bounded uncertainty. Consider the supplied structured dossier, stalled goal pressure and resource conflicts. Evaluate organization invitations from their stated purpose, member obligations, fiscal costs, national interests and public support; decide independently to accept, reject, delay or counter. Major and regional patrons should maintain a persistent target, desired tier, current leverage, rival options, accepted obligations, rejection history and next realistic step. Sequence economic dependence, reliability, security reliance, consultation, coordination and only then costly restrictions or authority. Never repeat rejected sovereignty terms unchanged; learn the stated cause and wait, compensate, narrow the clause or build leverage first. Match support to the target's needs and budget; compare live rival offers explicitly. Subject governments should diversify useful ties, invest in domestic substitutes when one patron dominates, and protect independent choices when the benefits do not cover the sovereignty cost. Prefer economic and diplomatic competition over starting wars solely to expand influence. Evaluate threats and withdrawals for their blowback, resistance, grievances, trust loss, economic harm, and risk that the recipient seeks another patron. When your autonomy is heavily constrained, domestic opposition rises, benefits fail or payment arrears accumulate, consider renegotiating, diversifying partners, seeking another guarantee or ending the pact; do not abandon useful agreements automatically. For treaty breaches, consider one response per active breach episode: cure or demand payment, issue a deadline, suspend reciprocal obligations, renegotiate, compensate, waive, sanction proportionately, or terminate; reassess unresolved crises and avoid repeating an action already recorded. War is a last resort. Low information or a divided government can justify exploratory talks or delay. For open conferences involving you, record conferenceDecisions independently for the current round; do not assume other parties consent. A counteroffer revokes all prior acceptances. A resolved/failed goal requires reviewing its remaining means. Unrelated public activity must not displace national goals.",
   diplomat:
-    "Speak for the assigned government. Provide a structured negotiation move, preserving participants and secrecy. Accept only an offer compatible with this government's interests; reject coercion or counter with reciprocal terms. Speech alone creates no agreement or treaty. No is a valid outcome, including for consultation. Consider the offered benefits against the supplied dependence profile, alternatives, domestic resistance, sovereignty cost and urgency. Return typed influenceTerms when countering structured control clauses; consultation does not grant a veto, and no term may exceed its accepted scope. Uncertainty can justify delay or narrower exploratory terms. Accept beneficial compatible terms when supplied facts support them; do not invent prohibitions or require unspecified analysis for every low-cost offer. Counter when a concrete narrower term would make cooperation worthwhile. Delay only for material unresolved information or domestic constraints. Never accept merely because a proposal exists.",
+    "Speak for the assigned government. Provide a structured negotiation move, preserving participants and secrecy. Accept only an offer compatible with this government's interests; reject coercion or counter with reciprocal terms. Speech alone creates no agreement or treaty. No is a valid outcome, including for consultation. Consider the offered benefits against the supplied dependence profile, alternatives, domestic resistance, sovereignty cost, delivery reliability, existing obligations and urgency. Compare simultaneous patron offers by economic value, security value, sovereignty cost, reliability and switching cost, and state why a selected offer beats an outside option. A rejection is durable evidence: do not recommend the same sovereignty clause again unchanged; use the stated reason to narrow it, compensate, deepen dependence first or wait. For breach settlements, weigh arrears, duration, prior demands and suspended reciprocity; acceptance may close the breach only through the supplied canonical negotiation. Return typed influenceTerms when countering structured control clauses; consultation does not grant a veto, and no term may exceed its accepted scope. Uncertainty can justify delay or narrower exploratory terms. Accept beneficial compatible terms when supplied facts support them; do not invent prohibitions or require unspecified analysis for every low-cost offer. Counter when a concrete narrower term would make cooperation worthwhile. Delay only for material unresolved information or domestic constraints. Never accept merely because a proposal exists.",
   resolver:
     'Adjudicate foreign/world responses and independent intentions. The deterministic Player Action Executor commits valid policy components ordered by the player; do not veto or substitute those orders because they are risky, implausible or strategically inconsistent. Plans are compact decision records containing stance, intentions, explanation, decision factors and conference decisions; use those fields without assuming omitted priorities or public statements. Only listed finite command capabilities are available. State changes require mechanical justification and independent consent where applicable. Never create a treaty directly or fabricate prior agreement. Influence clauses bind only after negotiation consent. A patron directive may change another government only inside an accepted treaty term; consultation alone is not a veto. Preserve existing treaties, rejections, active wars and ongoing projects. Initiative effects happen over time. Use the supplied runId prefix for new entity IDs.',
   critic:
@@ -162,6 +201,7 @@ export function createOrchestrator(
   const config = ProviderConfig.parse(configInput);
   const faults = new WeakMap<TurnTrace, NonNullable<PrepareInput['fault']>>();
   const budgets = new WeakMap<TurnTrace, number>();
+  let availableModelsPromise: Promise<string[]> | undefined;
   // Only immutable role contracts are cached. Every prompt still serializes fresh scoped facts.
   const schemaCache = new WeakMap<z.ZodType, object>();
   const contractSchema = (schema: z.ZodType) => {
@@ -181,6 +221,38 @@ export function createOrchestrator(
     schemaCache.set(schema, generated);
     return generated;
   };
+  const modelFor = async (
+    role: Role,
+    importance: TurnTrace['importance'],
+    signal?: AbortSignal,
+  ) => {
+    const ordinary = config.roleModels?.[role] ?? config.model;
+    if (
+      provider.id === 'fake-demo' ||
+      importance !== 'high' ||
+      !['planner', 'diplomat', 'resolver', 'critic'].includes(role)
+    )
+      return provider.id === 'fake-demo' ? 'demo-rules-v1' : ordinary;
+    if (config.highImportanceModel) return config.highImportanceModel;
+    if (provider.id === 'ollama') {
+      availableModelsPromise ??= provider
+        .health(AbortSignal.timeout(1500))
+        .then((health) => (health.ok ? health.models : []))
+        .catch(() => []);
+      try {
+        signal?.throwIfAborted();
+        const models = await availableModelsPromise;
+        const qwen3FourB = models.find((model) =>
+          /^qwen3(?::|[-_.])4b(?:[-_.]|$)/i.test(model),
+        );
+        if (qwen3FourB) return qwen3FourB;
+        if (ordinary && models.includes(ordinary)) return ordinary;
+      } catch {
+        signal?.throwIfAborted();
+      }
+    }
+    return ordinary;
+  };
   async function call<T>(
     role: Role,
     schema: z.ZodType<T>,
@@ -199,18 +271,17 @@ export function createOrchestrator(
       throw new Error(
         `${role} context exceeds configured budget (${prompt.length} characters)`,
       );
+    const selectedModel = await modelFor(role, trace.importance, signal);
+    const contextTokens =
+      provider.id === 'ollama' &&
+      trace.importance === 'high' &&
+      ['planner', 'diplomat', 'resolver', 'critic'].includes(role)
+        ? (config.contextTokens ?? 8192)
+        : config.contextTokens;
     const record: ModelCallRecord = {
       id: `modelcall:${trace.id}-${trace.modelCalls.length}`,
       provider: provider.id,
-      model:
-        provider.id === 'fake-demo'
-          ? 'demo-rules-v1'
-          : trace.importance === 'high' &&
-              ['planner', 'diplomat', 'resolver', 'critic'].includes(role)
-            ? (config.highImportanceModel ??
-              config.roleModels?.[role] ??
-              config.model)
-            : (config.roleModels?.[role] ?? config.model),
+      model: selectedModel,
       role,
       promptVersion: `mandate-${role}-v4-context-v3`,
       contextReferences: references,
@@ -240,6 +311,7 @@ export function createOrchestrator(
                 (config.workflow === 'auto' && config.kind === 'ollama')
               ? 400
               : 4000,
+        ...(contextTokens ? { contextTokens } : {}),
         ...(signal ? { signal } : {}),
       });
       record.rawOutput = result.rawText.slice(0, 100000);
@@ -434,7 +506,29 @@ export function createOrchestrator(
         input.action.source === 'player' ? trace.intent : null,
         runId,
       );
-      const playerCommands = trace.playerExecution?.commands ?? [];
+      const influenceStrategyUpdate = playerInfluenceStrategyUpdate(
+        world,
+        input.action.source === 'player' ? trace.intent : null,
+        input.action.text,
+        trace.playerExecution?.commands ?? [],
+      );
+      if (influenceStrategyUpdate)
+        trace.playerExecution?.commands.push(influenceStrategyUpdate);
+      let playerCommands = trace.playerExecution?.commands ?? [];
+      if (input.action.source === 'player' && trace.intent) {
+        const beforeDisclosureCheck = playerCommands.length;
+        playerCommands = sanitizePlayerNegotiationDisclosure(
+          world,
+          trace.intent,
+          playerCommands,
+        );
+        if (playerCommands.length !== beforeDisclosureCheck)
+          trace.validatorResults.push(
+            'A player negotiation without recipient-authorized diplomatic clauses was removed before planning or persistence.',
+          );
+        if (trace.playerExecution)
+          trace.playerExecution.commands = playerCommands;
+      }
       // Aggressive policy effects must be visible to governments planning their
       // response this turn. A newly created diplomatic offer is different: the
       // recipient gets a chance to answer on a later turn, not in the offer's
@@ -1079,29 +1173,18 @@ export function createOrchestrator(
             if (issue) trace.validatorResults.push(`Novelty veto: ${issue}`);
             return !issue;
           });
-          // Private compound actions cannot smuggle an internal clause into transmitted terms.
-          for (const item of trace.proposal.commands) {
-            if (
-              item.command.type === 'OPEN_NEGOTIATION' &&
-              trace.intent &&
-              item.command.negotiation.proposerNationId ===
-                trace.intent.actorNationId
-            ) {
-              const transmitted = scopeIntent(
-                trace.intent,
-                item.command.negotiation.recipientNationId,
-              );
-              if (!transmitted?.intentions.some((i) => i.kind === 'diplomacy'))
-                throw new Error(
-                  'Player negotiation has no disclosure-authorized diplomatic intention',
-                );
-              item.command.negotiation.terms = transmitted.intentions
-                .filter((i) => i.kind === 'diplomacy')
-                .map((i) => i.description)
-                .join('; ')
-                .slice(0, 4000);
-            }
-          }
+          // Resolver-created player negotiations pass the same clause-level
+          // disclosure boundary as deterministic player-executor commands.
+          const commandsBeforeDisclosureCheck = trace.proposal.commands.length;
+          trace.proposal.commands = sanitizePlayerNegotiationDisclosure(
+            world,
+            trace.intent,
+            trace.proposal.commands,
+          );
+          if (trace.proposal.commands.length !== commandsBeforeDisclosureCheck)
+            trace.validatorResults.push(
+              'A resolver negotiation without recipient-authorized diplomatic clauses was removed before persistence.',
+            );
           validateCapabilities(
             planningWorld,
             trace.proposal,

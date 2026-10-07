@@ -40,6 +40,7 @@ import {
   Text,
   Treaty,
   InfluenceTerm,
+  InfluenceDecision,
   PatronDirectiveKind,
 } from './world.js';
 
@@ -125,6 +126,7 @@ export const WorldCommand = z.discriminatedUnion('type', [
     counterPeaceTerms: z.array(PeaceTerm).max(8).optional(),
     counterObligations: z.array(CommitmentTerms).max(8).optional(),
     counterInfluenceTerms: z.array(InfluenceTerm).max(32).optional(),
+    influenceDecision: InfluenceDecision.optional(),
     treatyId: TreatyId.optional(),
   }),
   command('ISSUE_PATRON_DIRECTIVE', {
@@ -143,6 +145,7 @@ export const WorldCommand = z.discriminatedUnion('type', [
     breachId: z.string().regex(/^breach:[a-z0-9._-]+$/),
     patronNationId: NationId,
     subjectNationId: NationId,
+    actingNationId: NationId.optional(),
     enforcementId: z.string().regex(/^enforcement:[a-z0-9._-]+$/),
     action: z.enum([
       'diplomatic-demand',
@@ -153,9 +156,13 @@ export const WorldCommand = z.discriminatedUnion('type', [
       'withdraw-guarantee',
       'sanction',
       'renegotiate',
+      'suspend-reciprocals',
+      'waive',
       'terminate',
     ]),
     amount: z.number().int().min(0).max(1_000_000_000).optional(),
+    terms: Text.optional(),
+    influenceTerms: z.array(InfluenceTerm).max(32).optional(),
   }),
   command('CREATE_ORGANIZATION', { organization: Organization }),
   command('SET_ORGANIZATION_MEMBERSHIP', {

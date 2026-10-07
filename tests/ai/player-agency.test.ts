@@ -5,6 +5,7 @@ import { buildContext } from '@mandate/memory';
 import {
   Conflict,
   Goal,
+  InfluenceTerm,
   NationId,
   Negotiation,
   Treaty,
@@ -835,6 +836,128 @@ describe('player authority evaluation suite', () => {
         ({ command }) => command.type === 'OPEN_NEGOTIATION',
       ),
     ).toBe(false);
+  });
+
+  it('answers an incoming influence counteroffer with a typed, defensive-only amendment', () => {
+    const world = fixture();
+    world.negotiations.push(
+      Negotiation.parse({
+        id: 'negotiation:finland-influence-counter',
+        proposerNationId: finland,
+        recipientNationId: world.playerNationId,
+        kind: 'influence',
+        topic: 'Economic cooperation with Finland',
+        terms: 'Finland retains energy supply and infrastructure investment.',
+        influenceTerms: [
+          InfluenceTerm.parse({
+            kind: 'energy-supply',
+            patronNationId: world.playerNationId,
+            subjectNationId: finland,
+          }),
+          InfluenceTerm.parse({
+            kind: 'infrastructure-investment',
+            patronNationId: world.playerNationId,
+            subjectNationId: finland,
+            amount: 8,
+          }),
+          InfluenceTerm.parse({
+            kind: 'join-patron-wars',
+            patronNationId: world.playerNationId,
+            subjectNationId: finland,
+          }),
+          InfluenceTerm.parse({
+            kind: 'join-defensive-wars',
+            patronNationId: finland,
+            subjectNationId: world.playerNationId,
+          }),
+        ],
+        createdDate: world.date,
+        expiresDate: '2025-06-01',
+      }),
+    );
+    const text =
+      'Counter Finland’s counteroffer by preserving energy supply and infrastructure investment and adding defensive wars only, with no offensive wars.';
+
+    const execution = executePlayerAction(
+      world,
+      deterministicPlayerIntent(world, {
+        actorNationId: world.playerNationId,
+        text,
+      }),
+      'agency-influence-counter',
+    );
+    const counter = execution.commands.find(
+      ({ command }) =>
+        command.type === 'RESPOND_NEGOTIATION' && command.move === 'counter',
+    );
+
+    expect(counter?.command.type).toBe('RESPOND_NEGOTIATION');
+    if (counter?.command.type === 'RESPOND_NEGOTIATION') {
+      expect(counter.command.negotiationId).toBe(
+        'negotiation:finland-influence-counter',
+      );
+      expect(
+        counter.command.counterInfluenceTerms?.map((term) => term.kind),
+      ).toEqual(
+        expect.arrayContaining([
+          'energy-supply',
+          'infrastructure-investment',
+          'security-guarantee',
+          'join-defensive-wars',
+        ]),
+      );
+      expect(
+        counter.command.counterInfluenceTerms?.some(
+          (term) => term.kind === 'join-patron-wars',
+        ),
+      ).toBe(false);
+      expect(
+        counter.command.counterInfluenceTerms?.filter(
+          (term) => term.kind === 'join-defensive-wars',
+        ),
+      ).toHaveLength(2);
+      expect(
+        counter.command.counterInfluenceTerms?.every(
+          (term) =>
+            [world.playerNationId, finland].includes(term.patronNationId) &&
+            [world.playerNationId, finland].includes(term.subjectNationId),
+        ),
+      ).toBe(true);
+    }
+    expect(
+      execution.commands.some(
+        ({ command }) => command.type === 'OPEN_NEGOTIATION',
+      ),
+    ).toBe(false);
+    expect(
+      execution.commands.some(
+        ({ command }) => command.type === 'START_INITIATIVE',
+      ),
+    ).toBe(false);
+  });
+
+  it('does not abstract an unanswered influence reply into a new initiative', () => {
+    const world = fixture();
+    const text =
+      'Counter Finland’s current influence counteroffer by preserving energy supply and adding infrastructure investment.';
+    const execution = executePlayerAction(
+      world,
+      deterministicPlayerIntent(world, {
+        actorNationId: world.playerNationId,
+        text,
+      }),
+      'agency-influence-counter-without-offer',
+    );
+
+    expect(
+      execution.commands.some(
+        ({ command }) =>
+          command.type === 'RESPOND_NEGOTIATION' ||
+          command.type === 'OPEN_NEGOTIATION' ||
+          command.type === 'START_INITIATIVE',
+      ),
+    ).toBe(false);
+    expect(execution.warnings.join(' ')).toMatch(/no open influence offer/i);
   });
 
   it('reversing annexation withdraws its claim, goal and standing directive', () => {

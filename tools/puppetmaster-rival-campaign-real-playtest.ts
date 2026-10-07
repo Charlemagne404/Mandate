@@ -5,37 +5,58 @@ import { createAlphaServices } from '../apps/server/src/alpha.js';
 import { buildServer } from '../apps/server/src/app.js';
 import { canonicalHash, openWorldStore } from '@mandate/persistence';
 import { loadScenario } from '@mandate/scenarios';
-import {
-  EconomicLink,
-  InfluenceTerm,
-  NationId,
-  Negotiation,
-  Organization,
-} from '@mandate/schemas';
+import { NationId } from '@mandate/schemas';
+import type { InfluenceDecision } from '@mandate/schemas';
 import { inferenceOptions } from './inference-options.js';
 
 const orders = [
-  'Invite Honduras and Guatemala to join the existing CAEU. Offer practical economic integration, regular support, energy cooperation and infrastructure links while allowing each government to decide independently.',
-  'Negotiate with Honduras and Guatemala to deepen CAEU trade and energy integration. Offer infrastructure investment and preferential access in return for durable cooperation.',
-  'Nicaragua wants Honduras and Guatemala to coordinate major foreign policy decisions with us. Offer a reciprocal, binding alignment agreement and security support, and explain the benefits.',
-  'A rival patron has a stronger economic offer on the table. Defend Nicaragua’s position with better energy prices, market access, debt relief or infrastructure offers to Honduras and Guatemala where affordable. Let both governments compare the alternatives.',
-  'Ask Honduras whether it will accept stronger Nicaraguan security cooperation and foreign-policy alignment. Preserve existing accepted terms and offer narrower terms if a full package is rejected.',
-  'Make a conditional offer to Guatemala: relieve part of its debt and expand CAEU subsidies if it accepts agreed limits on rival security and economic treaties.',
-  'Review all Nicaragua-Honduras and Nicaragua-Guatemala obligations. Address arrears, deliver promised support and renegotiate terms that create too much resistance.',
-  'Counter the rival patron’s growing regional influence with a CAEU infrastructure and energy package, and invite Honduras and Guatemala to discuss whether existing treaty obligations limit rival security agreements.',
-  'Propose that Honduras and Guatemala support Nicaragua’s next major diplomatic initiative under our existing agreements. If either refuses, use proportionate diplomatic or economic enforcement before considering force.',
-  'Continue building a durable Central American sphere through consent, investment, and enforceable agreements. Keep Honduras and Guatemala independent and make no territorial demands.',
+  'Nicaragua forms the Central American Economic Union (CAEU) and invites Honduras and Guatemala to join voluntarily. Offer affordable trade and energy cooperation; each government decides independently.',
+  'Counter Guatemala’s current influence counteroffer by preserving its energy supply and increasing infrastructure investment to 14 treasury units per month. Do not add a political restriction or offensive-war obligation.',
+  'Counter Honduras’s current influence counteroffer by preserving its energy supply and increasing infrastructure investment to 14 treasury units per month. Do not add a political restriction or offensive-war obligation.',
+  'At the national level, review treasury, recurring commitments, payment obligations, and execution capacity. Choose either Honduras or Guatemala as this year’s sphere priority, explain why, and defer new commitments to the other target.',
+  'With Honduras only, ask for foreign-policy consultation paired with security support. Preserve accepted economic terms and allow Honduras to counter any objectionable clause.',
+  'Counter Honduras’s current influence counteroffer by preserving its security guarantee and replacing any foreign-policy veto with foreign-policy consultation. Add no offensive-war obligation.',
+  'With Guatemala only, offer affordable debt relief in return for common economic rules. Compare any real rival offer if Guatemala has made one; do not invent a rival.',
+  'Counter Guatemala’s current influence counteroffer by preserving its affordable economic benefits and limiting any military obligation to defensive wars only, with no offensive wars.',
+  'Review Nicaragua-Honduras obligations only. Fulfill affordable commitments and adapt to its actual objections, changed circumstances, and any credible rival offer.',
+  'Review national sphere priorities for next year. Adjust Honduras and Guatemala resource allocations to treasury and commitments; make no new target restrictions without target-specific consent.',
 ];
 
 const options = await inferenceOptions();
 if (!options.selected || options.selected.kind === 'fake')
   throw new Error('No reachable configured real model is available.');
 
+const qwen3Available = options.report.configured.some(
+  (entry) =>
+    entry.ok &&
+    entry.kind === 'ollama' &&
+    entry.models.includes('qwen3:4b-instruct'),
+);
+const strongestInstalledLocalModel =
+  options.selected.kind === 'ollama' && qwen3Available
+    ? 'qwen3:4b-instruct'
+    : undefined;
+
 const config = {
   ...options.selected,
-  maxCalls: Math.max(options.selected.maxCalls ?? 0, 40),
+  ...(strongestInstalledLocalModel
+    ? {
+        model: strongestInstalledLocalModel,
+        highImportanceModel: strongestInstalledLocalModel,
+      }
+    : {}),
+  maxCalls: 5,
   timeoutMs: Math.max(options.selected.timeoutMs, 180_000),
   maxTurnMs: Math.max(options.selected.maxTurnMs, 600_000),
+  ...(options.selected.kind === 'ollama' &&
+  options.report.configured.some(
+    (entry) =>
+      entry.ok &&
+      entry.kind === 'ollama' &&
+      entry.models.includes('qwen3:4b-instruct'),
+  )
+    ? { highImportanceModel: 'qwen3:4b-instruct' }
+    : {}),
 };
 const provider = {
   kind: config.kind,
@@ -79,35 +100,6 @@ const guatemalaId = nationIdByName('Guatemala');
 const mexicoId = nationIdByName('Mexico');
 initial.playerNationId = nicaraguaId;
 initial.observerMode = false;
-if (
-  !initial.organizations.some((organization) => organization.acronym === 'CAEU')
-)
-  initial.organizations.push(
-    Organization.parse({
-      id: 'organization:caeu',
-      name: 'Central American Economic Union',
-      acronym: 'CAEU',
-      kind: 'economic-union',
-      foundingDate: initial.date,
-      founders: [nicaraguaId],
-      members: [nicaraguaId],
-      purpose:
-        'Central American economic integration with voluntary member participation.',
-      charter:
-        'Founded by Nicaragua as the controlled campaign starting institution; each prospective member makes an independent decision.',
-      geographicScope: 'Central America',
-      history: [
-        {
-          id: `organization:caeu-${initial.date}-0`,
-          date: initial.date,
-          actorNationId: nicaraguaId,
-          kind: 'founded',
-          description:
-            'The campaign starts with Nicaragua as the founding member of the CAEU.',
-        },
-      ],
-    }),
-  );
 if (!resumeDatabase) store.initialize(initial);
 const app = buildServer({
   store,
@@ -121,6 +113,7 @@ const app = buildServer({
 type TurnTrace = {
   modelCalls?: Array<{
     role: string;
+    model: string;
     status: string;
     latencyMs: number;
     contextCharacters: number;
@@ -139,29 +132,36 @@ type CampaignTurn = {
     topic: string;
     parties: string[];
     status: string;
-    responses: Array<{ nationId: string; move: string; message: string }>;
+    sourceBreachId?: string | null;
+    responses: Array<{
+      nationId: string;
+      move: string;
+      message: string;
+      counterTerms?: string;
+      influenceDecision?: InfluenceDecision;
+    }>;
     proposedTerms: string[];
   }>;
   modelCalls: TurnTrace['modelCalls'];
+  strategicPlans?: Array<{
+    nation: string;
+    target: string;
+    desiredTier: string;
+    currentTier: string;
+    nextStep: string;
+    leverage: number;
+    resistance: number;
+    reliability: number;
+    blockers: string[];
+    rejections: string[];
+    counteroffers: string[];
+  }>;
   failures: string[];
   error?: string;
 };
 
 const actorName = (id: string) =>
   store.load().nations.find((nation) => nation.id === id)?.name ?? id;
-const controlledRivalIntervention = {
-  date: '',
-  purpose:
-    'Controlled evaluation starting condition: Mexico already has modest market, energy, finance, and infrastructure ties to Honduras and Guatemala, then opens structured subsidy, energy, infrastructure, market-access and security offers. This introduces a plausible competing patron; no offer acceptance or final relationship outcome is scripted.',
-  linkIds: [
-    'economic:mexico-honduras-contest',
-    'economic:mexico-guatemala-contest',
-  ],
-  negotiationIds: [
-    'negotiation:mexico-honduras-contest',
-    'negotiation:mexico-guatemala-contest',
-  ],
-};
 const previousReport = resumeDatabase
   ? (JSON.parse(readFileSync(resolve(directory, 'report.json'), 'utf8')) as {
       provider?: typeof provider;
@@ -171,7 +171,6 @@ const previousReport = resumeDatabase
       campaign?: {
         startDate?: string;
         playerTurns?: CampaignTurn[];
-        controlledRivalIntervention?: typeof controlledRivalIntervention;
       };
       integrity?: { recoveredAttempts?: CampaignTurn[] };
     })
@@ -189,9 +188,6 @@ const playerTurns: CampaignTurn[] =
     (turn) => turn.statusCode === 200,
   ) ?? [];
 const previousTurnCount = playerTurns.length;
-if (previousReport?.campaign?.controlledRivalIntervention)
-  controlledRivalIntervention.date =
-    previousReport.campaign.controlledRivalIntervention.date;
 
 function advanceDateByMonths(date: string, months: number) {
   const [year, month, day] = date.split('-').map(Number) as [
@@ -206,118 +202,16 @@ function advanceDateByMonths(date: string, months: number) {
     .slice(0, 10);
 }
 
-function addDays(date: string, days: number) {
-  return new Date(Date.parse(date) + days * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-}
-
-function injectControlledRivalCompetition() {
-  const before = store.load();
-  const links = [
-    EconomicLink.parse({
-      id: controlledRivalIntervention.linkIds[0],
-      dependentNationId: hondurasId,
-      partnerNationId: mexicoId,
-      imports: 24,
-      exports: 18,
-      energy: 28,
-      strategicGoods: 8,
-      finance: 20,
-      infrastructure: 18,
-      alternatives: 32,
-    }),
-    EconomicLink.parse({
-      id: controlledRivalIntervention.linkIds[1],
-      dependentNationId: guatemalaId,
-      partnerNationId: mexicoId,
-      imports: 21,
-      exports: 16,
-      energy: 22,
-      strategicGoods: 9,
-      finance: 24,
-      infrastructure: 20,
-      alternatives: 36,
-    }),
-  ];
-  const offers = [hondurasId, guatemalaId].map((subjectNationId, index) =>
-    Negotiation.parse({
-      id: controlledRivalIntervention.negotiationIds[index],
-      proposerNationId: mexicoId,
-      recipientNationId: subjectNationId,
-      topic: 'Mexican regional investment and security offer',
-      kind: 'influence',
-      terms:
-        'Mexico offers a recurring subsidy, energy cooperation, infrastructure finance, preferential market access and a security guarantee. The recipient government decides independently whether to accept or counter.',
-      createdDate: before.date,
-      expiresDate: addDays(before.date, 730),
-      influenceTerms: [
-        InfluenceTerm.parse({
-          kind: 'subsidy',
-          patronNationId: mexicoId,
-          subjectNationId,
-          amount: 6,
-        }),
-        InfluenceTerm.parse({
-          kind: 'energy-supply',
-          patronNationId: mexicoId,
-          subjectNationId,
-        }),
-        InfluenceTerm.parse({
-          kind: 'infrastructure-investment',
-          patronNationId: mexicoId,
-          subjectNationId,
-          amount: 5,
-        }),
-        InfluenceTerm.parse({
-          kind: 'preferential-trade',
-          patronNationId: mexicoId,
-          subjectNationId,
-        }),
-        InfluenceTerm.parse({
-          kind: 'security-guarantee',
-          patronNationId: mexicoId,
-          subjectNationId,
-        }),
-      ],
-    }),
-  );
-  store.commit({
-    expectedRevision: before.revision,
-    expectedHash: canonicalHash(before),
-    action: {
-      actorNationId: mexicoId,
-      source: 'system',
-      text: controlledRivalIntervention.purpose,
-    },
-    commands: [
-      ...links.map((link, index) => ({
-        id: `command:${runId}-mexico-rival-link-${index + 1}`,
-        reason:
-          'Seed a bounded rival-patron economic relationship for a controlled competition scenario.',
-        command: { type: 'SET_ECONOMIC_LINK' as const, link },
-      })),
-      ...offers.map((negotiation, index) => ({
-        id: `command:${runId}-mexico-rival-offer-${index + 1}`,
-        reason:
-          'Open a valid structured Mexico offer; allow each subject to accept, reject or counter through the real model.',
-        command: { type: 'OPEN_NEGOTIATION' as const, negotiation },
-      })),
-    ],
-  });
-  controlledRivalIntervention.date = store.load().date;
-  console.log(
-    JSON.stringify({
-      stage: 'controlled-rival-patron-offers-opened',
-      date: controlledRivalIntervention.date,
-      patron: 'Mexico',
-      recipients: ['Honduras', 'Guatemala'],
-    }),
-  );
-}
-
 const startingDate = previousReport?.campaign?.startDate ?? store.load().date;
-const endDate = advanceDateByMonths(startingDate, 120);
+const durationMonths = Number(process.env.MANDATE_PUPPETMASTER_MONTHS ?? 120);
+const quality = 'fast' as const;
+if (
+  !Number.isInteger(durationMonths) ||
+  durationMonths < 3 ||
+  durationMonths > 120
+)
+  throw new Error('Expected MANDATE_PUPPETMASTER_MONTHS between 3 and 120.');
+const endDate = advanceDateByMonths(startingDate, durationMonths);
 const expectedPlayerTurnCount = Math.ceil(
   (Date.parse(endDate) - Date.parse(startingDate)) / (90 * 86_400_000),
 );
@@ -340,8 +234,6 @@ try {
 
   let index = playerTurns.length;
   while (Date.parse(store.load().date) < Date.parse(endDate)) {
-    if (index === 12 && !controlledRivalIntervention.date)
-      injectControlledRivalCompetition();
     const before = store.load();
     const remainingDays = Math.max(
       1,
@@ -354,7 +246,7 @@ try {
       expectedHash: canonicalHash(before),
       text: order,
       days,
-      quality: 'balanced' as const,
+      quality,
     };
     let response = await app.inject({
       method: 'POST',
@@ -433,14 +325,49 @@ try {
             negotiation.recipientNationId,
           ].map(actorName),
           status: negotiation.status,
+          ...(negotiation.sourceBreachId !== undefined
+            ? { sourceBreachId: negotiation.sourceBreachId }
+            : {}),
           responses: negotiation.responses.map((response) => ({
             nationId: actorName(response.nationId),
             move: response.move,
             message: response.message,
+            ...(response.counterTerms
+              ? { counterTerms: response.counterTerms }
+              : {}),
+            ...(response.influenceDecision
+              ? { influenceDecision: response.influenceDecision }
+              : {}),
           })),
           proposedTerms: negotiation.influenceTerms.map((term) => term.kind),
         })),
       modelCalls: trace.modelCalls ?? [],
+      strategicPlans: after.nations
+        .filter((nation) => [nicaraguaId, mexicoId].includes(nation.id))
+        .flatMap((nation) =>
+          nation.strategy.influencePlans
+            .filter((plan) =>
+              [hondurasId, guatemalaId].includes(plan.targetNationId),
+            )
+            .map((plan) => ({
+              nation: nation.name,
+              target: actorName(plan.targetNationId),
+              desiredTier: plan.desiredTier,
+              currentTier: plan.currentTier,
+              nextStep: plan.nextStep.rationale,
+              leverage: plan.leverage,
+              resistance: plan.resistance,
+              reliability: plan.patronReliability,
+              blockers: plan.blockers,
+              rejections: plan.rejectedObligations.map(
+                (entry) =>
+                  `${entry.date} ${entry.reasonCode}: ${entry.explanation}`,
+              ),
+              counteroffers: plan.recentCounteroffers.map(
+                (entry) => `${entry.date}: ${entry.explanation}`,
+              ),
+            })),
+        ),
       failures: trace.failures ?? [],
     });
     console.log(
@@ -506,10 +433,17 @@ try {
       actorName,
     ),
     status: negotiation.status,
+    ...(negotiation.sourceBreachId !== undefined
+      ? { sourceBreachId: negotiation.sourceBreachId }
+      : {}),
     responses: negotiation.responses.map((response) => ({
       nationId: actorName(response.nationId),
       move: response.move,
       message: response.message,
+      ...(response.counterTerms ? { counterTerms: response.counterTerms } : {}),
+      ...(response.influenceDecision
+        ? { influenceDecision: response.influenceDecision }
+        : {}),
     })),
     proposedTerms: negotiation.influenceTerms.map((term) => term.kind),
   }));
@@ -534,34 +468,33 @@ try {
       })),
       breaches: treaty.breaches.map((breach) => ({
         date: breach.date,
+        obligationKey: breach.obligationKey,
+        firstMissedDate: breach.firstMissedDate,
+        lastMissedDate: breach.lastMissedDate,
+        missedInstallments: breach.missedInstallments,
+        arrearsAmount: breach.arrearsAmount,
+        durationMonths: breach.durationMonths,
+        severity: breach.severity,
+        milestones: breach.milestones,
         violator: actorName(breach.violatingNationId),
         injured: actorName(breach.injuredNationId),
         reason: breach.reason,
         status: breach.status,
       })),
       enforcement: treaty.enforcements.map((action) => ({
+        actingNation: action.actingNationId
+          ? actorName(action.actingNationId)
+          : null,
+        date: action.date,
         action: action.action,
         result: action.result,
       })),
-    }));
-  const controlledRivalLinks = world.economicLinks
-    .filter((link) => controlledRivalIntervention.linkIds.includes(link.id))
-    .map((link) => ({
-      dependent: actorName(link.dependentNationId),
-      partner: actorName(link.partnerNationId),
-      imports: link.imports,
-      exports: link.exports,
-      energy: link.energy,
-      finance: link.finance,
-      infrastructure: link.infrastructure,
-      alternatives: link.alternatives,
     }));
   const responseMoves = campaignNegotiations.flatMap((negotiation) =>
     negotiation.responses.map((response) => response.move),
   );
   const report = {
-    method:
-      'Real-model quarterly player turns through Fastify POST /api/play, with a controlled rival-patron economic-link and structured-offer intervention after month 36. No final tier, acceptance, breach, or defection outcome is scripted.',
+    method: `Real-model quarterly player turns through Fastify POST /api/play from the unmodified regional scenario for ${durationMonths} months. Nicaragua forms CAEU through its first player order; no rival links, offers, membership, breach, acceptance or final tier are injected.`,
     provider,
     providerHistory,
     campaign: {
@@ -571,6 +504,7 @@ try {
       startDate: startingDate,
       targetEndDate: endDate,
       actualEndDate: world.date,
+      quality,
       elapsedMonths:
         Math.round(
           ((Date.parse(world.date) - Date.parse(startingDate)) /
@@ -579,8 +513,12 @@ try {
             10,
         ) / 10,
       playerTurns,
-      controlledRivalIntervention,
-      rivalEconomicLinks: controlledRivalLinks,
+      strategyHistory: playerTurns.flatMap((turn) =>
+        (turn.strategicPlans ?? []).map((plan) => ({
+          date: turn.date,
+          ...plan,
+        })),
+      ),
       relationshipSnapshots: {
         nicaraguaHonduras: profile(nicaraguaId, hondurasId),
         nicaraguaGuatemala: profile(nicaraguaId, guatemalaId),
@@ -588,10 +526,27 @@ try {
         mexicoGuatemala: profile(mexicoId, guatemalaId),
       },
       organization: world.organizations
-        .filter((organization) => organization.acronym === 'CAEU')
+        .filter(
+          (organization) =>
+            organization.acronym === 'CAEU' ||
+            organization.name === 'Central American Economic Union',
+        )
         .map((organization) => ({
           members: organization.members.map(actorName),
           development: organization.development,
+        })),
+      regionalAutonomyInitiatives: world.initiatives
+        .filter(
+          (initiative) =>
+            [hondurasId, guatemalaId].includes(initiative.nationId) &&
+            initiative.name.startsWith('Strategic autonomy:'),
+        )
+        .map((initiative) => ({
+          nation: actorName(initiative.nationId),
+          name: initiative.name,
+          status: initiative.status,
+          startDate: initiative.startDate,
+          completedDate: initiative.completedDate,
         })),
       negotiations: campaignNegotiations,
       treaties: treatyEvidence,
@@ -653,6 +608,16 @@ try {
           allPlayerTurnsSucceeded: report.integrity.allPlayerTurnsSucceeded,
           reachedTargetDate: report.integrity.reachedTargetDate,
           modelCallCount: report.integrity.modelCallCount,
+          modelsByRole: playerTurns
+            .flatMap((turn) => turn.modelCalls ?? [])
+            .reduce(
+              (counts, call) => {
+                const key = `${call.role}:${call.model}`;
+                counts[key] = (counts[key] ?? 0) + 1;
+                return counts;
+              },
+              {} as Record<string, number>,
+            ),
         },
         rivalry: {
           Honduras: {

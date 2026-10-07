@@ -4,7 +4,7 @@ import type { WorldState } from '@mandate/schemas';
 import { updateDepth, executionCapacity, relationshipEffect } from './depth.js';
 import { requireDomain } from './errors.js';
 import { resolveWarFronts } from './fronts.js';
-import { recordInfluenceBreach } from './mechanics.js';
+import { recordInfluenceBreach, resolveInfluenceBreach } from './mechanics.js';
 import type {
   ActionId,
   OrganizationDimension,
@@ -656,7 +656,7 @@ function applyInfluenceTreatyMonth(w: WorldState, date: string) {
   };
   for (const treaty of w.treaties) {
     if (treaty.status !== 'active') continue;
-    for (const term of treaty.influenceTerms) {
+    for (const [termIndex, term] of treaty.influenceTerms.entries()) {
       if (term.status !== 'active') continue;
       const patron = w.nations.find(
         (nation) => nation.id === term.patronNationId,
@@ -695,6 +695,8 @@ function applyInfluenceTreatyMonth(w: WorldState, date: string) {
             `Missed ${term.kind} payment under ${treaty.name}`,
             payer.id,
             treaty.id,
+            `obligation:${treaty.id.slice(7)}-term-${termIndex}`,
+            term.amount * term.arrears,
           );
           return 0;
         }
@@ -706,6 +708,25 @@ function applyInfluenceTreatyMonth(w: WorldState, date: string) {
         term.paidAmount = Math.min(1_000_000_000, term.paidAmount + amount);
         term.paymentsMade = Math.min(100_000, term.paymentsMade + 1);
         term.lastPaymentDate = date;
+        if (term.arrears > 0) {
+          term.arrears--;
+          const obligationKey = `obligation:${treaty.id.slice(7)}-term-${termIndex}`;
+          const breach = treaty.breaches.find(
+            (candidate) =>
+              candidate.obligationKey === obligationKey &&
+              candidate.status !== 'resolved',
+          );
+          if (breach) {
+            breach.arrearsAmount = Math.max(0, breach.arrearsAmount - amount);
+            if (term.arrears === 0 || breach.arrearsAmount === 0)
+              resolveInfluenceBreach(
+                w,
+                treaty,
+                breach,
+                `The ${term.kind} installment was paid.`,
+              );
+          }
+        }
         return amount;
       };
       if (
@@ -781,9 +802,54 @@ function applyInfluenceTreatyMonth(w: WorldState, date: string) {
           link.alternatives - (term.kind === 'exclusive-market-access' ? 1 : 0),
         );
       } else if (term.kind === 'energy-supply') {
+        const delivered = Math.max(1, term.amount);
+        if (patron.stats.treasury < delivered) {
+          term.arrears = Math.min(100_000, term.arrears + 1);
+          patron.stats.fiscal = clamp(patron.stats.fiscal - 1);
+          patron.stats.unrest = clamp(patron.stats.unrest + 1);
+          recordInfluenceBreach(
+            w,
+            term.patronNationId,
+            term.subjectNationId,
+            `Missed energy-supply delivery under ${treaty.name}`,
+            patron.id,
+            treaty.id,
+            `obligation:${treaty.id.slice(7)}-term-${termIndex}`,
+            delivered * term.arrears,
+          );
+          continue;
+        }
+        // The delivery is in-kind: treasury records the patron's supply cost,
+        // while the economic link records energy received without a cash transfer.
+        patron.stats.treasury -= delivered;
+        term.paidAmount = Math.min(1_000_000_000, term.paidAmount + delivered);
+        term.paymentsMade = Math.min(100_000, term.paymentsMade + 1);
+        term.lastPaymentDate = date;
         const link = getLink(term.subjectNationId, term.patronNationId);
-        link.energy = Math.min(100, link.energy + 1);
+        link.energy = Math.min(100, link.energy + delivered);
         link.alternatives = Math.max(0, link.alternatives - 1);
+        if (term.arrears > 0) {
+          term.arrears--;
+          const obligationKey = `obligation:${treaty.id.slice(7)}-term-${termIndex}`;
+          const breach = treaty.breaches.find(
+            (candidate) =>
+              candidate.obligationKey === obligationKey &&
+              candidate.status !== 'resolved',
+          );
+          if (breach) {
+            breach.arrearsAmount = Math.max(
+              0,
+              breach.arrearsAmount - delivered,
+            );
+            if (term.arrears === 0 || breach.arrearsAmount === 0)
+              resolveInfluenceBreach(
+                w,
+                treaty,
+                breach,
+                'The missed energy-supply delivery was made good.',
+              );
+          }
+        }
       }
     }
   }

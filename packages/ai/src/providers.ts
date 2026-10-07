@@ -164,8 +164,11 @@ class HttpProvider implements LlmProvider {
                 options: {
                   temperature: request.temperature ?? this.config.temperature,
                   num_predict: request.maxTokens ?? 3000,
-                  ...(this.config.contextTokens
-                    ? { num_ctx: this.config.contextTokens }
+                  ...((request.contextTokens ?? this.config.contextTokens)
+                    ? {
+                        num_ctx:
+                          request.contextTokens ?? this.config.contextTokens,
+                      }
                     : {}),
                 },
               }

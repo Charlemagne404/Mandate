@@ -81,6 +81,48 @@ export function classifyImportance(
   text: string,
   targets: NationId[],
 ): 'low' | 'medium' | 'high' {
+  const sphereDecision =
+    /sphere|patron|puppet|protectorate|client state|dependency|dependence|sovereignty|foreign[- ]policy|alliance exclusivity|influence/i.test(
+      text,
+    ) ||
+    w.nations.some(
+      (nation) =>
+        targets.includes(nation.id) &&
+        nation.strategy.influencePlans.some((plan) => plan.status === 'active'),
+    ) ||
+    w.negotiations.some(
+      (negotiation) =>
+        negotiation.kind === 'influence' &&
+        negotiation.status === 'open' &&
+        [negotiation.proposerNationId, negotiation.recipientNationId].some(
+          (nationId) => targets.includes(nationId),
+        ) &&
+        (negotiation.sourceBreachId !== undefined ||
+          negotiation.influenceTerms.some((term) =>
+            [
+              'foreign-policy-alignment',
+              'foreign-policy-veto',
+              'no-rival-alliance',
+              'join-patron-wars',
+              'war-declaration-approval',
+              'government-security-arrangement',
+            ].includes(term.kind),
+          )),
+    ) ||
+    w.treaties.some(
+      (treaty) =>
+        treaty.kind === 'influence' &&
+        treaty.status === 'active' &&
+        treaty.breaches.some(
+          (breach) =>
+            breach.status !== 'resolved' &&
+            breach.severity >= 50 &&
+            [breach.violatingNationId, breach.injuredNationId].some((id) =>
+              targets.includes(id),
+            ),
+        ),
+    );
+  if (sphereDecision) return 'high';
   if (
     /war|peace|ceasefire|alliance|basing|territor|ultimatum|attack|nuclear weapon/i.test(
       text,

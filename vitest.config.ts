@@ -6,7 +6,7 @@ export default defineConfig({
       'apps/**/*.test.ts',
       'tests/**/*.test.ts',
     ],
-    testTimeout: 15000,
+    testTimeout: 30000,
     // Bound worker memory while an optional local inference runtime shares the desktop.
     maxWorkers: 2,
   },

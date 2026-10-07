@@ -9,6 +9,7 @@ import {
   WorldCommand,
   CommitmentTerms,
   InfluenceTerm,
+  InfluenceDecision,
   PeaceTerm,
 } from '@mandate/schemas';
 
@@ -267,6 +268,7 @@ export const DiplomaticMove = z.strictObject({
   terms: z.string().max(4000),
   obligations: z.array(CommitmentTerms).max(8).default([]),
   influenceTerms: z.array(InfluenceTerm).max(32).default([]),
+  influenceDecision: InfluenceDecision.optional(),
   peaceTerms: z.array(PeaceTerm).max(8).default([]),
   visibility: z.enum(['public', 'private']),
 });
@@ -327,6 +329,7 @@ export interface GenerationRequest {
   jsonSchema: object;
   temperature?: number;
   maxTokens?: number;
+  contextTokens?: number;
   signal?: AbortSignal;
 }
 export interface GenerationResult {

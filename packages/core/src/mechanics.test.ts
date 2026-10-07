@@ -82,6 +82,35 @@ describe('deterministic alpha mechanics', () => {
     });
     expect(() => assertWorld(extra)).toThrow('Closed negotiation');
   });
+  it('renews the response window when a party counteroffers near expiry', () => {
+    const initial = fixture();
+    const before = run(initial, [
+      {
+        type: 'OPEN_NEGOTIATION',
+        negotiation: negotiation(initial, {
+          kind: 'influence',
+          createdDate: '2025-01-01',
+          expiresDate: '2025-06-29',
+        }),
+      },
+      { type: 'ADVANCE_DATE', date: '2025-03-31' },
+    ]);
+
+    const after = run(before, [
+      {
+        type: 'RESPOND_NEGOTIATION',
+        negotiationId: 'negotiation:cooperation',
+        nationId: 'nation:fin',
+        move: 'counter',
+        message: 'Proposed a revised package.',
+        counterTerms: 'Retain the benefits and narrow the authority clause.',
+        counterInfluenceTerms: [],
+      },
+    ]);
+
+    expect(after.negotiations[0]?.expiresDate).toBe('2025-09-27');
+    expect(after.negotiations[0]?.status).toBe('open');
+  });
   it('peace at current lines ends the war without annexing occupied territory', () => {
     let w = fixture();
     w = run(w, [

@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { NationId, RegionId, ConflictId, NegotiationId } from './ids.js';
+import {
+  NationId,
+  RegionId,
+  ConflictId,
+  NegotiationId,
+  TreatyId,
+} from './ids.js';
 import {
   SimulationDate,
   Text,
@@ -59,6 +65,11 @@ export const Crisis = z.strictObject({
             z.strictObject({
               kind: z.literal('agreement'),
               negotiationId: NegotiationId,
+            }),
+            z.strictObject({
+              kind: z.literal('treaty-breach'),
+              treatyId: TreatyId,
+              breachId: z.string().regex(/^breach:[a-z0-9._-]+$/),
             }),
           ])
           .default({ kind: 'acknowledgment' }),
